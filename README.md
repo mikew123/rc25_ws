@@ -108,8 +108,27 @@ The microcontroller firmware is C-code developed using the Arduino IDE. The inte
 ### Inputs from RC switch
 - Steering
 - High-Low speed select
+## Decode transmitter signals
+### Switch to/from computer control
+- From receiver<br>
+Enable computer control: Steering CW, toggle Shift DOWN then UP<br>
+Enable receiver control: Steering CCW, toggle Shift DOWN the UP<br>
+- From computer<br>
+Send JSON message<br>
 ## JSON messages
 ### Congfigure messages from the computer
-### Runtime controll messages from computer
+- Switch to/from computer control<br>
+{"rc":bool} Select signal source, RC receiver true, USB computer false<br>
+- Failsafe enable/disable<br>
+{"fse":bool} Failsafe enabled, enabled true, disabled false<br>
+### Runtime control messages from computer
+The throttle and steer commands will be send to motors when the remote trigger is pulled while failsafe is enabled (default enabled)<br>
+When powered on the throttle and steering are from the receiver. They can be switched to the computer with a JSON command or from controls on the receiver<br>
+- Throttle<br>
+{"thr":pct} percent throttle, forward +pct, reverse -pct<br>
+- Steer<br>
+{"str":pct} percent steering, right +pct, left -pct<br>
+- Gear shift<br>
+{"sft":bool} Gear shift, high true, low false<br>
 ### Status messages to computer
 
