@@ -81,7 +81,7 @@ Waveshare RP2040-Zero, a Pico-like MCU Board Based on Raspberry Pi MCU RP2040, M
 
 # New electronics in engine compartment
 A waterproof box is mounted to the rear battery holder. This box holds the DC-DC converters for the electronics in the cabin, the servo signal mux and a micro controller to manage the servo switch and send some telemetry to the computer in the cabin. The servo switch defaults to connecting the RC receiver to the motor and servos.</br>
-<img src="images/RCX6-engine_compartment_with_new electronics.jpg">
+<img src="support/RCX6-engine_compartment_with_new electronics.jpg">
 
 ## Method to switch to computer control
 The steering wheel and speed switch on the RC transmitter is used to switch to-from computer control. This must be done with throttle at idle.
@@ -94,8 +94,8 @@ The motor and servo signals are connected to the OUT pins of the RC switch modul
 The controler pins are hard wired to the SLAVE pins of the RC switch
 The controller USB supplies the power only to the micro controller</br>
 The DC-DC converters are inside the waterproof box. The power input from the battery has an in-line fuse which is not in the box to protect the batteries from an electrical short.</br>
-<img src="images/engine_compartment_electronics_module.jpg"></br>
-<img src="images/RCX6_engine_electronics_drawing.jpg"></br>
+<img src="support/engine_compartment_electronics_module.jpg"></br>
+<img src="support/RCX6_engine_electronics_drawing.jpg"></br>
 
 # Micro controller firmware
 The microcontroller firmware is C-code developed using the Arduino IDE. The interface to the controller uses the USB port for a serial communications interface. A simple Json data structure sends data to-from the computer in the cabin over the USB serial interface.
@@ -108,7 +108,7 @@ The microcontroller firmware is C-code developed using the Arduino IDE. The inte
 ### Inputs from RC switch
 - Steering
 - High-Low speed select
-## Decode transmitter signals
+## Decode RC receiver Steer and Shift PWm signals
 ### Switch to/from computer control
 - From receiver<br>
 Enable computer control: Steering CW, toggle Shift DOWN then UP<br>
@@ -131,4 +131,12 @@ When powered on the throttle and steering are from the receiver. They can be swi
 - Gear shift<br>
 {"sft":bool} Gear shift, high true, low false<br>
 ### Status messages to computer
+## Throttle bidir half duplex serial messages
+The Throttle interface between the RC receiver and the ESC controller is a bidirectional UART serial interface at 155200 baud. The RC receiver sends control signals to the ESC. The ESC responds with telemetry data to the RC receiver.<br>
+The devices power on with the RC <-> ESC Throttle in BYPASS mode, the Zero can disable BYPASS and receive the serial data from both the RC and the ESC. The Zero can enable serial TX to both the RC and ESC between RX messages to impliment the half duplex.<br>
 
+https://github.com/SpektrumRC/SRXL2
+
+https://github.com/SpektrumRC/SRXL2/blob/master/Docs/SRXL2%20Specification.pdf
+
+https://github.com/SpektrumRC/SpektrumDocumentation/blob/master/Telemetry/spektrumTelemetrySensors.h
