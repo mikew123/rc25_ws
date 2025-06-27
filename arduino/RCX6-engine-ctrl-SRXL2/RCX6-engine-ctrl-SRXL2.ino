@@ -5,6 +5,17 @@
 #include <Arduino_JSON.h>
 #include <strings.h>
 
+#include <arduino-timer.h>
+// Create timers for clearing the serial transmit enable pins
+Timer<16, micros, void *> tx0_timer;
+Timer<16, micros, void *> tx1_timer;
+
+// ticks the timers, this is added in all functions called in loop
+void tick(){
+  tx0_timer.tick(); // tick the timer
+  tx1_timer.tick(); // tick the timer
+}
+
 // SRXL2 Throttle Pins
 #define RX0 13
 #define TX0 12
@@ -25,8 +36,36 @@ void configPins(){
   digitalWrite(TX1EN, 1); // disable UART2 TX pin switch
 }
 
-
+/*********************************************************/
+// Spektrum SRXL2 code
 String mode_g = "bypass";
+
+
+void configSerialESC(){
+  Serial1.setRX(RX0);
+  Serial1.setTX(TX0);
+  Serial1.setFIFOSize(128);
+  // Serial1.setInvertControl(true);
+  // Serial1.uart_default_tx_wait_blocking();
+  // Serial1.setRTS(15);
+//  Serial1.setCTS(14);
+  Serial1.begin(115200);
+  while(!Serial1) delay(100);
+  Serial1.setTimeout(2);
+  Serial.println("ESC Serial1 started");
+
+}
+
+void configSerialRCV(){
+  Serial2.setRX(RX1);
+  Serial2.setTX(TX1);
+  Serial2.setFIFOSize(128);
+//  Serial2.setRTS(27); // needs to be 10 which is already used
+  Serial2.begin(115200);
+  while(!Serial2) delay(100);
+  Serial2.setTimeout(2);
+  Serial.println("RCV Serial2 started");
+}
 
 // // Spektrum SRXL header
 // typedef struct SrxlHeader
@@ -135,6 +174,7 @@ uint8_t packetDataRX0[100];
 int packetRX0Idx = 0;
 // returns packet ID type, 0xCD, 0x80, ...
 int getPacketDataRX0(){
+  tick(); // tick the timers since this is in the loop
   SerialUART *ser_p = &Serial1;
   uint8_t *buff = packetDataRX0;
   int buffLen = sizeof(packetDataRX0);
@@ -145,6 +185,7 @@ uint8_t packetDataRX1[100];
 int packetRX1Idx = 0;
 // returns packet ID type, 0xCD, 0x80, ...
 int getPacketDataRX1(){
+  tick(); // tick the timers since this is in the loop
   SerialUART *ser_p = &Serial2;
   uint8_t *buff = packetDataRX1;
   int buffLen = sizeof(packetDataRX1);
@@ -215,8 +256,21 @@ int getPacketDataRXn(SerialUART *ser_p, uint8_t *buff, int buffLen, int &packetI
   return packetType;
 };
 
+// ISR to disable the TX1 transmit enable
+bool clrTX1EN(void *){
+  digitalWrite(TX1EN, 1); // disable UART0 TX pin switch
+  return true;
+}
 
+// ISR to disable the TX0 transmit enable
+bool clrTX0EN(void *){
+  digitalWrite(TX0EN, 1); // disable UART0 TX pin switch
+  return true;
+}
+
+// Transmits RX1 packet to TX0 in passthru mode, non-blocking
 void packetPassthruRX1(int id){
+  tick(); // tick the timers since this is in the loop
   if(mode_g!="passthru") return;
   if(id!=0xCD) return;
   // pass control data packet from receiver to ESC
@@ -225,15 +279,17 @@ void packetPassthruRX1(int id){
   int packetLen = packetDataRX1[2];
 //Serial.print("TX0: "); Serial.println(packetLen);
   // Check for RX0 active before transmitting?
-  digitalWrite(TX0EN, 0); // enable UART1 TX pin switch
+  digitalWrite(TX0EN, 0); // enable UART1 TX signal using analog switch
   Serial1.write(packetDataRX1, packetLen);
-  delay(1);
-  Serial1.flush(); // wait for TX0 transmission complete
-  digitalWrite(TX0EN, 1); // disable UART1 TX pin switch
+
+  // disable TXEN when TX is finished
+  unsigned long tms = packetLen * (11 * (1e6/115200));
+  tx0_timer.in(tms, clrTX0EN);
 }
 
-
+// Transmits RX0 packet to TX1 in passthru mode, non-blocking
 void packetPassthruRX0(int id){
+  tick(); // tick the timers since this is in the loop
   if(mode_g!="passthru") return;
   if(id!=0x21 && id!=0x80) return;
   // pass control data packet from receiver to ESC
@@ -245,14 +301,36 @@ void packetPassthruRX0(int id){
   // Check for RX1 active before transmitting?
   digitalWrite(TX1EN, 0); // enable UART0 TX pin switch
   Serial2.write(packetDataRX0, packetLen);
-  Serial2.flush(); // wait for TX1 transmission complete
-  digitalWrite(TX1EN, 1); // disable UART0 TX pin switch
+
+  // disable TXEN when TX is finished
+  unsigned long tms = packetLen * (11 * (1e6/115200));
+  tx1_timer.in(tms, clrTX1EN);
+}
+
+
+uint16_t calcCRC(byte *packet, int length) {
+        // Use bitwise method
+        uint16_t crc = 0x0000;
+        for(uint8_t i = 0; i < length-2; i++)
+        {
+            crc = crc ^ ((uint16_t)packet[i] << 8);
+            for(int b = 0; b < 8; b++)
+            {
+                if(crc & 0x8000)
+                    crc = (crc << 1) ^ 0x1021;
+                else
+                    crc = crc << 1;
+            }
+        }
+        return crc;
 }
 
 void printPacketRX0(int id){
+  tick(); // tick the timers since this is in the loop
   printPacket("RX0: ", packetDataRX0, id);
 }
 void printPacketRX1(int id){
+  tick(); // tick the timers since this is in the loop
   printPacket("RX1: ", packetDataRX1, id);
 }
 
@@ -276,14 +354,16 @@ void printPacket(String s, uint8_t *buff, int id){
   }
 }
 
+/*********************************************************/
+// USB serial JSON code
 void getJsonMsgs() {
+  tick(); // tick the timers since this is in the loop
   if (Serial.available() > 0) {
     // read the incoming string and parse it
     String incomingString = Serial.readStringUntil('\n');
     jsonParse(incomingString.c_str());
   }
 }
-
 
 bool jsonParse(const char *jsonStr) {
   //Serial.println(jsonStr);
@@ -340,25 +420,6 @@ void configureMode(){
 
 }
 
-void configSerialESC(){
-  Serial1.setRX(RX0);
-  Serial1.setTX(TX0);
-  Serial1.begin(115200);
-  while(!Serial1) delay(100);
-  Serial1.setTimeout(2);
-  Serial.println("ESC Serial1 started");
-
-}
-
-void configSerialRCV(){
-  Serial2.setRX(RX1);
-  Serial2.setTX(TX1);
-  Serial2.begin(115200);
-  while(!Serial2) delay(100);
-  Serial2.setTimeout(2);
-  Serial.println("RCV Serial2 started");
-}
-
 void configSerial(){
   Serial.begin(115200);
   while(!Serial) delay(100);
@@ -371,6 +432,7 @@ void setup() {
   configSerial();
   configSerialESC();
   configSerialRCV();
+
 }
 
 /****************************************************/
@@ -380,27 +442,10 @@ void loop() {
   int id = 0;
   id = getPacketDataRX0();
   packetPassthruRX0(id);
-  printPacketRX0(id);
+  // printPacketRX0(id);
 
   id = getPacketDataRX1();
   packetPassthruRX1(id);
-  printPacketRX1(id);
+  // printPacketRX1(id);
 
-}
-
-uint16_t calcCRC(byte *packet, int length) {
-        // Use bitwise method
-        uint16_t crc = 0x0000;
-        for(uint8_t i = 0; i < length-2; i++)
-        {
-            crc = crc ^ ((uint16_t)packet[i] << 8);
-            for(int b = 0; b < 8; b++)
-            {
-                if(crc & 0x8000)
-                    crc = (crc << 1) ^ 0x1021;
-                else
-                    crc = crc << 1;
-            }
-        }
-        return crc;
 }
