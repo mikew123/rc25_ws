@@ -25,6 +25,108 @@ void configPins(){
   digitalWrite(TX1EN, 1); // disable UART2 TX pin switch
 }
 
+// Spektrum SRXL header
+typedef struct SrxlHeader
+{
+    uint8_t srxlID;     // Always 0xA6 for SRXL2
+    uint8_t packetType;
+    uint8_t length;
+} PACKED SrxlHeader;
+
+// Channel Data
+typedef struct SrxlChannelData
+{
+    int8_t    rssi;         // Best RSSI when sending channel data, or dropout RSSI when sending failsafe data
+    uint16_t  frameLosses;  // Total lost frames (or fade count when sent from Remote Rx to main Receiver)
+    uint32_t  mask;         // Set bits indicate that channel data with the corresponding index is present
+    uint16_t  values[32];   // Channel values, shifted to full 16-bit range (32768 = mid-scale); lowest 2 bits RFU
+} PACKED SrxlChannelData;
+
+// Control Data
+typedef struct SrxlControlData
+{
+    uint8_t cmd;
+    uint8_t replyID;
+    union
+    {
+        SrxlChannelData channelData;    // Used for Channel Data and Failsafe Channel Data commands
+        SrxlVtxData     vtxData;        // Used for VTX commands
+        SrxlFwdPgmData  fpData;         // Used to pass forward programming data to an SRXL device
+    };
+} PACKED SrxlControlData;
+
+typedef struct SrxlControlPacket
+{
+    SrxlHeader      hdr;
+    SrxlControlData payload;
+//  uint16_t        crc;    // NOTE: Since this packet is variable-length, we can't use this value anyway
+} PACKED SrxlControlPacket;
+
+// Telemetry
+typedef struct SrxlTelemetryData
+{
+    union
+    {
+        struct
+        {
+            uint8_t sensorID;
+            uint8_t secondaryID;
+            uint8_t data[14];
+        };
+        uint8_t raw[16];
+    };
+} PACKED SrxlTelemetryData;
+
+typedef struct SrxlTelemetryPacket
+{
+    SrxlHeader          hdr;
+    uint8_t             destDevID;
+    SrxlTelemetryData   payload;
+    uint16_t            crc;
+} PACKED SrxlTelemetryPacket;
+
+// Telemetry messages
+#define	TELE_DEVICE_TEXTGEN			(0x0C)										// Text Generator
+#define	TELE_DEVICE_ESC			 	  (0x20)										// Electronic Speed Control
+#define	TELE_DEVICE_SMARTBATT		(0x42)										// Spektrum SMART Battery
+
+//////////////////////////////////////////////////////////////////////////////
+//
+//							0X0C - TEXT GENERATOR
+//
+//////////////////////////////////////////////////////////////////////////////
+//
+typedef struct
+{
+	UINT8		identifier;
+	UINT8		sID;															// Secondary ID
+	UINT8		lineNumber;														// Line number to display (0 = title, 1-8 for general, 254 = Refresh backlight, 255 = Erase all text on screen)
+	char		text[13];														// 0-terminated text when < 13 chars
+} STRU_TELE_TEXTGEN;
+
+//////////////////////////////////////////////////////////////////////////////
+//
+//							0X20 - ESC
+//
+//////////////////////////////////////////////////////////////////////////////
+//
+//	Uses big-endian byte order
+//
+typedef struct
+{
+	UINT8		identifier;														// Source device = 0x20
+	UINT8		sID;															// Secondary ID
+	UINT16		RPM;															// Electrical RPM, 10RPM (0-655340 RPM)  0xFFFF --> "No data"
+	UINT16		voltsInput;														// Volts, 0.01v (0-655.34V)       0xFFFF --> "No data"
+	UINT16		tempFET;														// Temperature, 0.1C (0-6553.4C)  0xFFFF --> "No data"
+	UINT16		currentMotor;													// Current, 10mA (0-655.34A)      0xFFFF --> "No data"
+	UINT16		tempBEC;														// Temperature, 0.1C (0-6553.4C)  0xFFFF --> "No data"
+	UINT8		currentBEC;														// BEC Current, 100mA (0-25.4A)   0xFF ----> "No data"
+	UINT8		voltsBEC;														// BEC Volts, 0.05V (0-12.70V)    0xFF ----> "No data"
+	UINT8		throttle;														// 0.5% (0-100%)                  0xFF ----> "No data"
+	UINT8		powerOut;														// Power Output, 0.5% (0-127%)    0xFF ----> "No data"
+} STRU_TELE_ESC;
+
 
 byte packetDataRX0[100];
 // returns packet ID type, 0xCD, 0x80, ...
@@ -86,6 +188,7 @@ void printPacketRX1(int id){
 String mode_g = "bypass";
 
 void printPacket(String s, byte *buff, int id){
+  if(id == 0) return;
   Serial.print(mode_g);
   Serial.print(s);
   if(id==-1) {
@@ -198,7 +301,7 @@ void packetPassthruRX1(int id){
   int packetID = packetDataRX1[1];
   if(packetID!=id) return;
   int packetLen = packetDataRX1[2];
-Serial.print("TX0: "); Serial.println(packetLen);
+//Serial.print("TX0: "); Serial.println(packetLen);
   // Check for RX0 active before transmitting?
   digitalWrite(TX0EN, 0); // enable UART1 TX pin switch
   Serial1.write(packetDataRX1, packetLen);
@@ -215,7 +318,7 @@ void packetPassthruRX0(int id){
   int packetID = packetDataRX0[1];
   if(packetID!=id) return;
   int packetLen = packetDataRX0[2];
-Serial.print("TX1: "); Serial.println(packetLen);
+//Serial.print("TX1: "); Serial.println(packetLen);
 
   // Check for RX1 active before transmitting?
   digitalWrite(TX1EN, 0); // enable UART0 TX pin switch
@@ -230,12 +333,12 @@ void loop() {
 
   int id = 0;
   id = getPacketDataRX0();
-  if(id!=0) printPacketRX0(id);
   packetPassthruRX0(id);
+  printPacketRX0(id);
 
   id = getPacketDataRX1();
-  if(id!=0) printPacketRX1(id);
   packetPassthruRX1(id);
+  printPacketRX1(id);
 
 }
 

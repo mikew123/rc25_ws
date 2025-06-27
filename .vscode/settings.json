@@ -6,5 +6,6 @@
     "python.analysis.extraPaths": [
         "/home/mikew/rc25_ws/install/robocolumbus25_stuff/lib/python3.12/site-packages",
         "/opt/ros/jazzy/lib/python3.12/site-packages"
-    ]
+    ],
+    "idf.pythonInstallPath": "C:\\Users\\Mikes\\.espressif\\tools\\idf-python\\3.11.2\\python.exe"
 }

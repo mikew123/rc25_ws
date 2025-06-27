@@ -95,7 +95,8 @@ The controler pins are hard wired to the SLAVE pins of the RC switch
 The controller USB supplies the power only to the micro controller</br>
 The DC-DC converters are inside the waterproof box. The power input from the battery has an in-line fuse which is not in the box to protect the batteries from an electrical short.</br>
 <img src="support/engine_compartment_electronics_module.jpg"></br>
-<img src="support/RCX6_engine_electronics_drawing.jpg"></br>
+<br>
+<img src="support/RCX6_engine_electronics_schematic.jpg"></br>
 
 # Micro controller firmware
 The microcontroller firmware is C-code developed using the Arduino IDE. The interface to the controller uses the USB port for a serial communications interface. A simple Json data structure sends data to-from the computer in the cabin over the USB serial interface.
