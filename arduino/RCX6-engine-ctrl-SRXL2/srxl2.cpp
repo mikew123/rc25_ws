@@ -31,6 +31,11 @@ uint32_t SRXL2::getTimerTickCount() {
   return timerTickCount;
 }
 
+void  SRXL2::disableTX() {
+  digitalWrite(TX0EN, 1); // disable UART1 TX0EN
+  digitalWrite(TX1EN, 1); // disable UART2 TX1EN
+}
+
 void SRXL2::startTx0Enable(uint32_t tus) {
   digitalWrite(TX0EN, 0); 
   // enable UART1 TXEN for tus usec

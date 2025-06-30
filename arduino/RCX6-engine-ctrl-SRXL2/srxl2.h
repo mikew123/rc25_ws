@@ -31,6 +31,8 @@ public:
   void configSerialESC(void);
   void configSerialRCV(void);
 
+  void  disableTX();
+
   void packetPassthruRX0(int id);
   void packetPassthruRX1(int id);
   
