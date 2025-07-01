@@ -1,28 +1,31 @@
 
 #include "srxl2.h"
 
-extern String mode_g;
+//extern String mode_g;
 
+void SRXL2::setMode(String m) {
+  mode = m;
+}
 
 // Call this from timer in main
 // controls timing for TXEN 
 void SRXL2::timerTick(){
   timerTickCount++;
 
-  if(tx0Active) {
-    // end the TX0EN transmit enable signal
-    if(timerTickCount >= tx0Cnt) {
-      digitalWrite(TX0EN, 1); // disable UART1 TX pin switch
-      tx0Active = false;
-      tx0Cnt=0;
+  if(packetTxEscBusy) {
+    // end the TxEscEN transmit enable signal
+    if(timerTickCount >= TxEscCnt) {
+      digitalWrite(TxEscEN, 1); // disable UART1 TX pin switch
+      packetTxEscBusy = false;
+      TxEscCnt=0;
     }
   }
-  if(tx1Active) {
-    // end the TX1EN transmit enable signal
-    if(timerTickCount >= tx1Cnt) {
-      digitalWrite(TX1EN, 1); // disable UART1 TX pin switch
-      tx1Active = false;      
-      tx1Cnt=0;
+  if(packetTxRcvBusy) {
+    // end the TxRcvEN transmit enable signal
+    if(timerTickCount >= TxRcvCnt) {
+      digitalWrite(TxRcvEN, 1); // disable UART2 TX pin switch
+      packetTxRcvBusy = false;      
+      TxRcvCnt=0;
     }
   }
 }
@@ -32,22 +35,26 @@ uint32_t SRXL2::getTimerTickCount() {
 }
 
 void  SRXL2::disableTX() {
-  digitalWrite(TX0EN, 1); // disable UART1 TX0EN
-  digitalWrite(TX1EN, 1); // disable UART2 TX1EN
+  digitalWrite(TxEscEN, 1); // disable UART1 TxEscEN
+  digitalWrite(TxRcvEN, 1); // disable UART2 TxRcvEN
+  packetTxEscBusy = false;      
+  packetTxRcvBusy = false;      
 }
 
-void SRXL2::startTx0Enable(uint32_t tus) {
-  digitalWrite(TX0EN, 0); 
+// Activate TxEscEN for useconds, packetTxEscBusy true while transmitting
+void SRXL2::startTxEscEnable(uint32_t tus) {
+  digitalWrite(TxEscEN, 0); 
   // enable UART1 TXEN for tus usec
-  tx0Cnt = timerTickCount + tus/timerTickIntervalUsec +1;
-  tx0Active = true;
+  TxEscCnt = timerTickCount + tus/timerTickIntervalUsec +1;
+  packetTxEscBusy = true;
 }
 
-void SRXL2::startTx1Enable(uint32_t tus) {
-  digitalWrite(TX1EN, 0); 
+// Activate TxRcvEN for useconds, packetTxRcvBusy true while transmitting
+void SRXL2::startTxRcvEnable(uint32_t tus) {
+  digitalWrite(TxRcvEN, 0); 
   // enable UART2 TXEN for tus usec
-  tx1Cnt = timerTickCount + tus/timerTickIntervalUsec +1;
-  tx1Active = true;
+  TxRcvCnt = timerTickCount + tus/timerTickIntervalUsec +1;
+  packetTxRcvBusy = true;
 }
 
 void SRXL2::configTimerTickIntervalUsec(uint32_t usec) {
@@ -59,17 +66,17 @@ void SRXL2::configPins(){
   pinMode(BYPASS, OUTPUT);
   digitalWrite(BYPASS, 0); // start in bypass mode
 
-  pinMode(TX0EN, OUTPUT);
-  digitalWrite(TX0EN, 1); // disable UART1 TX pin switch
+  pinMode(TxEscEN, OUTPUT);
+  digitalWrite(TxEscEN, 1); // disable UART1 TX pin switch
 
-  pinMode(TX1EN, OUTPUT);
-  digitalWrite(TX1EN, 1); // disable UART2 TX pin switch
+  pinMode(TxRcvEN, OUTPUT);
+  digitalWrite(TxRcvEN, 1); // disable UART2 TX pin switch
 
 }
 
 void SRXL2::configSerialESC(){
-  Serial1.setRX(RX0);
-  Serial1.setTX(TX0);
+  Serial1.setRX(RxEsc);
+  Serial1.setTX(TxEsc);
   Serial1.setFIFOSize(128);
   // Serial1.setInvertControl(true);
   // Serial1.uart_default_tx_wait_blocking();
@@ -83,8 +90,8 @@ void SRXL2::configSerialESC(){
 }
 
 void SRXL2::configSerialRCV(){
-  Serial2.setRX(RX1);
-  Serial2.setTX(TX1);
+  Serial2.setRX(RxRcv);
+  Serial2.setTX(TxRcv);
   Serial2.setFIFOSize(128);
 //  Serial2.setRTS(27); // needs to be 10 which is already used
   Serial2.begin(baudRate);
@@ -93,30 +100,139 @@ void SRXL2::configSerialRCV(){
   Serial.println("RCV Serial2 started");
 }
 
-
+// get a packet from the ESC RX pin
 // returns packet ID type, 0xCD, 0x80, ...
-int SRXL2::getPacketDataRX0(){
+void SRXL2::getPacketDataRxEsc(){
+  if(packetTxEscBusy) {
+    // donot receive transmitted packets on half duplex wire
+    packetRxEscIdx = 0;
+    packetRxEscBusy = false;
+    packetRxEscReady = false;
+    return; 
+  }
+
   SerialUART *ser_p = &Serial1;
-  uint8_t *buff = packetDataRX0;
-  int buffLen = sizeof(packetDataRX0);
-  return getPacketDataRXn(ser_p, buff, buffLen, packetRX0Idx);
+  uint8_t *buff = packetDataRxEsc;
+  int buffLen = sizeof(packetDataRxEsc);
+  getPacketDataRXn(ser_p, buff, buffLen, 
+      packetRxEscIdx, packetRxEscBusy, packetRxEscReady);
+
+  static bool lastReady = false;
+  if(packetRxEscReady==true && lastReady==false) {
+    printPacketRaw(buff, buffLen, "RxEsc: ");
+  }
+  lastReady = packetRxEscReady;
+}
+
+// get a packet from the RCV RX pin
+// returns packet ID type, 0xCD, 0x80, ...
+void SRXL2::getPacketDataRxRcv(){
+  if(packetTxRcvBusy) {
+    // donot receive transmitted packets on half duplex wire
+    packetRxRcvIdx = 0;
+    packetRxRcvBusy = false;
+    packetRxRcvReady = false;
+    return; 
+  }
+  SerialUART *ser_p = &Serial2;
+  uint8_t *buff = packetDataRxRcv;
+  int buffLen = sizeof(packetDataRxRcv);
+  getPacketDataRXn(ser_p, buff, buffLen, 
+      packetRxRcvIdx, packetRxRcvBusy, packetRxRcvReady);
+
+  static bool lastReady = false;
+  if(packetRxRcvReady==true && lastReady==false) {
+    printPacketRaw(buff, buffLen, "RxRcv: ");
+  }
+  lastReady = packetRxRcvReady;
 }
 
 
-// returns packet ID type, 0xCD, 0x80, ...
-int SRXL2::getPacketDataRX1(){
-  SerialUART *ser_p = &Serial2;
-  uint8_t *buff = packetDataRX1;
-  int buffLen = sizeof(packetDataRX1);
-  return getPacketDataRXn(ser_p, buff, buffLen, packetRX1Idx);
+// Transmits RxRcv packet to TxEsc in passthru mode, non-blocking
+
+void SRXL2::packetPassthruRxRcv(){
+  if(mode!="passthru") return;
+
+  static bool lastReady = false;
+  if(packetRxRcvReady==true && lastReady==false) {
+
+    // pass control data packet from receiver to ESC
+    uint8_t sof = packetDataRxRcv[0];
+    if(sof!=0xA6) return;
+    uint8_t packetID = packetDataRxRcv[1];
+    if(packetID!=0xCD) return;
+    uint8_t packetLen = packetDataRxRcv[2];
+
+    // Copy RX packet to be used for TX on other port
+    for(int i=0; i<packetLen; i++) {
+      packetDataTxEsc[i] = packetDataRxRcv[i];
+    }
+    packetTxEscready = true;
+  }
+  lastReady = packetRxRcvReady;
+}
+
+void SRXL2::sendPacketTxEsc(void){
+  if(!packetTxEscready) return;
+  // wait until any receive packet is complete
+  if(packetRxEscBusy) return;
+
+  int packetLen = packetDataTxEsc[2];
+//Serial.print("TxEsc: "); Serial.println(packetLen);
+
+  uint32_t tus = packetLen * (11 * (1e6/baudRate));
+  startTxEscEnable(tus); // enable TXEN for Serial1, disables using interrupt
+  Serial1.write(packetDataTxEsc, packetLen);
+
+  packetTxEscready = false;
+}
+
+// Transmits RxEsc packet to TxRcv in passthru mode, non-blocking
+void SRXL2::packetPassthruRxEsc(){
+  if(mode!="passthru") return;
+
+  static bool lastReady = false;
+  if(packetRxEscReady==true && lastReady==false) {
+
+    // pass Telemetry data packet from ESC to receiver
+    uint8_t sof = packetDataRxEsc[0];
+    if(sof!=0xA6) return; // bad CRC
+    int packetID = packetDataRxEsc[1];
+    if(packetID!=0x21 && packetID!=0x80) return;
+    int packetLen = packetDataRxEsc[2];
+
+    // Copy RX packet to be used for TX on other port
+    for(int i=0; i<packetLen; i++) {
+      packetDataTxRcv[i] = packetDataRxEsc[i];
+    }
+    packetTxRcvready = true;
+  }
+  lastReady = packetRxEscReady;
+}
+
+void SRXL2::sendPacketTxRcv(void){
+  if(!packetTxRcvready) return;
+  // wait until receive packet is complete
+  if(packetRxRcvBusy) return;
+
+  int packetLen = packetDataTxRcv[2];
+//Serial.print("TxRcv: "); Serial.println(packetLen);
+
+  uint32_t tus = packetLen * (11 * (1e6/baudRate));
+  startTxRcvEnable(tus); // enable TXEN for Serial2, disables using interrupt
+  Serial2.write(packetDataTxRcv, packetLen);
+
+  packetTxRcvready = false;
 }
 
 
 // returns packet ID (type) 0xCD, 0x80, ... 
 // else -1 if bad packet or 0 if packet not ready
-int SRXL2::getPacketDataRXn(SerialUART *ser_p, uint8_t *buff, int buffLen, int &packetIdx) {
-  if(ser_p->available()==0) return 0;
-  int packetType = 0;
+// busy is true after SOF detected and cleared after length bytes read.
+void SRXL2::getPacketDataRXn(SerialUART *ser_p,
+        uint8_t *buff, int buffLen, int &packetIdx, bool &busy, bool &ready) {
+  if(ser_p->available()==0) return;
+  ready = false;
 
   int avail = ser_p->available();
   while(avail > 0) {
@@ -160,10 +276,10 @@ int SRXL2::getPacketDataRXn(SerialUART *ser_p, uint8_t *buff, int buffLen, int &
         // CHECK CRC
         uint16_t crc0 = calcCRC(buff, packetLength);
         uint16_t crc1 = ((uint16_t)buff[packetLength-2]<<8 | buff[packetLength-1]);
-        if(crc0 == crc1) {
-          packetType = buff[1];
+        if(crc0 != crc1) {
+          buff[0] = 0x00; // SOF=0 for BAD CRC
         } else {
-          packetType = -1; // BAD CRC
+          ready = true;
         }
         packetIdx = 0; // Start new packet SOF search
       }
@@ -172,96 +288,54 @@ int SRXL2::getPacketDataRXn(SerialUART *ser_p, uint8_t *buff, int buffLen, int &
 //Serial.print("(");Serial.print(avail);Serial.print(")");
     avail=ser_p->available();
   }
-  return packetType;
+
+  if(packetIdx == 0) busy = false;
+  else busy = true;
 };
 
-// Transmits RX1 packet to TX0 in passthru mode, non-blocking
 
-void SRXL2::packetPassthruRX1(int id){
-  if(mode_g!="passthru") return;
-  if(id!=0xCD) return;
-  // pass control data packet from receiver to ESC
-  int packetID = packetDataRX1[1];
-  if(packetID!=id) return;
-  int packetLen = packetDataRX1[2];
-
-  // Copy RX packet to be used for TX on other port
-  for(int i=0; i<packetLen; i++) {
-    packetDataTX0[i] = packetDataRX1[i];
+void SRXL2::printPacketRaw(uint8_t *buff, int buffLen, String prefix){
+  uint8_t len = buff[2];
+  if(buffLen < len) {
+    Serial.println("Bad length");
+    return;
   }
-  packetTX0ready = true;
+  uint8_t data;
+  Serial.print(prefix);
+  for(int i=0; i<len; i++) {
+    data = buff[i];
+    if(data<0x10) Serial.print("0");
+    Serial.print(data,HEX); Serial.print(",");
+  }
+  Serial.println();
 }
 
-void SRXL2::sendPacketTX0(void){
-  if(packetTX0ready == false) return;
-  // wait until receive packet is complete
-  if(packetRX0Idx != 0) return;
 
-  int packetLen = packetDataTX0[2];
-//Serial.print("TX0: "); Serial.println(packetLen);
-
-  uint32_t tus = packetLen * (11 * (1e6/baudRate));
-  startTx0Enable(tus); // enable TXEN for Serial1, disables using interrupt
-  Serial1.write(packetDataTX0, packetLen);
-
-  packetTX0ready = false;
-}
-
-// Transmits RX0 packet to TX1 in passthru mode, non-blocking
-void SRXL2::packetPassthruRX0(int id){
-  if(mode_g!="passthru") return;
-  if(id!=0x21 && id!=0x80) return;
-  // pass Telemetry data packet from ESC to receiver
-  int packetID = packetDataRX0[1];
-  if(packetID!=id) return;
-  int packetLen = packetDataRX0[2];
-
+void printPacketData(uint8_t *buff) {
+  if(buff[0] == 0x00) {
+    Serial.println("BAD CRC");
+    return;
+  }
   // Extract telemetry data
-  if(packetID==0x80 && packetDataRX0[4]==0x20) {
-    int16_t rpm  = (int16_t)packetDataRX0[6]<<8 | packetDataRX0[7];
-    int16_t vin  = (int16_t)packetDataRX0[8]<<8 | packetDataRX0[9];
-    int16_t tfet = (int16_t)packetDataRX0[10]<<8 | packetDataRX0[11];
-    int16_t imot = (int16_t)packetDataRX0[12]<<8 | packetDataRX0[13];
-    int16_t tbec = (int16_t)packetDataRX0[14]<<8 | packetDataRX0[15];
-    int8_t ibec  = (int8_t)packetDataRX0[16];
-    int8_t vbec  = (int8_t)packetDataRX0[17];
-    int8_t thr   = (int8_t)packetDataRX0[18];
-    int8_t pout  = (int8_t)packetDataRX0[19];
-
-Serial.print(rpm);Serial.print(" ");
-Serial.print(vin);Serial.print(" ");
-Serial.print(imot);Serial.print(" ");
-Serial.print(thr);Serial.print(" ");
-Serial.print(pout);Serial.print(" ");
-Serial.println();
+  if(buff[1]==0x80 && buff[4]==0x20) {
+    int16_t rpm  = (int16_t)buff[6]<<8 | buff[7];
+    int16_t vin  = (int16_t)buff[8]<<8 | buff[9];
+    int16_t tfet = (int16_t)buff[10]<<8 | buff[11];
+    int16_t imot = (int16_t)buff[12]<<8 | buff[13];
+    int16_t tbec = (int16_t)buff[14]<<8 | buff[15];
+    int8_t ibec  = (int8_t)buff[16];
+    int8_t vbec  = (int8_t)buff[17];
+    int8_t thr   = (int8_t)buff[18];
+    int8_t pout  = (int8_t)buff[19];
+  Serial.print("ESC Telemetry: ");
+  Serial.print(rpm);Serial.print(" ");
+  Serial.print(vin);Serial.print(" ");
+  Serial.print(imot);Serial.print(" ");
+  Serial.print(thr);Serial.print(" ");
+  Serial.print(pout);Serial.print(" ");
+  Serial.println();
   }
-
-  // Copy RX packet to be used for TX on other port
-  for(int i=0; i<packetLen; i++) {
-    packetDataTX1[i] = packetDataRX0[i];
-if(packetID==0x80 && packetDataRX0[4]==0x20){
-//Serial.print( packetDataTX1[i], HEX);Serial.print(" ");
 }
-  }
-//Serial.println();
-  packetTX1ready = true;
-}
-
-void SRXL2::sendPacketTX1(void){
-  if(packetTX1ready == false) return;
-  // wait until receive packet is complete
-  if(packetRX1Idx != 0) return;
-
-  int packetLen = packetDataTX1[2];
-//Serial.print("TX1: "); Serial.println(packetLen);
-
-  uint32_t tus = packetLen * (11 * (1e6/baudRate));
-  startTx1Enable(tus); // enable TXEN for Serial2, disables using interrupt
-  Serial2.write(packetDataTX1, packetLen);
-
-  packetTX1ready = false;
-}
-
 
 uint16_t SRXL2::calcCRC(byte *packet, int length) {
         // Use bitwise method
@@ -280,16 +354,16 @@ uint16_t SRXL2::calcCRC(byte *packet, int length) {
         return crc;
 }
 
-void SRXL2::printPacketRX0(int id){
-  printPacket("RX0: ", packetDataRX0, id);
+void SRXL2::printPacketRxEsc(int id){
+  printPacket("RxEsc: ", packetDataRxEsc, id);
 }
-void SRXL2::printPacketRX1(int id){
-  printPacket("RX1: ", packetDataRX1, id);
+void SRXL2::printPacketRxRcv(int id){
+  printPacket("RxRcv: ", packetDataRxRcv, id);
 }
 
 void SRXL2::printPacket(String s, uint8_t *buff, int id){
   if(id == 0) return;
-  Serial.print(mode_g);
+  Serial.print(mode);
   Serial.print(s);
   if(id==-1) {
     Serial.println("BAD CRC");

@@ -142,7 +142,9 @@ bool jsonParse(const char *jsonStr) {
     mode_g = (String) myObject["mode"];
     Serial.print("mode = ");
     Serial.println(mode_g);
+    
     configureMode();
+    srx.setMode(mode_g);
   }
 
   if (myObject.hasOwnProperty("str")) {
@@ -448,17 +450,16 @@ void pwmLoopCode() {
 }
 
 void srxLoopCode() {
-  int id = 0;
-  id = srx.getPacketDataRX0();
-  srx.packetPassthruRX0(id);
-  srx.sendPacketTX1();
+  srx.getPacketDataRxEsc();
+  srx.packetPassthruRxEsc();
+  srx.sendPacketTxRcv();
 
-  // srx.printPacketRX0(id);
+  // srx.printPacketRxEsc(id);
 
-  id = srx.getPacketDataRX1();
-  srx.packetPassthruRX1(id);
-  srx.sendPacketTX0();
-  // srx.printPacketRX1(id);
+  srx.getPacketDataRxRcv();
+  srx.packetPassthruRxRcv();
+  srx.sendPacketTxEsc();
+  // srx.printPacketRxRcv(id);
 }
 
 
