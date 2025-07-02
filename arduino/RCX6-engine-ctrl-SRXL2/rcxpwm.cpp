@@ -18,36 +18,91 @@ Mike Williamson 7/2/2025
 
 #include "rcxpwm.h"
 
-// TODO: get rid of this crude test code
-void RCXPWM::crudeTestCode() {
-  if(mode != "bypass") {
-    muxSelRcvr = false;
 
-    int mSteerPct = 0;
-    if(mSteer_wid>steerCenter) {
-      mSteerPct = (100L*(mSteer_wid-steerCenter))/(steerRightMax-steerCenter);
+// computer signals to servos and motor
+void RCXPWM::computerSignals() {
+  int muxSelPwm;
+  int shiftGearPwm;
+  int steerPwm;
+
+  if(mode == "passthru") {
+    // Decode steering and shift signals from the receiver
+    if(mSteer_meas_rdy == 1) {
+      if(mSteer_wid>steerCenter) {
+        sSteerPct = (100L*(mSteer_wid-steerCenter))/(steerRightMax-steerCenter);
+      } else if(mSteer_wid<steerCenter) {
+        sSteerPct = -(100L*(steerCenter-mSteer_wid)/(steerCenter-steerLeftMax));
+      } else {
+        sSteerPct = 0;
+      }
+    } else {
+        sSteerPct = 0;
     }
-    if(mSteer_wid<steerCenter) {
-      mSteerPct = -(100L*(steerCenter-mSteer_wid)/(steerCenter-steerLeftMax));
+
+    if(mShift_meas_rdy == 1){
+      // Decode shift PWM signal from receiver
+      if(mShift_wid >= shiftHigh*0.8) sShiftGear = "high";
+      if(mShift_wid <= shiftLow*1.2) sShiftGear = "low";
+    } else {
+      sShiftGear = "low";
     }
-    sSteerPct = mSteerPct;
+  } 
 
-    if(mShift_wid >= shiftHigh*0.8) sShiftGear = "high";
-    if(mShift_wid <= shiftLow*1.2) sShiftGear = "low";
+  // Generate PWM signals for PWM MUX
+  if ((mode=="passthru") || ((mode=="term") && (failsafeActive==false))) {
+    // send decoded or generated signals to pwm mux
+    // Convert steering percent to PWM widths
+    int steerPwmOffset = 0;
+    if(sSteerPct>0) {
+      steerPwmOffset = (+sSteerPct/100.0)*(steerRightMax - steerCenter);
+    } else {
+      steerPwmOffset = (-sSteerPct/100.0)*(steerLeftMax - steerCenter);
+    }
+    steerPwm = steerCenter + steerPwmOffset;
 
+    // Convert Shift string to PWM widths
+    if(sShiftGear=="high") {
+      shiftGearPwm = shiftHigh;
+    } else {
+      shiftGearPwm = shiftLow;
+    }
+    muxSelPwm = SEL_COMP;
   } else {
-    muxSelRcvr = true;
+    steerPwm = steerCenter;
+    shiftGearPwm = shiftLow; // Should we really change gears?
+    muxSelPwm = SEL_RCVR;
   }
 
-  // TODO: move to a pwm output module
-  muxSel.writeMicroseconds(muxSelRcvr?SEL_RCVR:SEL_COMP);
+  // send signals to pwm mux
+  sSteer.writeMicroseconds(steerPwm);
+  sShift.writeMicroseconds(shiftGearPwm);
+  muxSel.writeMicroseconds(muxSelPwm);
+}
 
+
+void RCXPWM::setSteerPct(int steerPct){
+  sSteerPct = steerPct;
+}
+void RCXPWM::setShiftGear(String shiftGear){
+  sShiftGear = shiftGear;
+}
+
+int RCXPWM::getSteerPct(){
+  return sSteerPct;
+}
+String RCXPWM::getShiftGear(){
+  return sShiftGear;
 }
 
 
 void RCXPWM::setMode(String m) {
   mode = m;
 }
+
+void RCXPWM::setFailsafeActive(bool failsafe) {
+  failsafeActive = failsafe;
+}
+
 
 void RCXPWM::configPWM() {
   // PWM outputs
@@ -105,36 +160,3 @@ void RCXPWM::pin_mShift_interruptX (void) {
 }
 
 
-/*****************************************************
-* Servo PWM code
-******************************************************/
-// computer signals to servos and motor
-void RCXPWM::computerSignals() {
-//  if ((muxSelRcvr==false) && (failsafeActive==false) ) {
-  if ((muxSelRcvr==false)) {
-    // send computer signals to pwm mux
-    // Convert percent signals to PWM widths
-    int steerPwmOffset = 0;
-    if(sSteerPct>0) {
-      steerPwmOffset = (+sSteerPct/100.0)*(steerRightMax - steerCenter);
-    } else {
-      steerPwmOffset = (-sSteerPct/100.0)*(steerLeftMax - steerCenter);
-    }
-    int steerPwm = steerCenter + steerPwmOffset;
-    sSteer.writeMicroseconds(steerPwm);
-
-    int shiftGearPwm = shiftLow;
-    if(sShiftGear=="high") {
-      shiftGearPwm = shiftHigh;
-    } else {
-      shiftGearPwm = shiftLow;
-    }
-    sShift.writeMicroseconds(shiftGearPwm);
-
-  } else {
-    // send idle signals to pwm mux
-    sSteer.writeMicroseconds(steerCenter);
-    // sThrottle.writeMicroseconds(throttleZero);
-    sShift.writeMicroseconds(shiftLow);
-  }
-}

@@ -35,15 +35,19 @@ void attachInterrupts() {
  * GLOBAL VARIABLES
  **************************************************************************************/
 
+// These values are not being decoded yet
 bool failsafeActive = false;
-bool receiverSignalsValid = false;
+bool receiverSignalsValid = true;
 
-int sThrottlePct = 0; // Use for SRXL2 throttle
+int sThrottlePct = 0;
+int sSteerPct = 0; 
+String sShiftGear = "low";
 
 // Loop timer for precise interval periods
 unsigned long statusMillis_last = 0;
 
 String mode_g = "bypass";
+int loopStatusPeriod = 1000;
 
 
 /***************************************
@@ -102,9 +106,10 @@ bool jsonParse(const char *jsonStr) {
   }
 
   if (myObject.hasOwnProperty("str")) {
-    pwm.sSteerPct = (int) myObject["str"];
+    sSteerPct = (int) myObject["str"];
     Serial.print("steer = ");
-    Serial.println(pwm.sSteerPct);
+    Serial.println(sSteerPct);
+    pwm.setSteerPct(sSteerPct);
   }
 
   if (myObject.hasOwnProperty("thr")) {
@@ -114,9 +119,10 @@ bool jsonParse(const char *jsonStr) {
   }
 
   if (myObject.hasOwnProperty("sft")) {
-    pwm.sShiftGear = (String) myObject["sft"];
+    sShiftGear = (String) myObject["sft"];
     Serial.print("gear = ");
-    Serial.println(pwm.sShiftGear);
+    Serial.println(sShiftGear);
+    pwm.setShiftGear(sShiftGear);
   }
 
   return true;
@@ -148,9 +154,9 @@ void configSerial(){
 
 // Monitor failsafe mechanism
 // DEBUG: disabled for now
-void checkFailsafe() {
+// void checkFailsafe() {
   // if (muxSelRcvr == true) {
-    failsafeActive = false;
+    // failsafeActive = false;
   // } else  {
     // computer is selected for control
     // if (mThrottle_wid < failsafeThrottleThresh) {
@@ -160,46 +166,29 @@ void checkFailsafe() {
     //   failsafeActive = false;
     // }
   // }
-}
+
+  // pwm.setFailsafeActive(failsafeActive);
+//}
 
 // Send status message to host computer
-void sendStatus() {
+void sendStatusMsg() {
 
   JSONVar myObject;
 
-  if(pwm.shiftState==0) {
-    // low gear
-    myObject["gear"] = "low";
-  } else {
-    // high gear
-    myObject["gear"] = "hi";
-  }
+  myObject["gear"] = pwm.getShiftGear();
 
-  if(pwm.muxSelRcvr) {
-    myObject["mux"] = "rcvr";
-  } else {
-    myObject["mux"] = "comp";
-  }
+  myObject["mode"] = mode_g;
 
-  if(failsafeActive) {
-    myObject["fsa"] = true;
-  } else {
-    myObject["fsa"] = false;
-  }
+  myObject["fsa"] = failsafeActive;
 
-  if(receiverSignalsValid) {
-    myObject["rca"] = true;
-  } else {
-    myObject["rca"] = false;
-  }
-
+  myObject["rca"] = receiverSignalsValid;
 
   String jsonString = JSON.stringify(myObject);
   Serial.println(jsonString);
 
 }
 
-void checkTransmitterActive() {
+//void checkTransmitterActive() {
   // TODO: Use throttle serial activity???
 
   // TODO: This does not work after transmitter 1st powered on
@@ -212,40 +201,19 @@ void checkTransmitterActive() {
   // float mSteerPctOffset = 100.0*(mSteer_per-pwmPerNominal)/pwmPerNominal;
   //Serial.println(mSteerPctOffset);
   // if (   (fabs(mSteerPctOffset) < 10)) {
-    receiverSignalsValid = true;
+  //  receiverSignalsValid = true;
   // } else {
   //   receiverSignalsValid = false;
   // }
-}
+//}
 
-void monitorReceiver() {
-
-  // TODO: timeout
-  // Monitor PWM signals from RC receiver on master MUX inputs
-  if(pwm.mSteer_meas_rdy == 1){
-    Serial.print("mSteer:");
-    Serial.print(pwm.mSteer_per);
-    Serial.print(",");
-    Serial.println(pwm.mSteer_wid);
-    pwm.mSteer_meas_rdy = 0;
-  }
-
-  if(pwm.mShift_meas_rdy == 1){
-    Serial.print("mShift:");
-    Serial.print(pwm.mShift_per);
-    Serial.print(",");
-    Serial.println(pwm.mShift_wid);
-    pwm.mShift_meas_rdy = 0;
-
-  }
-}
 
 // Select receiver or computer using steering and shift and throttle
 // The throttle must me center +- 5% to change selection
 // Use shift high >1500+10%, low <1500-10%
 // Select computer when steering > center+10% and shift high to low
 // Select receiver when steering < center-10% and shift high to low
-void muxSelectDecode() {
+//  void muxSelectDecode() {
   //  if(fabs(mThrottle_wid-throttleZero) < (throttleZero*0.1)) {
   //   if(mShift_wid < 1500*0.9) {
   //     if(shiftState==1) {
@@ -259,10 +227,9 @@ void muxSelectDecode() {
   //   }
   //}
 
-}
+//  }
 
 void pwmLoopCode() {
-  // computer signals to servos and motor
   pwm.computerSignals();
 }
 
@@ -271,12 +238,17 @@ void srxLoopCode() {
   srx.packetPassthruRxEsc();
   srx.sendPacketTxRcv();
 
-  // srx.printPacketRxEsc(id);
-
   srx.getPacketDataRxRcv();
   srx.packetPassthruRxRcv();
   srx.sendPacketTxEsc();
-  // srx.printPacketRxRcv(id);
+}
+
+// Send status 1/sec
+void sendStatus(unsigned long loopMillis) {
+  if ((loopMillis - statusMillis_last) >= loopStatusPeriod) {
+    sendStatusMsg();
+    statusMillis_last = loopMillis;
+  }
 }
 
 
@@ -297,10 +269,10 @@ void loop() {
   unsigned long loopMillis = millis();
 
   // impliment failsafe mechanism
-  checkFailsafe();
+  // checkFailsafe();
 
   // Decode mux selection from receiver signals
-  muxSelectDecode();
+  // muxSelectDecode();
 
   getJsonMsgs();
 
@@ -308,18 +280,6 @@ void loop() {
 
   pwmLoopCode();
 
-  // Send status 1/sec
-  if ((loopMillis - statusMillis_last) >= loopStatusPeriod) {
-// Serial.print("pwmLoopCode: ");Serial.print(statusMillis_last);
-// Serial.print(" "); Serial.println(loopMillis);
-    // DEBUG
-    monitorReceiver();
-    // send a status message
-    sendStatus();
-    statusMillis_last = loopMillis;
-  }
-
-  pwm.crudeTestCode();
-
+  sendStatus(loopMillis);
 
 }
