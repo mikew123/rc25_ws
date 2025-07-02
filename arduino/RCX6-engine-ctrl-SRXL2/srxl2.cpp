@@ -1,7 +1,6 @@
 
 #include "srxl2.h"
 
-//extern String mode_g;
 
 void SRXL2::setMode(String m) {
   mode = m;
@@ -117,11 +116,11 @@ void SRXL2::getPacketDataRxEsc(){
   getPacketDataRXn(ser_p, buff, buffLen, 
       packetRxEscIdx, packetRxEscBusy, packetRxEscReady);
 
-  static bool lastReady = false;
-  if(packetRxEscReady==true && lastReady==false) {
-    printPacketRaw(buff, buffLen, "RxEsc: ");
-  }
-  lastReady = packetRxEscReady;
+  // static bool lastReady = false;
+  // if(packetRxEscReady==true && lastReady==false) {
+  //   printPacketRaw(buff, buffLen, "RxEsc: ");
+  // }
+  // lastReady = packetRxEscReady;
 }
 
 // get a packet from the RCV RX pin
@@ -140,11 +139,11 @@ void SRXL2::getPacketDataRxRcv(){
   getPacketDataRXn(ser_p, buff, buffLen, 
       packetRxRcvIdx, packetRxRcvBusy, packetRxRcvReady);
 
-  static bool lastReady = false;
-  if(packetRxRcvReady==true && lastReady==false) {
-    printPacketRaw(buff, buffLen, "RxRcv: ");
-  }
-  lastReady = packetRxRcvReady;
+  // static bool lastReady = false;
+  // if(packetRxRcvReady==true && lastReady==false) {
+  //   printPacketRaw(buff, buffLen, "RxRcv: ");
+  // }
+  // lastReady = packetRxRcvReady;
 }
 
 
