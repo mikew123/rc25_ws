@@ -7,7 +7,7 @@ void SRXL2::setMode(String m) {
 }
 
 // Call this from timer in main
-// controls timing for TXEN 
+// controls timing for TXEN signal
 void SRXL2::timerTick(){
   timerTickCount++;
 
@@ -31,6 +31,16 @@ void SRXL2::timerTick(){
 
 uint32_t SRXL2::getTimerTickCount() {
   return timerTickCount;
+}
+
+void SRXL2::loopCode() {
+  getPacketDataRxEsc();
+  packetPassthruRxEsc();
+  sendPacketTxRcv();
+
+  getPacketDataRxRcv();
+  packetPassthruRxRcv();
+  sendPacketTxEsc();
 }
 
 void  SRXL2::disableTX() {
@@ -77,10 +87,6 @@ void SRXL2::configSerialESC(){
   Serial1.setRX(RxEsc);
   Serial1.setTX(TxEsc);
   Serial1.setFIFOSize(128);
-  // Serial1.setInvertControl(true);
-  // Serial1.uart_default_tx_wait_blocking();
-  // Serial1.setRTS(15);
-//  Serial1.setCTS(14);
   Serial1.begin(baudRate);
   while(!Serial1) delay(100);
   Serial1.setTimeout(2);
@@ -92,7 +98,6 @@ void SRXL2::configSerialRCV(){
   Serial2.setRX(RxRcv);
   Serial2.setTX(TxRcv);
   Serial2.setFIFOSize(128);
-//  Serial2.setRTS(27); // needs to be 10 which is already used
   Serial2.begin(baudRate);
   while(!Serial2) delay(100);
   Serial2.setTimeout(2);
@@ -116,11 +121,17 @@ void SRXL2::getPacketDataRxEsc(){
   getPacketDataRXn(ser_p, buff, buffLen, 
       packetRxEscIdx, packetRxEscBusy, packetRxEscReady);
 
-  // static bool lastReady = false;
-  // if(packetRxEscReady==true && lastReady==false) {
-  //   printPacketRaw(buff, buffLen, "RxEsc: ");
-  // }
-  // lastReady = packetRxEscReady;
+  static bool lastReady = false;
+  if(packetRxEscReady==true && lastReady==false) {
+    extractPacketDataRxEsc();
+    //printPacketRaw(buff, buffLen, "RxEsc: ");
+  }
+  lastReady = packetRxEscReady;
+}
+
+void SRXL2::extractPacketDataRxEsc() {
+  // Process telemetry data
+
 }
 
 // get a packet from the RCV RX pin
@@ -133,18 +144,40 @@ void SRXL2::getPacketDataRxRcv(){
     packetRxRcvReady = false;
     return; 
   }
+
   SerialUART *ser_p = &Serial2;
+
   uint8_t *buff = packetDataRxRcv;
   int buffLen = sizeof(packetDataRxRcv);
   getPacketDataRXn(ser_p, buff, buffLen, 
       packetRxRcvIdx, packetRxRcvBusy, packetRxRcvReady);
 
-  // static bool lastReady = false;
-  // if(packetRxRcvReady==true && lastReady==false) {
-  //   printPacketRaw(buff, buffLen, "RxRcv: ");
-  // }
-  // lastReady = packetRxRcvReady;
+  static bool lastReady = false;
+  if(packetRxRcvReady==true && lastReady==false) {
+    extractPacketDataRxRcv();
+  }
+  lastReady = packetRxRcvReady;
 }
+
+void SRXL2::extractPacketDataRxRcv() {
+  uint8_t *buff = packetDataRxRcv;
+  uint8_t packetID = buff[1];
+  uint8_t packetLen = buff[2];
+
+  if (packetID == 0xCD)  {
+    // Process control data 
+    uint8_t requestTelem = buff[4];
+    uint16_t throttlePwm = buff[13]<<4 | buff[12]&0x0F;
+    uint16_t steerPwm    = buff[15]<<4 | buff[14]&0x0F;
+    uint16_t shiftPwm    = buff[17]<<4 | buff[16]&0x0F;
+if(requestTelem == 0x40) Serial.println("Temetry request");
+Serial.print("throttlePwm = ");Serial.println(throttlePwm);
+Serial.print("steerPwm = ");Serial.println(steerPwm);
+Serial.print("shiftPwm = ");Serial.println(shiftPwm);
+printPacketRaw(buff, packetLen, "RxRcv: ");
+  }
+}
+
 
 
 // Transmits RxRcv packet to TxEsc in passthru mode, non-blocking

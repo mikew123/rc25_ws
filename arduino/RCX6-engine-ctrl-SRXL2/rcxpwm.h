@@ -37,7 +37,7 @@ public:
 
 
 
-void computerSignals();
+void loopCode();
 
 void setMode(String m);
 void setFailsafeActive(bool failsafe);

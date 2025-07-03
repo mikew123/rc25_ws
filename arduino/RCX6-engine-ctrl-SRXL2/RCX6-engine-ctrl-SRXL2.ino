@@ -230,17 +230,11 @@ void sendStatusMsg() {
 //  }
 
 void pwmLoopCode() {
-  pwm.computerSignals();
+  pwm.loopCode();
 }
 
 void srxLoopCode() {
-  srx.getPacketDataRxEsc();
-  srx.packetPassthruRxEsc();
-  srx.sendPacketTxRcv();
-
-  srx.getPacketDataRxRcv();
-  srx.packetPassthruRxRcv();
-  srx.sendPacketTxEsc();
+  srx.loopCode();
 }
 
 // Send status 1/sec

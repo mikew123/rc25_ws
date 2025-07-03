@@ -20,7 +20,7 @@ Mike Williamson 7/2/2025
 
 
 // computer signals to servos and motor
-void RCXPWM::computerSignals() {
+void RCXPWM::loopCode() {
   int muxSelPwm;
   int shiftGearPwm;
   int steerPwm;

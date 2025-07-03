@@ -17,6 +17,7 @@
 #define PACKED
 #endif
 
+// SRXL2 serial signal pins
 #define RxEsc 13
 #define TxEsc 12
 #define TxEscEN 11
@@ -31,20 +32,11 @@ public:
   void configSerialESC(void);
   void configSerialRCV(void);
 
+  void loopCode();
+
   void disableTX();
   void setMode(String mode);
 
-  void packetPassthruRxEsc();
-  void packetPassthruRxRcv();
-  
-  void getPacketDataRxEsc();
-  void getPacketDataRxRcv();
-
-  void sendPacketTxEsc(void);
-  void sendPacketTxRcv(void);
-
-  void printPacketRxEsc(int id);
-  void printPacketRxRcv(int id);
 
   // Create timers for clearing the serial transmit enable pins
   void timerTick();
@@ -76,9 +68,25 @@ private:
   uint32_t TxEscCnt = 0;
   uint32_t TxRcvCnt = 0;
 
+  uint32_t throttlePwm = 0;
+  
   void startTxEscEnable(uint32_t tus);
   void startTxRcvEnable(uint32_t tus);
 
+  void packetPassthruRxEsc();
+  void packetPassthruRxRcv();
+  
+  void getPacketDataRxEsc();
+  void getPacketDataRxRcv();
+
+  void extractPacketDataRxEsc();
+  void extractPacketDataRxRcv();
+
+  void sendPacketTxEsc(void);
+  void sendPacketTxRcv(void);
+
+  void printPacketRxEsc(int id);
+  void printPacketRxRcv(int id);
 
   uint16_t calcCRC(byte *packet, int length);
   void printPacketRaw(uint8_t *buff, int buffLen, String prefix);
