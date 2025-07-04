@@ -116,7 +116,7 @@ void SRXL2::getPacketDataRxEsc(){
   }
 
   SerialUART *ser_p = &Serial1;
-  uint8_t *buff = packetDataRxEsc;
+  uint8_t *buff = packetDataRxEsc.b;
   int buffLen = sizeof(packetDataRxEsc);
   getPacketDataRXn(ser_p, buff, buffLen, 
       packetRxEscIdx, packetRxEscBusy, packetRxEscReady);
@@ -124,21 +124,70 @@ void SRXL2::getPacketDataRxEsc(){
   static bool lastReady = false;
   if(packetRxEscReady==true && lastReady==false) {
     extractPacketDataRxEsc();
-    //printPacketRaw(buff, buffLen, "RxEsc: ");
   }
   lastReady = packetRxEscReady;
 }
-
 void SRXL2::extractPacketDataRxEsc() {
   // Process telemetry data
+  uint8_t *buff = packetDataRxEsc.b;
+  // uint8_t packetID = buff[1];
+  uint8_t packetLen = packetDataRxEsc.hdr.length;
+  uint8_t packetID = packetDataRxEsc.hdr.packetType;
+  
+  if(packetID==0x80) {
+    // Telemetry packet
+    uint8_t sensorID = packetDataRxEsc.tPacket.payload.sensorID;
+    if(sensorID==0x20) {
+      escRpm = RVRSB(packetDataRxEsc.tPacket.payload.esc.rpm);
+      escVin = RVRSB(packetDataRxEsc.tPacket.payload.esc.voltsInput)/100.0;
+      escImotor = RVRSB(packetDataRxEsc.tPacket.payload.esc.currentMotor)/100.0;
+      escThrPct = packetDataRxEsc.tPacket.payload.esc.throttle/2.0;
+      escPoutPct = packetDataRxEsc.tPacket.payload.esc.powerOut/2.0;
 
+      Serial.print("rpm = ");Serial.println(escRpm);
+      Serial.print("vin = ");Serial.println(escVin);
+      Serial.print("imot = ");Serial.println(escImotor);
+      Serial.print("thr = ");Serial.println(escThrPct);
+      Serial.print("pout = ");Serial.println(escPoutPct);
+      printPacketRaw(buff, packetLen, "RxEsc: ");
+    }
+  }
 }
+
+// void SRXL2::extractPacketDataRxEsc() {
+//   // Process telemetry data
+//   uint8_t *buff = packetDataRxEsc;
+//   uint8_t packetID = buff[1];
+//   uint8_t packetLen = buff[2];
+
+// //  if (packetID == 0x80)  {
+//   if(buff[1]==0x80 && buff[4]==0x20) {
+//     int16_t rpm  = (int16_t)buff[6]<<8 | buff[7];
+//     int16_t vin  = (int16_t)buff[8]<<8 | buff[9];
+//     int16_t tfet = (int16_t)buff[10]<<8 | buff[11];
+//     int16_t imot = (int16_t)buff[12]<<8 | buff[13];
+//     int16_t tbec = (int16_t)buff[14]<<8 | buff[15];
+//     int8_t ibec  = (int8_t)buff[16];
+//     int8_t vbec  = (int8_t)buff[17];
+//     int8_t thr   = (int8_t)buff[18];
+//     int8_t pout  = (int8_t)buff[19];
+//   Serial.print("ESC Telemetry: ");
+//   Serial.print(rpm);Serial.print(" ");
+//   Serial.print(vin);Serial.print(" ");
+//   Serial.print(imot);Serial.print(" ");
+//   Serial.print(thr);Serial.print(" ");
+//   Serial.print(pout);Serial.print(" ");
+//   Serial.println();
+  
+//     printPacketRaw(buff, packetLen, "RxEsc: ");
+//   }
+// }
 
 // get a packet from the RCV RX pin
 // returns packet ID type, 0xCD, 0x80, ...
 void SRXL2::getPacketDataRxRcv(){
   if(packetTxRcvBusy) {
-    // donot receive transmitted packets on half duplex wire
+    // Exit - donot receive transmitted packets on half duplex wire
     packetRxRcvIdx = 0;
     packetRxRcvBusy = false;
     packetRxRcvReady = false;
@@ -161,6 +210,7 @@ void SRXL2::getPacketDataRxRcv(){
 
 void SRXL2::extractPacketDataRxRcv() {
   uint8_t *buff = packetDataRxRcv;
+
   uint8_t packetID = buff[1];
   uint8_t packetLen = buff[2];
 
@@ -170,11 +220,11 @@ void SRXL2::extractPacketDataRxRcv() {
     uint16_t throttlePwm = buff[13]<<4 | buff[12]&0x0F;
     uint16_t steerPwm    = buff[15]<<4 | buff[14]&0x0F;
     uint16_t shiftPwm    = buff[17]<<4 | buff[16]&0x0F;
-if(requestTelem == 0x40) Serial.println("Temetry request");
-Serial.print("throttlePwm = ");Serial.println(throttlePwm);
-Serial.print("steerPwm = ");Serial.println(steerPwm);
-Serial.print("shiftPwm = ");Serial.println(shiftPwm);
-printPacketRaw(buff, packetLen, "RxRcv: ");
+if(requestTelem == 0x40) Serial.println("RxRcv: Telemetry request");
+// Serial.print("throttlePwm = ");Serial.println(throttlePwm);
+// Serial.print("steerPwm = ");Serial.println(steerPwm);
+// Serial.print("shiftPwm = ");Serial.println(shiftPwm);
+// printPacketRaw(buff, packetLen, "RxRcv: ");
   }
 }
 
@@ -227,15 +277,15 @@ void SRXL2::packetPassthruRxEsc(){
   if(packetRxEscReady==true && lastReady==false) {
 
     // pass Telemetry data packet from ESC to receiver
-    uint8_t sof = packetDataRxEsc[0];
+    uint8_t sof = packetDataRxEsc.b[0];
     if(sof!=0xA6) return; // bad CRC
-    int packetID = packetDataRxEsc[1];
+    int packetID = packetDataRxEsc.b[1];
     if(packetID!=0x21 && packetID!=0x80) return;
-    int packetLen = packetDataRxEsc[2];
+    int packetLen = packetDataRxEsc.b[2];
 
     // Copy RX packet to be used for TX on other port
     for(int i=0; i<packetLen; i++) {
-      packetDataTxRcv[i] = packetDataRxEsc[i];
+      packetDataTxRcv[i] = packetDataRxEsc.b[i];
     }
     packetTxRcvready = true;
   }
@@ -387,7 +437,7 @@ uint16_t SRXL2::calcCRC(byte *packet, int length) {
 }
 
 void SRXL2::printPacketRxEsc(int id){
-  printPacket("RxEsc: ", packetDataRxEsc, id);
+  printPacket("RxEsc: ", packetDataRxEsc.b, id);
 }
 void SRXL2::printPacketRxRcv(int id){
   printPacket("RxRcv: ", packetDataRxRcv, id);
@@ -416,65 +466,14 @@ void SRXL2::printPacket(String s, uint8_t *buff, int id){
 
 
 
-// Spektrum SRXL header
-typedef struct SrxlHeader
-{
-    uint8_t srxlID;     // Always 0xA6 for SRXL2
-    uint8_t packetType;
-    uint8_t length;
-} PACKED SrxlHeader;
-
-// // Channel Data
-// typedef struct SrxlChannelData
+// // Spektrum SRXL header
+// typedef struct SrxlHeader
 // {
-//     int8_t    rssi;         // Best RSSI when sending channel data, or dropout RSSI when sending failsafe data
-//     uint16_t  frameLosses;  // Total lost frames (or fade count when sent from Remote Rx to main Receiver)
-//     uint32_t  mask;         // Set bits indicate that channel data with the corresponding index is present
-//     uint16_t  values[32];   // Channel values, shifted to full 16-bit range (32768 = mid-scale); lowest 2 bits RFU
-// } PACKED SrxlChannelData;
+//     uint8_t srxlID;     // Always 0xA6 for SRXL2
+//     uint8_t packetType;
+//     uint8_t length;
+// } PACKED SrxlHeader;
 
-// // Control Data
-// typedef struct SrxlControlData
-// {
-//     uint8_t cmd;
-//     uint8_t replyID;
-//     union
-//     {
-//         SrxlChannelData channelData;    // Used for Channel Data and Failsafe Channel Data commands
-//         SrxlVtxData     vtxData;        // Used for VTX commands
-//         SrxlFwdPgmData  fpData;         // Used to pass forward programming data to an SRXL device
-//     };
-// } PACKED SrxlControlData;
-
-// typedef struct SrxlControlPacket
-// {
-//     SrxlHeader      hdr;
-//     SrxlControlData payload;
-// //  uint16_t        crc;    // NOTE: Since this packet is variable-length, we can't use this value anyway
-// } PACKED SrxlControlPacket;
-
-// Telemetry
-typedef struct SrxlTelemetryData
-{
-    union
-    {
-        struct
-        {
-            uint8_t sensorID;
-            uint8_t secondaryID;
-            uint8_t data[14];
-        };
-        uint8_t raw[16];
-    };
-} PACKED SrxlTelemetryData;
-
-typedef struct SrxlTelemetryPacket
-{
-    SrxlHeader          hdr;
-    uint8_t             destDevID;
-    SrxlTelemetryData   payload;
-    uint16_t            crc;
-} PACKED SrxlTelemetryPacket;
 
 // // Telemetry messages
 // #define	TELE_DEVICE_TEXTGEN			(0x0C)										// Text Generator
@@ -489,9 +488,9 @@ typedef struct SrxlTelemetryPacket
 // //
 // typedef struct
 // {
-// 	UINT8		identifier;
-// 	UINT8		sID;															// Secondary ID
-// 	UINT8		lineNumber;														// Line number to display (0 = title, 1-8 for general, 254 = Refresh backlight, 255 = Erase all text on screen)
+// 	uint8_t		identifier;
+// 	uint8_t		sID;															// Secondary ID
+// 	uint8_t		lineNumber;														// Line number to display (0 = title, 1-8 for general, 254 = Refresh backlight, 255 = Erase all text on screen)
 // 	char		text[13];														// 0-terminated text when < 13 chars
 // } STRU_TELE_TEXTGEN;
 
@@ -505,17 +504,73 @@ typedef struct SrxlTelemetryPacket
 // //
 // typedef struct
 // {
-// 	UINT8		identifier;														// Source device = 0x20
-// 	UINT8		sID;															// Secondary ID
-// 	UINT16		RPM;															// Electrical RPM, 10RPM (0-655340 RPM)  0xFFFF --> "No data"
-// 	UINT16		voltsInput;														// Volts, 0.01v (0-655.34V)       0xFFFF --> "No data"
-// 	UINT16		tempFET;														// Temperature, 0.1C (0-6553.4C)  0xFFFF --> "No data"
-// 	UINT16		currentMotor;													// Current, 10mA (0-655.34A)      0xFFFF --> "No data"
-// 	UINT16		tempBEC;														// Temperature, 0.1C (0-6553.4C)  0xFFFF --> "No data"
-// 	UINT8		currentBEC;														// BEC Current, 100mA (0-25.4A)   0xFF ----> "No data"
-// 	UINT8		voltsBEC;														// BEC Volts, 0.05V (0-12.70V)    0xFF ----> "No data"
-// 	UINT8		throttle;														// 0.5% (0-100%)                  0xFF ----> "No data"
-// 	UINT8		powerOut;														// Power Output, 0.5% (0-127%)    0xFF ----> "No data"
+// 	uint8_t		identifier;		// Source device = 0x20
+// 	uint8_t		sID;				  // Secondary ID
+// 	uint16_t	rpm;					// Electrical RPM, 10RPM (0-655340 RPM)  0xFFFF --> "No data"
+// 	uint16_t	voltsInput;		// Volts, 0.01v (0-655.34V)       0xFFFF --> "No data"
+// 	uint16_t	tempFET;			// Temperature, 0.1C (0-6553.4C)  0xFFFF --> "No data"
+// 	uint16_t	currentMotor;	// Current, 10mA (0-655.34A)      0xFFFF --> "No data"
+// 	uint16_t	tempBEC;			// Temperature, 0.1C (0-6553.4C)  0xFFFF --> "No data"
+// 	uint8_t		currentBEC;		// BEC Current, 100mA (0-25.4A)   0xFF ----> "No data"
+// 	uint8_t		voltsBEC;			// BEC Volts, 0.05V (0-12.70V)    0xFF ----> "No data"
+// 	uint8_t		throttle;			// 0.5% (0-100%)                  0xFF ----> "No data"
+// 	uint8_t		powerOut;			// Power Output, 0.5% (0-127%)    0xFF ----> "No data"
 // } STRU_TELE_ESC;
 
+// // Telemetry
+// typedef struct SrxlTelemetryData
+// {
+//     union
+//     {
+//         struct
+//         {
+//             uint8_t sensorID;
+//             uint8_t secondaryID;
+//             STRU_TELE_ESC TelemetryESC;
+//         };
+//         uint8_t raw[16];
+//     };
+// } PACKED SrxlTelemetryData;
+
+// typedef struct SrxlTelemetryPacket
+// {
+//     SrxlHeader          hdr;
+//     uint8_t             destDevID;
+//     SrxlTelemetryData   payload;
+//     uint16_t            crc;
+// } PACKED SrxlTelemetryPacket;
+
+
+
+
+// //**************************************
+
+// // // Channel Data
+// // typedef struct SrxlChannelData
+// // {
+// //     int8_t    rssi;         // Best RSSI when sending channel data, or dropout RSSI when sending failsafe data
+// //     uint16_t  frameLosses;  // Total lost frames (or fade count when sent from Remote Rx to main Receiver)
+// //     uint32_t  mask;         // Set bits indicate that channel data with the corresponding index is present
+// //     uint16_t  values[32];   // Channel values, shifted to full 16-bit range (32768 = mid-scale); lowest 2 bits RFU
+// // } PACKED SrxlChannelData;
+
+// // // Control Data
+// // typedef struct SrxlControlData
+// // {
+// //     uint8_t cmd;
+// //     uint8_t replyID;
+// //     union
+// //     {
+// //         SrxlChannelData channelData;    // Used for Channel Data and Failsafe Channel Data commands
+// //         SrxlVtxData     vtxData;        // Used for VTX commands
+// //         SrxlFwdPgmData  fpData;         // Used to pass forward programming data to an SRXL device
+// //     };
+// // } PACKED SrxlControlData;
+
+// // typedef struct SrxlControlPacket
+// // {
+// //     SrxlHeader      hdr;
+// //     SrxlControlData payload;
+// // //  uint16_t        crc;    // NOTE: Since this packet is variable-length, we can't use this value anyway
+// // } PACKED SrxlControlPacket;
 

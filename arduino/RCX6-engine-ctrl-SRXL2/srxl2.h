@@ -5,17 +5,8 @@
 #include <Arduino.h>
 #include <SerialUART.h>
 
-// Enable byte packing for all structs defined here!
-#ifdef PACKED
-#error "preprocessor definition PACKED is already defined -- this could be bad"
-#endif
+#include "srxl2Structs.h"
 
-#ifdef __GNUC__
-#define PACKED __attribute__((packed))
-#else
-#pragma pack(push, 1)
-#define PACKED
-#endif
 
 // SRXL2 serial signal pins
 #define RxEsc 13
@@ -55,13 +46,20 @@ private:
   bool packetTxRcvready = false;
   bool packetTxRcvBusy = false;
 
-  uint8_t packetDataRxEsc[100];
   uint8_t packetDataTxEsc[100];
+
+  srxlPkt packetDataRxEsc;
   int packetRxEscIdx = 0;
   bool packetRxEscBusy = false;
   bool packetRxEscReady = false;
   bool packetTxEscready = false;
   bool packetTxEscBusy = false;
+  // ESC telemetry
+  int escRpm = 0; //NOTE: reverse is not negative
+  float escVin = 0;
+  float escImotor = 0;
+  float escThrPct = 0;  //NOTE: reverse is not negative
+  float escPoutPct = 0;
 
   uint32_t timerTickIntervalUsec = 100;
   uint32_t timerTickCount = 0;
@@ -95,5 +93,7 @@ private:
       uint8_t *buff, int buffLen, int &packetIdx, bool &busy, bool &ready);
 
 };
+
+
 
 #endif /* ifndef __SRXL2__ */
