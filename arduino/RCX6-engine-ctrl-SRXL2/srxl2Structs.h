@@ -16,8 +16,7 @@
 #endif
 
 // SRXL2 Packet header structures
-
-// Reverse bytes in 16 bit data for RP2040
+// Reverse bytes in 16 bit data from ESC (not from receiver!)
 #define RVRSB(W) (((W&0xFF)<<8) | (W>>8))
 
 // Spektrum SRXL header
@@ -58,6 +57,7 @@ typedef struct
 //
 typedef struct
 {
+  // NOTE: 16 bit values need the bytes reversed to be uint16_t data type compatible
 	uint8_t		identifier;		// Source device = 0x20
 	uint8_t		sID;				  // Secondary ID
 	uint16_t	rpm;					// Electrical RPM, 10RPM (0-655340 RPM)  0xFFFF --> "No data"
@@ -94,45 +94,51 @@ typedef struct SrxlTelemetryPacket
     uint16_t            crc;
 } PACKED SrxlTelemetryPacket;
 
+// SRXL2 ESC channel data 
+typedef struct SrxlEscChannelUsed
+{
+  uint16_t throttle;
+  uint16_t steer;
+  uint16_t shift;
+} SrxlEscChannelUsed;
+
+// Channel Data
+typedef struct SrxlChannelData
+{
+    int8_t    rssi;         // Best RSSI when sending channel data, or dropout RSSI when sending failsafe data
+    uint16_t  frameLosses;  // Total lost frames (or fade count when sent from Remote Rx to main Receiver)
+    uint32_t  mask;         // Set bits indicate that channel data with the corresponding index is present
+    union {
+      uint16_t  values[32];   // Channel values, shifted to full 16-bit range (32768 = mid-scale); lowest 2 bits RFU
+      SrxlEscChannelUsed esc; // Channels used in RCX6 packet from receiver to ESC
+    };
+} PACKED SrxlChannelData;
+
+// Control Data
+typedef struct SrxlControlData
+{
+    uint8_t cmd;
+    uint8_t replyID;
+    union
+    {
+        SrxlChannelData channelData;    // Used for Channel Data and Failsafe Channel Data commands
+    };
+} PACKED SrxlControlData;
+
+typedef struct SrxlControlPacket
+{
+    SrxlHeader      hdr;
+    SrxlControlData payload;
+//  uint16_t        crc;    // NOTE: Since this packet is variable-length, we can't use this value anyway
+} PACKED SrxlControlPacket;
+
 
 union srxlPkt {
   uint8_t b[100];
   SrxlHeader hdr;
   SrxlTelemetryPacket tPacket;
+  SrxlControlPacket cPacket;
 };
-
-
-//**************************************
-
-// // Channel Data
-// typedef struct SrxlChannelData
-// {
-//     int8_t    rssi;         // Best RSSI when sending channel data, or dropout RSSI when sending failsafe data
-//     uint16_t  frameLosses;  // Total lost frames (or fade count when sent from Remote Rx to main Receiver)
-//     uint32_t  mask;         // Set bits indicate that channel data with the corresponding index is present
-//     uint16_t  values[32];   // Channel values, shifted to full 16-bit range (32768 = mid-scale); lowest 2 bits RFU
-// } PACKED SrxlChannelData;
-
-// // Control Data
-// typedef struct SrxlControlData
-// {
-//     uint8_t cmd;
-//     uint8_t replyID;
-//     union
-//     {
-//         SrxlChannelData channelData;    // Used for Channel Data and Failsafe Channel Data commands
-//         SrxlVtxData     vtxData;        // Used for VTX commands
-//         SrxlFwdPgmData  fpData;         // Used to pass forward programming data to an SRXL device
-//     };
-// } PACKED SrxlControlData;
-
-// typedef struct SrxlControlPacket
-// {
-//     SrxlHeader      hdr;
-//     SrxlControlData payload;
-// //  uint16_t        crc;    // NOTE: Since this packet is variable-length, we can't use this value anyway
-// } PACKED SrxlControlPacket;
-
 
 
 #endif /* ifndef __SRXL2STRUCTS__*/

@@ -154,34 +154,6 @@ void SRXL2::extractPacketDataRxEsc() {
   }
 }
 
-// void SRXL2::extractPacketDataRxEsc() {
-//   // Process telemetry data
-//   uint8_t *buff = packetDataRxEsc;
-//   uint8_t packetID = buff[1];
-//   uint8_t packetLen = buff[2];
-
-// //  if (packetID == 0x80)  {
-//   if(buff[1]==0x80 && buff[4]==0x20) {
-//     int16_t rpm  = (int16_t)buff[6]<<8 | buff[7];
-//     int16_t vin  = (int16_t)buff[8]<<8 | buff[9];
-//     int16_t tfet = (int16_t)buff[10]<<8 | buff[11];
-//     int16_t imot = (int16_t)buff[12]<<8 | buff[13];
-//     int16_t tbec = (int16_t)buff[14]<<8 | buff[15];
-//     int8_t ibec  = (int8_t)buff[16];
-//     int8_t vbec  = (int8_t)buff[17];
-//     int8_t thr   = (int8_t)buff[18];
-//     int8_t pout  = (int8_t)buff[19];
-//   Serial.print("ESC Telemetry: ");
-//   Serial.print(rpm);Serial.print(" ");
-//   Serial.print(vin);Serial.print(" ");
-//   Serial.print(imot);Serial.print(" ");
-//   Serial.print(thr);Serial.print(" ");
-//   Serial.print(pout);Serial.print(" ");
-//   Serial.println();
-  
-//     printPacketRaw(buff, packetLen, "RxEsc: ");
-//   }
-// }
 
 // get a packet from the RCV RX pin
 // returns packet ID type, 0xCD, 0x80, ...
@@ -196,8 +168,8 @@ void SRXL2::getPacketDataRxRcv(){
 
   SerialUART *ser_p = &Serial2;
 
-  uint8_t *buff = packetDataRxRcv;
-  int buffLen = sizeof(packetDataRxRcv);
+  uint8_t *buff = packetDataRxRcv.b;
+  int buffLen = sizeof(packetDataRxRcv.b);
   getPacketDataRXn(ser_p, buff, buffLen, 
       packetRxRcvIdx, packetRxRcvBusy, packetRxRcvReady);
 
@@ -209,22 +181,31 @@ void SRXL2::getPacketDataRxRcv(){
 }
 
 void SRXL2::extractPacketDataRxRcv() {
-  uint8_t *buff = packetDataRxRcv;
+  srxlPkt pkt = packetDataRxRcv;
 
-  uint8_t packetID = buff[1];
-  uint8_t packetLen = buff[2];
+  uint8_t packetID = packetDataRxRcv.hdr.packetType;
+  uint8_t packetLen = packetDataRxRcv.hdr.length;
 
   if (packetID == 0xCD)  {
-    // Process control data 
-    uint8_t requestTelem = buff[4];
-    uint16_t throttlePwm = buff[13]<<4 | buff[12]&0x0F;
-    uint16_t steerPwm    = buff[15]<<4 | buff[14]&0x0F;
-    uint16_t shiftPwm    = buff[17]<<4 | buff[16]&0x0F;
+    uint8_t cmd = packetDataRxRcv.cPacket.payload.cmd;
+    uint8_t rssi = packetDataRxRcv.cPacket.payload.channelData.rssi;
+    if((cmd != 0x00) | (rssi==0)) {
+      // no data from transmitter - ignore all
+      //TODO: Set flag for transmitter not active
+      return;
+    }
+
+    // Process control data, channel data PWM mid-scale is 32,768
+    // NOTE: bytes are not reversed like data from ESC!!
+    uint8_t requestTelem = packetDataRxRcv.cPacket.payload.replyID; // 0x04 requests telemetry from esc
+    uint16_t throttlePwm = packetDataRxRcv.cPacket.payload.channelData.esc.throttle;
+    uint16_t steerPwm    = packetDataRxRcv.cPacket.payload.channelData.esc.steer;
+    uint16_t shiftPwm    = packetDataRxRcv.cPacket.payload.channelData.esc.shift;
 if(requestTelem == 0x40) Serial.println("RxRcv: Telemetry request");
-// Serial.print("throttlePwm = ");Serial.println(throttlePwm);
-// Serial.print("steerPwm = ");Serial.println(steerPwm);
-// Serial.print("shiftPwm = ");Serial.println(shiftPwm);
-// printPacketRaw(buff, packetLen, "RxRcv: ");
+Serial.print("throttlePwm = ");Serial.println(throttlePwm);
+Serial.print("steerPwm = ");Serial.println(steerPwm);
+Serial.print("shiftPwm = ");Serial.println(shiftPwm);
+printPacketRaw(packetDataRxRcv.b, packetLen, "RxRcv: ");
   }
 }
 
@@ -239,15 +220,15 @@ void SRXL2::packetPassthruRxRcv(){
   if(packetRxRcvReady==true && lastReady==false) {
 
     // pass control data packet from receiver to ESC
-    uint8_t sof = packetDataRxRcv[0];
+    uint8_t sof = packetDataRxRcv.hdr.srxlID;
     if(sof!=0xA6) return;
-    uint8_t packetID = packetDataRxRcv[1];
+    uint8_t packetID = packetDataRxRcv.hdr.packetType;
     if(packetID!=0xCD) return;
-    uint8_t packetLen = packetDataRxRcv[2];
+    uint8_t packetLen = packetDataRxRcv.hdr.length;
 
     // Copy RX packet to be used for TX on other port
     for(int i=0; i<packetLen; i++) {
-      packetDataTxEsc[i] = packetDataRxRcv[i];
+      packetDataTxEsc[i] = packetDataRxRcv.b[i];
     }
     packetTxEscready = true;
   }
@@ -440,7 +421,7 @@ void SRXL2::printPacketRxEsc(int id){
   printPacket("RxEsc: ", packetDataRxEsc.b, id);
 }
 void SRXL2::printPacketRxRcv(int id){
-  printPacket("RxRcv: ", packetDataRxRcv, id);
+  printPacket("RxRcv: ", packetDataRxRcv.b, id);
 }
 
 void SRXL2::printPacket(String s, uint8_t *buff, int id){

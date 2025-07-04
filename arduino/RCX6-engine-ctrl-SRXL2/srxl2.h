@@ -38,8 +38,7 @@ private:
   String mode = "bypass";
   uint32_t baudRate = 115200;
 
-  uint8_t packetDataRxRcv[100];
-  uint8_t packetDataTxRcv[100];
+  srxlPkt packetDataRxRcv;
   int packetRxRcvIdx = 0;
   bool packetRxRcvBusy = false;
   bool packetRxRcvReady = false;
@@ -54,12 +53,14 @@ private:
   bool packetRxEscReady = false;
   bool packetTxEscready = false;
   bool packetTxEscBusy = false;
-  // ESC telemetry
+  // ESC telemetry from packetDataRxEsc
   int escRpm = 0; //NOTE: reverse is not negative
   float escVin = 0;
   float escImotor = 0;
   float escThrPct = 0;  //NOTE: reverse is not negative
   float escPoutPct = 0;
+
+  uint8_t packetDataTxRcv[100];
 
   uint32_t timerTickIntervalUsec = 100;
   uint32_t timerTickCount = 0;
