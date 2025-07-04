@@ -197,14 +197,14 @@ void SRXL2::extractPacketDataRxRcv() {
 
     // Process control data, channel data PWM mid-scale is 32,768
     // NOTE: bytes are not reversed like data from ESC!!
-    uint8_t requestTelem = packetDataRxRcv.cPacket.payload.replyID; // 0x04 requests telemetry from esc
-    uint16_t throttlePwm = packetDataRxRcv.cPacket.payload.channelData.esc.throttle;
-    uint16_t steerPwm    = packetDataRxRcv.cPacket.payload.channelData.esc.steer;
-    uint16_t shiftPwm    = packetDataRxRcv.cPacket.payload.channelData.esc.shift;
-if(requestTelem == 0x40) Serial.println("RxRcv: Telemetry request");
-Serial.print("throttlePwm = ");Serial.println(throttlePwm);
-Serial.print("steerPwm = ");Serial.println(steerPwm);
-Serial.print("shiftPwm = ");Serial.println(shiftPwm);
+    rcvReplyID  = packetDataRxRcv.cPacket.payload.replyID; // 0x04 requests telemetry from esc
+    rcvThrottle = packetDataRxRcv.cPacket.payload.channelData.esc.throttle;
+    rcvSteer    = packetDataRxRcv.cPacket.payload.channelData.esc.steer;
+    rcvShift    = packetDataRxRcv.cPacket.payload.channelData.esc.shift;
+if(rcvReplyID == 0x40) Serial.println("RxRcv: Telemetry request");
+Serial.print("rcvThrottle = ");Serial.println(rcvThrottle);
+Serial.print("rcvSteer = ");Serial.println(rcvSteer);
+Serial.print("rcvShift = ");Serial.println(rcvShift);
 printPacketRaw(packetDataRxRcv.b, packetLen, "RxRcv: ");
   }
 }

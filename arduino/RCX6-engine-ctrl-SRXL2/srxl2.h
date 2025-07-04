@@ -61,6 +61,11 @@ private:
   float escPoutPct = 0;
 
   uint8_t packetDataTxRcv[100];
+  uint8_t rcvReplyID; // 0x40 is telemetry request of ESC
+  uint16_t rcvThrottle;
+  uint16_t rcvSteer;
+  uint16_t rcvShift;
+
 
   uint32_t timerTickIntervalUsec = 100;
   uint32_t timerTickCount = 0;
