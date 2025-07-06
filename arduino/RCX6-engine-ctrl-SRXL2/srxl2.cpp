@@ -7,7 +7,7 @@ void SRXL2::setMode(String m) {
 }
 
 // Call this from timer in main
-// controls timing for TXEN signal
+// controls timing for TXEN signal and TX packets rate in terminal mode
 void SRXL2::timerTick(){
   timerTickCount++;
 
@@ -27,6 +27,12 @@ void SRXL2::timerTick(){
       TxRcvCnt=0;
     }
   }
+  // receiver TX packet rate
+  if(timerTickCount >= TxRcvRateCnt) {
+    TxRcvRateCnt = timerTickCount+100000/timerTickIntervalUsec; // 10/sec
+    txRcvNow = true;
+  }
+
 }
 
 uint32_t SRXL2::getTimerTickCount() {
@@ -36,6 +42,7 @@ uint32_t SRXL2::getTimerTickCount() {
 void SRXL2::loopCode() {
   getPacketDataRxEsc();
   packetPassthruRxEsc();
+  packetTermRcv();
   sendPacketTxRcv();
 
   getPacketDataRxRcv();
@@ -135,21 +142,34 @@ void SRXL2::extractPacketDataRxEsc() {
   uint8_t packetID = packetDataRxEsc.hdr.packetType;
   
   if(packetID==0x80) {
-    // Telemetry packet
+    // Telemetry packets
     uint8_t sensorID = packetDataRxEsc.tPacket.payload.sensorID;
-    if(sensorID==0x20) {
+    if(sensorID==TELE_DEVICE_ESC) {
       escRpm = RVRSB(packetDataRxEsc.tPacket.payload.esc.rpm);
       escVin = RVRSB(packetDataRxEsc.tPacket.payload.esc.voltsInput)/100.0;
+      escTfet = RVRSB(packetDataRxEsc.tPacket.payload.esc.tempFET)/10.0;
       escImotor = RVRSB(packetDataRxEsc.tPacket.payload.esc.currentMotor)/100.0;
       escThrPct = packetDataRxEsc.tPacket.payload.esc.throttle/2.0;
       escPoutPct = packetDataRxEsc.tPacket.payload.esc.powerOut/2.0;
 
-      Serial.print("rpm = ");Serial.println(escRpm);
-      Serial.print("vin = ");Serial.println(escVin);
-      Serial.print("imot = ");Serial.println(escImotor);
-      Serial.print("thr = ");Serial.println(escThrPct);
-      Serial.print("pout = ");Serial.println(escPoutPct);
-      printPacketRaw(buff, packetLen, "RxEsc: ");
+      // Serial.print("rpm = ");Serial.println(escRpm);
+      // Serial.print("vin = ");Serial.println(escVin);
+      // Serial.print("imot = ");Serial.println(escImotor);
+      // Serial.print("thr = ");Serial.println(escThrPct);
+      // Serial.print("pout = ");Serial.println(escPoutPct);
+      // printPacketRaw(buff, packetLen, "RxEsc: ");
+    } else if(sensorID==TELE_DEVICE_SMARTBATT) {
+      uint8_t type = packetDataRxEsc.tPacket.payload.typeChannel;
+      if(type == SMARTBATT_MSG_TYPE_CELLS_1_6) {
+        sbatTemp =  RVRSB(packetDataRxEsc.tPacket.payload.scl.temperature_C);
+        sbatCellVolts[0] =  RVRSB(packetDataRxEsc.tPacket.payload.scl.cellVoltage_mV[0])/10000.0;
+        sbatCellVolts[1] =  RVRSB(packetDataRxEsc.tPacket.payload.scl.cellVoltage_mV[1])/10000.0;
+        sbatCellVolts[2] =  RVRSB(packetDataRxEsc.tPacket.payload.scl.cellVoltage_mV[2])/10000.0;
+Serial.print("sbatTemp = ");Serial.println(sbatTemp);
+Serial.print("sbatCellVolts[0] = ");Serial.println(sbatCellVolts[0]);
+Serial.print("sbatCellVolts[1] = ");Serial.println(sbatCellVolts[1]);
+Serial.print("sbatCellVolts[2] = ");Serial.println(sbatCellVolts[2]);
+      }
     }
   }
 }
@@ -185,6 +205,7 @@ void SRXL2::extractPacketDataRxRcv() {
 
   uint8_t packetID = packetDataRxRcv.hdr.packetType;
   uint8_t packetLen = packetDataRxRcv.hdr.length;
+// printPacketRaw(packetDataRxRcv.b, packetLen, "RxRcv: ");
 
   if (packetID == 0xCD)  {
     uint8_t cmd = packetDataRxRcv.cPacket.payload.cmd;
@@ -202,13 +223,51 @@ void SRXL2::extractPacketDataRxRcv() {
     rcvSteer    = packetDataRxRcv.cPacket.payload.channelData.esc.steer;
     rcvShift    = packetDataRxRcv.cPacket.payload.channelData.esc.shift;
 if(rcvReplyID == 0x40) Serial.println("RxRcv: Telemetry request");
-Serial.print("rcvThrottle = ");Serial.println(rcvThrottle);
-Serial.print("rcvSteer = ");Serial.println(rcvSteer);
-Serial.print("rcvShift = ");Serial.println(rcvShift);
-printPacketRaw(packetDataRxRcv.b, packetLen, "RxRcv: ");
+// Serial.print("rcvThrottle = ");Serial.println(rcvThrottle);
+// Serial.print("rcvSteer = ");Serial.println(rcvSteer);
+// Serial.print("rcvShift = ");Serial.println(rcvShift);
+//printPacketRaw(packetDataRxRcv.b, packetLen, "RxRcv: ");
   }
 }
 
+
+// mode term - terminates both RX and generates TX packets
+// called in main loop code
+void SRXL2::packetTermRcv() {
+  if(mode!="term") return;
+
+
+  // Generate the 0x42,0x10 TX packet with telemetry data to the receiver
+  if(txRcvNow) { // timer sets rate
+    txRcvNow = false;
+    packetDataTxRcv = packetDataTxRcv_default; // init with default
+    // SMARTBATT Cell Volatages - 3 cells
+    packetDataTxRcv.tPacket.payload.scl.temperature_C = sbatTemp;
+    packetDataTxRcv.tPacket.payload.scl.cellVoltage_mV[0] 
+                    = RVRSB((uint16_t)(sbatCellVolts[0]*10000));
+    packetDataTxRcv.tPacket.payload.scl.cellVoltage_mV[1] 
+                    = RVRSB((uint16_t)(sbatCellVolts[1]*10000));
+    packetDataTxRcv.tPacket.payload.scl.cellVoltage_mV[2] 
+                    = RVRSB((uint16_t)(sbatCellVolts[2]*10000));
+    // add CRC
+    calcCRC(packetDataTxRcv.b, packetDataTxRcv.hdr.length, true);
+checkCRC(packetDataTxRcv.b, packetDataTxRcv.hdr.length);
+//printPacketRaw(packetDataTxRcv.b, packetDataTxRcv.hdr.length, "TxRcv: ");
+    packetTxRcvready = true;
+  }
+
+
+  sendPacketTxRcv();
+}
+
+void SRXL2::packetTermEsc(){
+
+  // packetDataRxEsc received and data extracted in getPacketDataRxEsc()
+
+  // Generate the 0xCD TX packet with with control data from the USB interface
+  // initControlDataPacket(packetDataTxEsc, sizeof(packetDataTxEsc));
+
+}
 
 
 // Transmits RxRcv packet to TxEsc in passthru mode, non-blocking
@@ -227,27 +286,33 @@ void SRXL2::packetPassthruRxRcv(){
     uint8_t packetLen = packetDataRxRcv.hdr.length;
 
     // Copy RX packet to be used for TX on other port
-    for(int i=0; i<packetLen; i++) {
-      packetDataTxEsc[i] = packetDataRxRcv.b[i];
-    }
+    packetDataTxEsc = packetDataRxRcv;
     packetTxEscready = true;
   }
   lastReady = packetRxRcvReady;
 }
 
 void SRXL2::sendPacketTxEsc(void){
+  static bool packetRxEscBusy_last = false;
   if(!packetTxEscready) return;
-  // wait until any receive packet is complete
-  if(packetRxEscBusy) return;
 
-  int packetLen = packetDataTxEsc[2];
-//Serial.print("TxEsc: "); Serial.println(packetLen);
+  // wait until the end of the receive packet
+  if(!packetRxEscBusy) {
+  // if(!packetRxEscBusy && packetRxEscBusy_last) {
 
-  uint32_t tus = packetLen * (11 * (1e6/baudRate));
-  startTxEscEnable(tus); // enable TXEN for Serial1, disables using interrupt
-  Serial1.write(packetDataTxEsc, packetLen);
+    int packetLen = packetDataTxEsc.hdr.length;
+  //Serial.print("TxEsc: "); Serial.println(packetLen);
 
-  packetTxEscready = false;
+    uint32_t tus = packetLen * (11 * (1e6/baudRate));
+    startTxEscEnable(tus); // enable TXEN for Serial1, disables using interrupt
+    Serial1.write(packetDataTxEsc.b, packetLen);
+
+//printPacketRaw(packetDataTxEsc.b, packetDataTxEsc.hdr.length, "TxEsc: ");
+
+    packetTxEscready = false;
+  }
+
+  packetRxEscBusy_last = packetRxEscBusy;
 }
 
 // Transmits RxEsc packet to TxRcv in passthru mode, non-blocking
@@ -266,7 +331,7 @@ void SRXL2::packetPassthruRxEsc(){
 
     // Copy RX packet to be used for TX on other port
     for(int i=0; i<packetLen; i++) {
-      packetDataTxRcv[i] = packetDataRxEsc.b[i];
+      packetDataTxRcv.b[i] = packetDataRxEsc.b[i];
     }
     packetTxRcvready = true;
   }
@@ -274,18 +339,37 @@ void SRXL2::packetPassthruRxEsc(){
 }
 
 void SRXL2::sendPacketTxRcv(void){
+  static bool packetRxRcvBusy_last = false;
   if(!packetTxRcvready) return;
-  // wait until receive packet is complete
-  if(packetRxRcvBusy) return;
 
-  int packetLen = packetDataTxRcv[2];
-//Serial.print("TxRcv: "); Serial.println(packetLen);
+// // DEBUG: discard non ESC Telemetry
+// if (
+//      (packetDataTxRcv.hdr.packetType != 0x80)
+//   || (packetDataTxRcv.tPacket.payload.sensorID==0x20)
+//   || (packetDataTxRcv.tPacket.payload.sensorID==0x0C)
+//   || (   (packetDataTxRcv.tPacket.payload.sensorID==0x42)
+//       && (   (packetDataTxRcv.b[6]==0x00)
+//           || (packetDataTxRcv.b[6]==0x80)
+//           || (packetDataTxRcv.b[6]==0x90)
+//          )
+//      )
+//   ) return;
 
-  uint32_t tus = packetLen * (11 * (1e6/baudRate));
-  startTxRcvEnable(tus); // enable TXEN for Serial2, disables using interrupt
-  Serial2.write(packetDataTxRcv, packetLen);
+  // wait until the end of the receive packet
+  if(!packetRxRcvBusy && packetRxRcvBusy_last) {
+    int packetLen = packetDataTxRcv.hdr.length;
+  //Serial.print("TxRcv: "); Serial.println(packetLen);
 
-  packetTxRcvready = false;
+    uint32_t tus = packetLen * (11 * (1e6/baudRate));
+    startTxRcvEnable(tus); // enable TXEN for Serial2, disables using interrupt
+    Serial2.write(packetDataTxRcv.b, packetLen);
+
+    packetTxRcvready = false;
+  
+printPacketRaw(packetDataTxRcv.b, packetDataTxRcv.hdr.length, "TxRcv: ");
+  }
+
+  packetRxRcvBusy_last = packetRxRcvBusy;
 }
 
 
@@ -337,9 +421,10 @@ void SRXL2::getPacketDataRXn(SerialUART *ser_p,
       if(packetIdx >= packetLength) {
 //Serial.print(" CHECK CRC");
         // CHECK CRC
-        uint16_t crc0 = calcCRC(buff, packetLength);
-        uint16_t crc1 = ((uint16_t)buff[packetLength-2]<<8 | buff[packetLength-1]);
-        if(crc0 != crc1) {
+        // uint16_t crc0 = calcCRC(buff, packetLength);
+        // uint16_t crc1 = ((uint16_t)buff[packetLength-2]<<8 | buff[packetLength-1]);
+        bool crcValid = checkCRC(buff, packetLength);
+        if(!crcValid) {
           buff[0] = 0x00; // SOF=0 for BAD CRC
         } else {
           ready = true;
@@ -356,6 +441,20 @@ void SRXL2::getPacketDataRXn(SerialUART *ser_p,
   else busy = true;
 };
 
+// Returns true if crc at end of packet is OK
+bool SRXL2::checkCRC( uint8_t *packet, int length){
+//Serial.print("checkCRC: ");
+  uint16_t crc0 = calcCRC(packet, length);
+  uint16_t crc1 = ((uint16_t)packet[length-2]<<8 | packet[length-1]);
+  if(crc0 == crc1) {
+//Serial.println("GOOD CRC");
+    return true;
+  }
+
+Serial.println("BAD CRC");
+  return false;
+
+}
 
 void SRXL2::printPacketRaw(uint8_t *buff, int buffLen, String prefix){
   uint8_t len = buff[2];
@@ -400,21 +499,30 @@ void printPacketData(uint8_t *buff) {
   }
 }
 
-uint16_t SRXL2::calcCRC(byte *packet, int length) {
-        // Use bitwise method
-        uint16_t crc = 0x0000;
-        for(uint8_t i = 0; i < length-2; i++)
-        {
-            crc = crc ^ ((uint16_t)packet[i] << 8);
-            for(int b = 0; b < 8; b++)
-            {
-                if(crc & 0x8000)
-                    crc = (crc << 1) ^ 0x1021;
-                else
-                    crc = crc << 1;
-            }
-        }
-        return crc;
+uint16_t SRXL2::calcCRC(byte *packet, int length, bool updateCRC) {
+  // Use bitwise method
+  uint16_t crc = 0x0000;
+  for(uint8_t i = 0; i < length-2; i++)
+  {
+      crc = crc ^ ((uint16_t)packet[i] << 8);
+      for(int b = 0; b < 8; b++)
+      {
+          if(crc & 0x8000)
+              crc = (crc << 1) ^ 0x1021;
+          else
+              crc = crc << 1;
+      }
+  }
+  
+  // Update CRC field at the end of the packet
+  if(updateCRC) {
+        // uint16_t crc0 = calcCRC(buff, packetLength);
+        // uint16_t crc1 = ((uint16_t)buff[packetLength-2]<<8 | buff[packetLength-1]);
+    packet[length-1] = crc&0x00FF;
+    packet[length-2] = crc>>8;
+  }
+
+  return crc;
 }
 
 void SRXL2::printPacketRxEsc(int id){

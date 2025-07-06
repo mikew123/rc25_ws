@@ -100,7 +100,7 @@ bool jsonParse(const char *jsonStr) {
     Serial.print("mode = ");
     Serial.println(mode_g);
     
-    configureMode();
+    configureMode(); //TODO: move to srx.setMode
     srx.setMode(mode_g);
     pwm.setMode(mode_g);
   }
@@ -128,11 +128,12 @@ bool jsonParse(const char *jsonStr) {
   return true;
 }
 
+//TODO: move to SRXL2
 void configureMode(){
   if(mode_g == "bypass") {
     digitalWrite(BYPASS, 0); // enable bypass switch 
   }
-  else if(mode_g == "passthru") {
+  else if(mode_g == "passthru" || mode_g == "term") {
     digitalWrite(BYPASS, 1); // disable bypass switch
   }
   // to be safe disable SRXL2 serial transmits
