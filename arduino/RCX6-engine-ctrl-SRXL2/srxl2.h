@@ -4,7 +4,7 @@
 
 #include <Arduino.h>
 #include <SerialUART.h>
-
+#include "string"
 #include "srxl2Structs.h"
 
 
@@ -29,6 +29,9 @@ public:
 
   void disableTX();
   void setMode(String mode);
+  void setThrottlePct(float throttle);
+  void setSteerPct(float steer);
+  void setShiftGear(String gear);
 
 
   // Create timers for clearing the serial transmit enable pins
@@ -39,6 +42,11 @@ public:
 private:
   String mode = "bypass";
   uint32_t baudRate = 115200;
+
+  // values from USB interface
+  float usbThrottlePct = 0;
+  float usbSteerPct = 0;
+  bool usbShift = false; // false=low gear true=high gear
 
   srxlPkt packetDataRxRcv;
   int packetRxRcvIdx = 0;
@@ -72,13 +80,25 @@ private:
   int sbatTemp = 0;
   float sbatCellVolts[3] = {0,0,0};
 
+  int8_t sbatRtTemp = 0;
+  float sbatRtDisA = 0;
+  float sbatRtMinCellV = 0;
+  float sbatRtMaxCellV = 0;
+
+
   srxlPkt packetDataTxRcv;
   
-
-
   uint32_t timerTickIntervalUsec = 100;
   uint32_t timerTickCount = 0;
+
+  int telemetryRate = 10; // every 10th packet
+
+  uint32_t txEscUsec = 33333; // 30/sec
   uint32_t TxEscCnt = 0;
+  uint32_t TxEscRateCnt = 0;
+  bool txEscNow = false;
+
+  uint32_t txRcvUsec = 200000; // 5/sec
   uint32_t TxRcvCnt = 0;
   uint32_t TxRcvRateCnt = 0;
   bool txRcvNow = false;
@@ -98,11 +118,13 @@ private:
   void extractPacketDataRxEsc();
   void extractPacketDataRxRcv();
 
+  void decode_TELE_DEVICE_ESC(srxlPkt pkt);
+  void decode_TELE_DEVICE_TEXTGEN(srxlPkt pkt);
+  void decode_SMARTBATT_MSG_TYPE_CELLS_1_6(srxlPkt pkt);
+  void decode_SMARTBATT_MSG_TYPE_REALTIME(srxlPkt pkt);
+
   void sendPacketTxEsc(void);
   void sendPacketTxRcv(void);
-
-  void printPacketRxEsc(int id);
-  void printPacketRxRcv(int id);
 
   uint16_t calcCRC(byte *packet, int length, bool updateCRC=false);
   bool checkCRC( uint8_t *packet, int length);
@@ -162,8 +184,31 @@ private:
       .crc = 0x0000
     }
   };
-}; 
 
 
+  srxlPkt packetDataTxEsc_default = {
+    .cPacket = {
+      .hdr = {
+        .srxlID = 0xA6,
+        .packetType = 0xCD,
+        .length = 0x1C
+      },
+      .payload = {
+        .cmd = 0x00, // 0x40 when requesting telemetry
+        .replyID = 0x00,
+        .channelData {
+          .rssi = 0,
+          .frameLosses = 0,
+          .mask = 0x000003E9L, // num channels for len=0x1C
+          .values = {
+            0x8000, 0x8000, 0x8000, 0x8000, 0x8000, 0x8000, 0x8000, 0x8000,
+            0x8000, 0x8000, 0x8000, 0x8000, 0x8000, 0x8000, 0x8000, 0x8000
+          }
+        }
+      }
+      //.crc = 0x0000 // variable length packet, crc last 2 bytes
+    }
+  };
+};
 
 #endif /* ifndef __SRXL2__ */

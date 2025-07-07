@@ -29,8 +29,13 @@ void SRXL2::timerTick(){
   }
   // receiver TX packet rate
   if(timerTickCount >= TxRcvRateCnt) {
-    TxRcvRateCnt = timerTickCount+100000/timerTickIntervalUsec; // 10/sec
+    TxRcvRateCnt = timerTickCount+txRcvUsec/timerTickIntervalUsec; // 5/sec
     txRcvNow = true;
+  }
+  // receiver TX packet rate
+  if(timerTickCount >= TxEscRateCnt) {
+    TxEscRateCnt = timerTickCount+txEscUsec/timerTickIntervalUsec; // 30/sec
+    txEscNow = true;
   }
 
 }
@@ -42,11 +47,12 @@ uint32_t SRXL2::getTimerTickCount() {
 void SRXL2::loopCode() {
   getPacketDataRxEsc();
   packetPassthruRxEsc();
-  packetTermRcv();
+  packetTermEsc();
   sendPacketTxRcv();
 
   getPacketDataRxRcv();
   packetPassthruRxRcv();
+  packetTermRcv();
   sendPacketTxEsc();
 }
 
@@ -111,6 +117,16 @@ void SRXL2::configSerialRCV(){
   Serial.println("RCV Serial2 started");
 }
 
+  void SRXL2::setThrottlePct(float throttle) {
+    usbThrottlePct = throttle;
+  }
+  void SRXL2::setSteerPct(float steer) {
+    usbSteerPct = steer;
+  }
+  void SRXL2::setShiftGear(String gear) {
+    usbShift = gear=="high"?true:false;
+  }
+
 // get a packet from the ESC RX pin
 // returns packet ID type, 0xCD, 0x80, ...
 void SRXL2::getPacketDataRxEsc(){
@@ -140,40 +156,74 @@ void SRXL2::extractPacketDataRxEsc() {
   // uint8_t packetID = buff[1];
   uint8_t packetLen = packetDataRxEsc.hdr.length;
   uint8_t packetID = packetDataRxEsc.hdr.packetType;
-  
+
+//printPacketRaw(buff, packetLen, "RxEsc: ");
+
   if(packetID==0x80) {
     // Telemetry packets
     uint8_t sensorID = packetDataRxEsc.tPacket.payload.sensorID;
+//Serial.print("sensorID = ");Serial.println(sensorID, HEX);
     if(sensorID==TELE_DEVICE_ESC) {
-      escRpm = RVRSB(packetDataRxEsc.tPacket.payload.esc.rpm);
-      escVin = RVRSB(packetDataRxEsc.tPacket.payload.esc.voltsInput)/100.0;
-      escTfet = RVRSB(packetDataRxEsc.tPacket.payload.esc.tempFET)/10.0;
-      escImotor = RVRSB(packetDataRxEsc.tPacket.payload.esc.currentMotor)/100.0;
-      escThrPct = packetDataRxEsc.tPacket.payload.esc.throttle/2.0;
-      escPoutPct = packetDataRxEsc.tPacket.payload.esc.powerOut/2.0;
-
-      // Serial.print("rpm = ");Serial.println(escRpm);
-      // Serial.print("vin = ");Serial.println(escVin);
-      // Serial.print("imot = ");Serial.println(escImotor);
-      // Serial.print("thr = ");Serial.println(escThrPct);
-      // Serial.print("pout = ");Serial.println(escPoutPct);
-      // printPacketRaw(buff, packetLen, "RxEsc: ");
+      decode_TELE_DEVICE_ESC(packetDataRxEsc);
+    } else if(sensorID==TELE_DEVICE_TEXTGEN) {
+      decode_TELE_DEVICE_TEXTGEN(packetDataRxEsc);
     } else if(sensorID==TELE_DEVICE_SMARTBATT) {
       uint8_t type = packetDataRxEsc.tPacket.payload.typeChannel;
+//Serial.print("type = ");Serial.println(type, HEX);
       if(type == SMARTBATT_MSG_TYPE_CELLS_1_6) {
-        sbatTemp =  RVRSB(packetDataRxEsc.tPacket.payload.scl.temperature_C);
-        sbatCellVolts[0] =  RVRSB(packetDataRxEsc.tPacket.payload.scl.cellVoltage_mV[0])/10000.0;
-        sbatCellVolts[1] =  RVRSB(packetDataRxEsc.tPacket.payload.scl.cellVoltage_mV[1])/10000.0;
-        sbatCellVolts[2] =  RVRSB(packetDataRxEsc.tPacket.payload.scl.cellVoltage_mV[2])/10000.0;
-Serial.print("sbatTemp = ");Serial.println(sbatTemp);
-Serial.print("sbatCellVolts[0] = ");Serial.println(sbatCellVolts[0]);
-Serial.print("sbatCellVolts[1] = ");Serial.println(sbatCellVolts[1]);
-Serial.print("sbatCellVolts[2] = ");Serial.println(sbatCellVolts[2]);
+        decode_SMARTBATT_MSG_TYPE_CELLS_1_6(packetDataRxEsc);
+      } else if(type == SMARTBATT_MSG_TYPE_REALTIME) {
+        decode_SMARTBATT_MSG_TYPE_REALTIME(packetDataRxEsc);
       }
     }
   }
 }
 
+void SRXL2::decode_SMARTBATT_MSG_TYPE_REALTIME(srxlPkt pkt) {
+  sbatRtTemp     = pkt.tPacket.payload.srt.temperature_C;
+  sbatRtDisA    = pkt.tPacket.payload.srt.dischargeCurrent_mA/1000.0;
+  sbatRtMinCellV  = pkt.tPacket.payload.srt.minCellVoltage_mV/1000.0;
+  sbatRtMaxCellV  = pkt.tPacket.payload.srt.maxCellVoltage_mV/1000.0;
+
+  // Serial.print("sbatRtTemp = ");Serial.println(sbatRtTemp);
+  // Serial.print("sbatRtDisA = ");Serial.println(sbatRtDisA);
+  // Serial.print("sbatRtMinCellV = ");Serial.println(sbatRtMinCellV);
+  // Serial.print("sbatRtMaxCellV = ");Serial.println(sbatRtMaxCellV);
+}
+
+void SRXL2::decode_SMARTBATT_MSG_TYPE_CELLS_1_6(srxlPkt pkt) {
+  sbatTemp = pkt.tPacket.payload.scl.temperature_C;
+  sbatCellVolts[0] = pkt.tPacket.payload.scl.cellVoltage_mV[0]/1000.0;
+  sbatCellVolts[1] = pkt.tPacket.payload.scl.cellVoltage_mV[1]/1000.0;
+  sbatCellVolts[2] = pkt.tPacket.payload.scl.cellVoltage_mV[2]/1000.0;
+
+  // Serial.print("sbatTemp = ");Serial.println(sbatTemp);
+  // Serial.print("sbatCellVolts[0] = ");Serial.println(sbatCellVolts[0]);
+  // Serial.print("sbatCellVolts[1] = ");Serial.println(sbatCellVolts[1]);
+  // Serial.print("sbatCellVolts[2] = ");Serial.println(sbatCellVolts[2]);
+}
+
+void SRXL2::decode_TELE_DEVICE_TEXTGEN(srxlPkt pkt) {
+  // Serial.print(pkt.tPacket.payload.txt.lineNumber); Serial.print(": ");
+  // for(int i=0; i<13; i++) Serial.print(pkt.tPacket.payload.txt.text[i]);
+  // Serial.println();
+}
+
+void SRXL2::decode_TELE_DEVICE_ESC(srxlPkt pkt) {
+  escRpm = RVRSB(pkt.tPacket.payload.esc.rpm);
+  escVin = RVRSB(pkt.tPacket.payload.esc.voltsInput)/100.0;
+  escTfet = RVRSB(pkt.tPacket.payload.esc.tempFET)/10.0;
+  escImotor = RVRSB(pkt.tPacket.payload.esc.currentMotor)/100.0;
+  escThrPct = pkt.tPacket.payload.esc.throttle/2.0;
+  escPoutPct = pkt.tPacket.payload.esc.powerOut/2.0;
+
+  // Serial.print("escRpm = ");Serial.println(escRpm);
+  // Serial.print("escVin = ");Serial.println(escVin);
+  // Serial.print("escTfet = ");Serial.println(escTfet);
+  // Serial.print("imot = ");Serial.println(escImotor);
+  // Serial.print("thr = ");Serial.println(escThrPct);
+  // Serial.print("pout = ");Serial.println(escPoutPct);
+}
 
 // get a packet from the RCV RX pin
 // returns packet ID type, 0xCD, 0x80, ...
@@ -205,7 +255,7 @@ void SRXL2::extractPacketDataRxRcv() {
 
   uint8_t packetID = packetDataRxRcv.hdr.packetType;
   uint8_t packetLen = packetDataRxRcv.hdr.length;
-// printPacketRaw(packetDataRxRcv.b, packetLen, "RxRcv: ");
+//printPacketRaw(packetDataRxRcv.b, packetLen, "RxRcv: ");
 
   if (packetID == 0xCD)  {
     uint8_t cmd = packetDataRxRcv.cPacket.payload.cmd;
@@ -222,7 +272,7 @@ void SRXL2::extractPacketDataRxRcv() {
     rcvThrottle = packetDataRxRcv.cPacket.payload.channelData.esc.throttle;
     rcvSteer    = packetDataRxRcv.cPacket.payload.channelData.esc.steer;
     rcvShift    = packetDataRxRcv.cPacket.payload.channelData.esc.shift;
-if(rcvReplyID == 0x40) Serial.println("RxRcv: Telemetry request");
+//if(rcvReplyID == 0x40) Serial.println("RxRcv: Telemetry request");
 // Serial.print("rcvThrottle = ");Serial.println(rcvThrottle);
 // Serial.print("rcvSteer = ");Serial.println(rcvSteer);
 // Serial.print("rcvShift = ");Serial.println(rcvShift);
@@ -243,12 +293,16 @@ void SRXL2::packetTermRcv() {
     packetDataTxRcv = packetDataTxRcv_default; // init with default
     // SMARTBATT Cell Volatages - 3 cells
     packetDataTxRcv.tPacket.payload.scl.temperature_C = sbatTemp;
+    // packetDataTxRcv.tPacket.payload.scl.cellVoltage_mV[0] = (uint16_t)(sbatCellVolts[0]*1000);
+    // packetDataTxRcv.tPacket.payload.scl.cellVoltage_mV[1] = (uint16_t)(sbatCellVolts[1]*1000);
+    // packetDataTxRcv.tPacket.payload.scl.cellVoltage_mV[2] = (uint16_t)(sbatCellVolts[2]*1000);
+    // in "term" mode cellVoltage is decoded as 0 - dont know why - use estimate
     packetDataTxRcv.tPacket.payload.scl.cellVoltage_mV[0] 
-                    = RVRSB((uint16_t)(sbatCellVolts[0]*10000));
+        = (uint16_t)(sbatRtMinCellV*1000);
     packetDataTxRcv.tPacket.payload.scl.cellVoltage_mV[1] 
-                    = RVRSB((uint16_t)(sbatCellVolts[1]*10000));
+        = (uint16_t)(((sbatRtMinCellV+sbatRtMaxCellV)/2)*1000);
     packetDataTxRcv.tPacket.payload.scl.cellVoltage_mV[2] 
-                    = RVRSB((uint16_t)(sbatCellVolts[2]*10000));
+        = (uint16_t)(sbatRtMaxCellV*1000);
     // add CRC
     calcCRC(packetDataTxRcv.b, packetDataTxRcv.hdr.length, true);
 checkCRC(packetDataTxRcv.b, packetDataTxRcv.hdr.length);
@@ -261,11 +315,35 @@ checkCRC(packetDataTxRcv.b, packetDataTxRcv.hdr.length);
 }
 
 void SRXL2::packetTermEsc(){
+  static uint16_t packetCnt = 0;
+  uint8_t replyID = 0x00; 
+  uint8_t rssi = 0x64;
+  if(mode!="term") return;
 
-  // packetDataRxEsc received and data extracted in getPacketDataRxEsc()
+  if(txEscNow) { // timer sets rate
+    txEscNow = false;
+    packetCnt++;
+    if(packetCnt%telemetryRate==0) replyID = 0x40; // request telemetry
+    if(packetCnt%2==0) rssi = 0xCF; // alternate rssi 0x64/0xCF like RxRcv
+    uint16_t throttle = usbThrottlePct*100 + 0x8000;
+    packetDataTxEsc = packetDataTxEsc_default; // init with default
+    // Control data throttle, steer, shift to ESC
+    packetDataTxEsc.cPacket.payload.replyID = replyID;
+    packetDataTxEsc.cPacket.payload.channelData.rssi = rssi;
+    packetDataTxEsc.cPacket.payload.channelData.esc.throttle 
+        = (uint16_t)(0x8000 + usbThrottlePct*5*21);
+    packetDataTxEsc.cPacket.payload.channelData.esc.steer
+        = (uint16_t)(0x8000 + usbSteerPct*5*21);
+    packetDataTxEsc.cPacket.payload.channelData.esc.shift
+        = usbShift?0xDAC0:0x2AC0;
+ 
 
-  // Generate the 0xCD TX packet with with control data from the USB interface
-  // initControlDataPacket(packetDataTxEsc, sizeof(packetDataTxEsc));
+//     // add CRC
+//     calcCRC(packetDataTxEsc.b, packetDataTxEsc.hdr.length, true);
+checkCRC(packetDataTxEsc.b, packetDataTxEsc.hdr.length);
+//printPacketRaw(packetDataTxRcv.b, packetDataTxRcv.hdr.length, "TxRcv: ");
+    packetTxEscready = true;
+  }
 
 }
 
@@ -293,12 +371,10 @@ void SRXL2::packetPassthruRxRcv(){
 }
 
 void SRXL2::sendPacketTxEsc(void){
-  static bool packetRxEscBusy_last = false;
   if(!packetTxEscready) return;
 
-  // wait until the end of the receive packet
+  // this controller is master, simply wait if slave is transmitting
   if(!packetRxEscBusy) {
-  // if(!packetRxEscBusy && packetRxEscBusy_last) {
 
     int packetLen = packetDataTxEsc.hdr.length;
   //Serial.print("TxEsc: "); Serial.println(packetLen);
@@ -311,8 +387,6 @@ void SRXL2::sendPacketTxEsc(void){
 
     packetTxEscready = false;
   }
-
-  packetRxEscBusy_last = packetRxEscBusy;
 }
 
 // Transmits RxEsc packet to TxRcv in passthru mode, non-blocking
@@ -366,7 +440,7 @@ void SRXL2::sendPacketTxRcv(void){
 
     packetTxRcvready = false;
   
-printPacketRaw(packetDataTxRcv.b, packetDataTxRcv.hdr.length, "TxRcv: ");
+//printPacketRaw(packetDataTxRcv.b, packetDataTxRcv.hdr.length, "TxRcv: ");
   }
 
   packetRxRcvBusy_last = packetRxRcvBusy;
@@ -451,7 +525,7 @@ bool SRXL2::checkCRC( uint8_t *packet, int length){
     return true;
   }
 
-Serial.println("BAD CRC");
+//Serial.println("BAD CRC");
   return false;
 
 }
@@ -473,31 +547,31 @@ void SRXL2::printPacketRaw(uint8_t *buff, int buffLen, String prefix){
 }
 
 
-void printPacketData(uint8_t *buff) {
-  if(buff[0] == 0x00) {
-    Serial.println("BAD CRC");
-    return;
-  }
-  // Extract telemetry data
-  if(buff[1]==0x80 && buff[4]==0x20) {
-    int16_t rpm  = (int16_t)buff[6]<<8 | buff[7];
-    int16_t vin  = (int16_t)buff[8]<<8 | buff[9];
-    int16_t tfet = (int16_t)buff[10]<<8 | buff[11];
-    int16_t imot = (int16_t)buff[12]<<8 | buff[13];
-    int16_t tbec = (int16_t)buff[14]<<8 | buff[15];
-    int8_t ibec  = (int8_t)buff[16];
-    int8_t vbec  = (int8_t)buff[17];
-    int8_t thr   = (int8_t)buff[18];
-    int8_t pout  = (int8_t)buff[19];
-  Serial.print("ESC Telemetry: ");
-  Serial.print(rpm);Serial.print(" ");
-  Serial.print(vin);Serial.print(" ");
-  Serial.print(imot);Serial.print(" ");
-  Serial.print(thr);Serial.print(" ");
-  Serial.print(pout);Serial.print(" ");
-  Serial.println();
-  }
-}
+// void printPacketData(uint8_t *buff) {
+//   if(buff[0] == 0x00) {
+//     Serial.println("BAD CRC");
+//     return;
+//   }
+//   // Extract telemetry data
+//   if(buff[1]==0x80 && buff[4]==0x20) {
+//     int16_t rpm  = (int16_t)buff[6]<<8 | buff[7];
+//     int16_t vin  = (int16_t)buff[8]<<8 | buff[9];
+//     int16_t tfet = (int16_t)buff[10]<<8 | buff[11];
+//     int16_t imot = (int16_t)buff[12]<<8 | buff[13];
+//     int16_t tbec = (int16_t)buff[14]<<8 | buff[15];
+//     int8_t ibec  = (int8_t)buff[16];
+//     int8_t vbec  = (int8_t)buff[17];
+//     int8_t thr   = (int8_t)buff[18];
+//     int8_t pout  = (int8_t)buff[19];
+//   Serial.print("ESC Telemetry: ");
+//   Serial.print(rpm);Serial.print(" ");
+//   Serial.print(vin);Serial.print(" ");
+//   Serial.print(imot);Serial.print(" ");
+//   Serial.print(thr);Serial.print(" ");
+//   Serial.print(pout);Serial.print(" ");
+//   Serial.println();
+//   }
+// }
 
 uint16_t SRXL2::calcCRC(byte *packet, int length, bool updateCRC) {
   // Use bitwise method
@@ -525,19 +599,13 @@ uint16_t SRXL2::calcCRC(byte *packet, int length, bool updateCRC) {
   return crc;
 }
 
-void SRXL2::printPacketRxEsc(int id){
-  printPacket("RxEsc: ", packetDataRxEsc.b, id);
-}
-void SRXL2::printPacketRxRcv(int id){
-  printPacket("RxRcv: ", packetDataRxRcv.b, id);
-}
 
 void SRXL2::printPacket(String s, uint8_t *buff, int id){
   if(id == 0) return;
   Serial.print(mode);
   Serial.print(s);
   if(id==-1) {
-    Serial.println("BAD CRC");
+//    Serial.println("BAD CRC");
   } else {
     if(id!=0x0 && id==buff[1]){
       int len = buff[2];

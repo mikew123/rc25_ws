@@ -20,13 +20,14 @@
 #define RVRSB(W) (((W&0xFF)<<8) | (W>>8))
 
 // SRXL2 packetsm****************************************************************
-// Spektrum SRXL header
+// Spektrum SRXL header for all packet types
 typedef struct SrxlHeader
 {
     uint8_t srxlID;     // Always 0xA6 for SRXL2
     uint8_t packetType;
     uint8_t length;
 } PACKED SrxlHeader;
+
 
 // SRXL2 ESC channel data 
 typedef struct SrxlEscChannelUsed

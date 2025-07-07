@@ -110,19 +110,22 @@ bool jsonParse(const char *jsonStr) {
     Serial.print("steer = ");
     Serial.println(sSteerPct);
     pwm.setSteerPct(sSteerPct);
+    srx.setSteerPct(sSteerPct);
   }
 
   if (myObject.hasOwnProperty("thr")) {
     sThrottlePct = (int) myObject["thr"];
     Serial.print("throttle = ");
     Serial.println(sThrottlePct);
+    srx.setThrottlePct(sThrottlePct);
   }
 
   if (myObject.hasOwnProperty("sft")) {
     sShiftGear = (String) myObject["sft"];
     Serial.print("gear = ");
     Serial.println(sShiftGear);
-    pwm.setShiftGear(sShiftGear);
+    pwm.setShiftGear(sShiftGear=="high"?"high":"low");
+    srx.setShiftGear(sShiftGear=="high"?"high":"low");
   }
 
   return true;
