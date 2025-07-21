@@ -115,8 +115,8 @@ private:
   void getPacketDataRxEsc();
   void getPacketDataRxRcv();
 
-  void extractPacketDataRxEsc();
-  void extractPacketDataRxRcv();
+  void decodePacketDataRxEsc();
+  void decodePacketDataRxRcv();
 
   void decode_TELE_DEVICE_ESC(srxlPkt pkt);
   void decode_TELE_DEVICE_TEXTGEN(srxlPkt pkt);

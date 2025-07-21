@@ -27,12 +27,14 @@ void SRXL2::timerTick(){
       TxRcvCnt=0;
     }
   }
+
   // receiver TX packet rate
   if(timerTickCount >= TxRcvRateCnt) {
     TxRcvRateCnt = timerTickCount+txRcvUsec/timerTickIntervalUsec; // 5/sec
     txRcvNow = true;
   }
-  // receiver TX packet rate
+
+  // ESC controller TX packet rate
   if(timerTickCount >= TxEscRateCnt) {
     TxEscRateCnt = timerTickCount+txEscUsec/timerTickIntervalUsec; // 30/sec
     txEscNow = true;
@@ -44,6 +46,7 @@ uint32_t SRXL2::getTimerTickCount() {
   return timerTickCount;
 }
 
+// call from arduino loop() to execute SRXL2 code
 void SRXL2::loopCode() {
   getPacketDataRxEsc();
   packetPassthruRxEsc();
@@ -146,14 +149,14 @@ void SRXL2::getPacketDataRxEsc(){
 
   static bool lastReady = false;
   if(packetRxEscReady==true && lastReady==false) {
-    extractPacketDataRxEsc();
+    decodePacketDataRxEsc();
   }
   lastReady = packetRxEscReady;
 }
-void SRXL2::extractPacketDataRxEsc() {
+
+void SRXL2::decodePacketDataRxEsc() {
   // Process telemetry data
   uint8_t *buff = packetDataRxEsc.b;
-  // uint8_t packetID = buff[1];
   uint8_t packetLen = packetDataRxEsc.hdr.length;
   uint8_t packetID = packetDataRxEsc.hdr.packetType;
 
@@ -245,12 +248,12 @@ void SRXL2::getPacketDataRxRcv(){
 
   static bool lastReady = false;
   if(packetRxRcvReady==true && lastReady==false) {
-    extractPacketDataRxRcv();
+    decodePacketDataRxRcv();
   }
   lastReady = packetRxRcvReady;
 }
 
-void SRXL2::extractPacketDataRxRcv() {
+void SRXL2::decodePacketDataRxRcv() {
   srxlPkt pkt = packetDataRxRcv;
 
   uint8_t packetID = packetDataRxRcv.hdr.packetType;
@@ -273,7 +276,7 @@ void SRXL2::extractPacketDataRxRcv() {
     rcvSteer    = packetDataRxRcv.cPacket.payload.channelData.esc.steer;
     rcvShift    = packetDataRxRcv.cPacket.payload.channelData.esc.shift;
 //if(rcvReplyID == 0x40) Serial.println("RxRcv: Telemetry request");
-// Serial.print("rcvThrottle = ");Serial.println(rcvThrottle);
+Serial.print("rcvThrottle = ");Serial.println(rcvThrottle);
 // Serial.print("rcvSteer = ");Serial.println(rcvSteer);
 // Serial.print("rcvShift = ");Serial.println(rcvShift);
 //printPacketRaw(packetDataRxRcv.b, packetLen, "RxRcv: ");

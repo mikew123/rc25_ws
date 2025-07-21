@@ -38,6 +38,8 @@ Two DC-DC converters/regulators for computer and sensors in sealed box in engine
   When the computer is selected it is used as a kill switch </br>
   When receiver is selected it is used for manual steering control </br>
 - WIFI for development and debug and course configuration </br>
+- Tiger VNC server on Pi ; Tiger VNC Viewer on PC 192.168.1.155<br>
+Tiger VNC viewer must be started from .exe file
 
 # Sensors
 ## GPS
