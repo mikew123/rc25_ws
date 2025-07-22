@@ -5,9 +5,121 @@
 #include <Arduino_JSON.h>
 #include <strings.h>
 
+
 #include "RPi_Pico_TimerInterrupt.h"
 RPI_PICO_Timer ITimer(0);
 #define TIMER_PER_USEC 100
+
+
+#include "pio_encoder.h"
+#define PIN_SHAFT_ODOM_A 14
+#define PIN_SHAFT_ODOM_B 15
+#define ODOM_PER_MSEC 100 /* 10 msec, 100 Hz */
+PioEncoder shaftEncoder = {PIN_SHAFT_ODOM_A};
+
+// ODOM POD
+#define ODOM_RADUIS_M (0.048/2)
+#define ODOM_CIRCUMFERENCE_M (2*PI*ODOM_RADUIS_M)
+#define ODOM_ENCODER_COUNT_PER_ROTATION (2000.0)
+
+uint32_t odomTimerLastMs = 0;
+
+int encoderPolarity = 1;
+int32_t currEncoderCount = 0;
+
+int32_t lastEncoderCount = 0;
+int16_t diffEncoderCount = 0;
+double currTravelMeters = 0;
+double diffTravelMeters = 0;
+double velocityMPS = 0;
+uint32_t odomCurrTimeMs = 0;
+uint32_t odomLastTimeMs = 0;
+uint32_t odomDiffTimeMs = 0;
+
+
+
+void ResetEncoderValues() {
+  odomCurrTimeMs = millis();
+  odomLastTimeMs = odomCurrTimeMs;
+  odomDiffTimeMs = 0;
+
+  currEncoderCount = 0;
+
+
+  lastEncoderCount = 0;
+  diffEncoderCount = 0;
+  currTravelMeters = 0;
+  diffTravelMeters = 0;
+  velocityMPS = 0;
+}
+
+void InitEncoders() {
+  shaftEncoder.begin();
+  shaftEncoder.reset();
+
+  ResetEncoderValues();
+}
+
+// This is called from an interrupt handler - be quick!
+// TODO: should it have its own interrupt?
+void OdomHandler() {
+
+
+  odomCurrTimeMs = millis();
+
+  if(odomCurrTimeMs < (odomLastTimeMs + ODOM_PER_MSEC)) return;
+
+  odomDiffTimeMs = odomCurrTimeMs - odomLastTimeMs;
+  odomLastTimeMs = odomCurrTimeMs;
+
+  // read pod encoder
+  currEncoderCount = shaftEncoder.getCount() * encoderPolarity;
+
+
+  // Process pod encoder values 
+  diffEncoderCount = currEncoderCount - lastEncoderCount;
+  lastEncoderCount = currEncoderCount;
+Serial.print(diffEncoderCount);Serial.print(":");
+  // currTravelMeters = (currEncoderCount/ODOM_ENCODER_COUNT_PER_ROTATION)*ODOM_CIRCUMFERENCE_M;
+  // diffTravelMeters = (diffEncoderCount/ODOM_ENCODER_COUNT_PER_ROTATION)*ODOM_CIRCUMFERENCE_M;
+  // velocityMPS = diffTravelMeters/(1e-6*diffTimeUs);
+
+
+  // // PID loop to regulate R and L wheel speed based on wheel encoder values
+  // for(int enc=0; enc<2; enc++) {
+  //   // Limit acceleration and decelleration of wheel velocity
+  //   float targetMps = WheelMps[enc];
+  //   float limitedMps = WheelMpsAccLimited[enc];
+  //   float dMpsAcc = wheelAccellerationMaxMpsPs * (diffTimeUs/1e6);
+
+  //   if(limitedMps != targetMps) {
+  //     if(limitedMps < targetMps) {
+  //       limitedMps = limitedMps + dMpsAcc;
+  //       if(limitedMps > targetMps) limitedMps = targetMps;
+  //     } else if(limitedMps > targetMps) {
+  //       limitedMps = limitedMps - dMpsAcc;
+  //       if(limitedMps < targetMps) limitedMps = targetMps;
+  //     } 
+  //     WheelMpsAccLimited[enc] = limitedMps;
+  //   }
+
+  //   // error is positive when measured velocity > target velocity
+  //   PidErrorMps[enc] = velocityMPS[enc] - limitedMps;
+  //   PidPropPct[enc] = PidErrorMps[enc] * PidPropCoef[enc];
+  //   PidIntPct[enc] += PidErrorMps[enc] * PidIntCoef[enc];
+  //   if(PidIntPct[enc] > +PidIntPctMax) PidIntPct[enc] = +PidIntPctMax;
+  //   if(PidIntPct[enc] < -PidIntPctMax) PidIntPct[enc] = -PidIntPctMax;
+
+  //   float pct = 100*(PidPropPct[enc] + PidIntPct[enc]);
+  //   // TODO: limit pct here? or count on limit check in MotorDrivePct()
+  //   MotorPct[enc] = pct;
+  // }
+
+  // // Set wheel motor drive PWM percent
+  // MotorDrivePct(MotorPct[1], MotorPct[0]);
+
+}
+
 
 
 // local files in arduino sketch folder
@@ -55,6 +167,7 @@ int loopStatusPeriod = 1000;
 *******************************************/
 
 // Configure the timer for the SRXL2, used to time TXEN signals
+// Also used for Odom wheel encoder
 void configTimer() {
   srx.configTimerTickIntervalUsec(TIMER_PER_USEC);
   if (ITimer.attachInterruptInterval(TIMER_PER_USEC, timerTick))
@@ -64,10 +177,11 @@ void configTimer() {
   Serial.flush();  
 }
 
-// Tick the timer in SRXL2 
+// Tick the timer in SRXL2 and execute Odom Wheel encoder
 bool timerTick(struct repeating_timer *t) { 
   (void) t;
   srx.timerTick();
+  OdomHandler();
   return true;
 }
 
@@ -187,6 +301,8 @@ void sendStatusMsg() {
 
   myObject["rca"] = receiverSignalsValid;
 
+  myObject["odom"] = diffEncoderCount;
+
   String jsonString = JSON.stringify(myObject);
   Serial.println(jsonString);
 
@@ -259,6 +375,8 @@ void setup() {
   configTimer();
   pwm.configPWM();
   attachInterrupts();
+  InitEncoders();
+
 
 }
 

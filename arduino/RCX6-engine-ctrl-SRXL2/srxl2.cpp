@@ -276,7 +276,7 @@ void SRXL2::decodePacketDataRxRcv() {
     rcvSteer    = packetDataRxRcv.cPacket.payload.channelData.esc.steer;
     rcvShift    = packetDataRxRcv.cPacket.payload.channelData.esc.shift;
 //if(rcvReplyID == 0x40) Serial.println("RxRcv: Telemetry request");
-Serial.print("rcvThrottle = ");Serial.println(rcvThrottle);
+//Serial.print("rcvThrottle = ");Serial.println(rcvThrottle);
 // Serial.print("rcvSteer = ");Serial.println(rcvSteer);
 // Serial.print("rcvShift = ");Serial.println(rcvShift);
 //printPacketRaw(packetDataRxRcv.b, packetLen, "RxRcv: ");
@@ -733,4 +733,3 @@ void SRXL2::printPacket(String s, uint8_t *buff, int id){
 // //     SrxlControlData payload;
 // // //  uint16_t        crc;    // NOTE: Since this packet is variable-length, we can't use this value anyway
 // // } PACKED SrxlControlPacket;
-
