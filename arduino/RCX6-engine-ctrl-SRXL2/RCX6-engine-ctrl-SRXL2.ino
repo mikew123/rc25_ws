@@ -11,10 +11,15 @@ RPI_PICO_Timer ITimer(0);
 #define TIMER_PER_USEC 100
 
 
+/**************************************************************************************
+ * ODOM encoder
+ * This needs to be moved to its own library class
+ **************************************************************************************/
+
 #include "pio_encoder.h"
 #define PIN_SHAFT_ODOM_A 14
 #define PIN_SHAFT_ODOM_B 15
-#define ODOM_PER_MSEC 100 /* 10 msec, 100 Hz */
+#define ODOM_PER_MSEC 10 /* 10 msec, 100 Hz */
 PioEncoder shaftEncoder = {PIN_SHAFT_ODOM_A};
 
 // ODOM POD
@@ -79,7 +84,7 @@ void OdomHandler() {
   // Process pod encoder values 
   diffEncoderCount = currEncoderCount - lastEncoderCount;
   lastEncoderCount = currEncoderCount;
-Serial.print(diffEncoderCount);Serial.print(":");
+//Serial.print(diffEncoderCount);Serial.print(":");
   // currTravelMeters = (currEncoderCount/ODOM_ENCODER_COUNT_PER_ROTATION)*ODOM_CIRCUMFERENCE_M;
   // diffTravelMeters = (diffEncoderCount/ODOM_ENCODER_COUNT_PER_ROTATION)*ODOM_CIRCUMFERENCE_M;
   // velocityMPS = diffTravelMeters/(1e-6*diffTimeUs);
@@ -120,6 +125,9 @@ Serial.print(diffEncoderCount);Serial.print(":");
 
 }
 
+/**************************************************************************************
+ * 
+ **************************************************************************************/
 
 
 // local files in arduino sketch folder
