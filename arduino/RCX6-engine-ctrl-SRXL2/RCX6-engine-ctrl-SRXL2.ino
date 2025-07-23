@@ -303,6 +303,10 @@ void sendStatusMsg() {
 
   myObject["odom"] = diffEncoderCount;
 
+  // get motor RPM from telemetry
+  int motorRpm = srx.getEscRpm();
+  myObject["rpm"] = motorRpm; 
+
   String jsonString = JSON.stringify(myObject);
   Serial.println(jsonString);
 

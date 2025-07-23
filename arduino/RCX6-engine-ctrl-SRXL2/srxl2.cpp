@@ -130,6 +130,14 @@ void SRXL2::configSerialRCV(){
     usbShift = gear=="high"?true:false;
   }
 
+  int SRXL2::getEscRpm(void) {
+    return escRpm;
+  }
+
+  float SRXL2::getEscVin(void) {
+    return escVin;
+  }
+
 // get a packet from the ESC RX pin
 // returns packet ID type, 0xCD, 0x80, ...
 void SRXL2::getPacketDataRxEsc(){

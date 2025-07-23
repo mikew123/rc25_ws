@@ -33,6 +33,8 @@ public:
   void setSteerPct(float steer);
   void setShiftGear(String gear);
 
+  int getEscRpm(void);
+  float getEscVin(void);
 
   // Create timers for clearing the serial transmit enable pins
   void timerTick();
