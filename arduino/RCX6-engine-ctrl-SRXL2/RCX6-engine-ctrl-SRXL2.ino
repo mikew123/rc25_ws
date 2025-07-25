@@ -167,7 +167,7 @@ String sShiftGear = "low";
 unsigned long statusMillis_last = 0;
 
 String mode_g = "bypass";
-int loopStatusPeriod = 1000;
+int loopStatusPeriod = 100;//1000;
 
 
 /***************************************
@@ -301,15 +301,20 @@ void sendStatusMsg() {
 
   JSONVar myObject;
 
-  myObject["gear"] = pwm.getShiftGear();
+  // myObject["gear"] = pwm.getShiftGear();
 
-  myObject["mode"] = mode_g;
+  // myObject["mode"] = mode_g;
 
-  myObject["fsa"] = failsafeActive;
+  // myObject["fsa"] = failsafeActive;
 
-  myObject["rca"] = receiverSignalsValid;
+  // myObject["rca"] = receiverSignalsValid;
 
-  myObject["odom"] = diffEncoderCount;
+
+  myObject["millis"] = millis();
+
+  myObject["ocurr"] = currEncoderCount;
+
+  myObject["odiff"] = diffEncoderCount;
 
   // get motor RPM from telemetry
   int motorRpm = srx.getEscRpm();
