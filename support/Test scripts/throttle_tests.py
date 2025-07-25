@@ -22,7 +22,7 @@ for throttle in range(20, 101, 1):
     ser.write(cmd.encode('utf-8') + b'\n')
     ser.flush()
 
-    for _ in range(4):
+    for _ in range(10):
         # Wait until a valid JSON string is read from the serial port
         while True:
             if ser.in_waiting:
@@ -34,7 +34,7 @@ for throttle in range(20, 101, 1):
                     continue
             time.sleep(0.05)
         data = json.loads(line)
-        print (f"Tms: {data['millis']}, THR: {throttle}, RPM: {data['rpm']}, Odom: {data['odiff']}")
+        print (f"Tms: {data['millis']}, THR: {throttle}, RPM: {data['rpm']}, Odom: {data['ocurr']}")
 
 # Reset the throttle to 0 after testing
 cmd = json.dumps({"thr": 0})

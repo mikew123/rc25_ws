@@ -30,7 +30,7 @@ while currT < startT + 84.800 :
     currT = time.time()
     if ser.in_waiting:
         line = ser.readline().decode('utf-8').strip()
-        print(f"{currT} {line}")
+        print(f"{line}")
 
 # Reset the throttle to 0 after testing
 cmd = json.dumps({"thr": 0})

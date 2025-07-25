@@ -143,3 +143,19 @@ https://github.com/SpektrumRC/SRXL2
 https://github.com/SpektrumRC/SRXL2/blob/master/Docs/SRXL2%20Specification.pdf
 
 https://github.com/SpektrumRC/SpektrumDocumentation/blob/master/Telemetry/spektrumTelemetrySensors.h
+
+
+# Velocity control
+
+The Spektrum ESC motor speed control is in percent throttle. It seems like any Throttle value less than 21 does not activate the motor so the range seems to be about 20 to 100 where 20 is 0 RPM. Reverse seems to be about the same -20 to -100.<br>
+An early test plot of Throttle vs Rpm and Velocity(M/S):<br>
+
+<img src="support/Test scripts/test_plot.png"></br>
+The sample rate is 10Hz and there are 10 values for each throtthe value 20 to 100<br>
+Throttle is not scaled but offset by 20 so the plot range is 0 to 80 for actual values of 20% to 100%. Velocity Mps is scaled by 100 to graph well. Motor Rpm is scaled by 0.055.<br>
+The motor RPM extracted from the ESC telemetry as basically linear with Throttle but has steps so is not very usable. The Velocity Meters/Second is very linear with Throttle except at the upper throttle values above 90% (70 on plot) where it tapers off a bit. The velocity has some noise, it might be caused by the "bumps" on the omni wheel of the GoBuilda Pod Wheel encoder that I used measure the rottaion of the drive shaft by pressing against it.<br>
+The plotted velocity Mps was calculated as (millisDiff/1000)/(odomDiff/5,615). The scale factor of 5,615 was determined my measuring the circumference of the tire (~570mm) and tweaking the odom encoder change after the tire rotates 10 times. (The throttle was set to 25% and the time it was running tweaked to get exactly 10 rotations.)<br>
+<br>
+This is a detail view of the first 200 samples:
+<img src="support/Test scripts/test_plot_detail.png"></br>
+
