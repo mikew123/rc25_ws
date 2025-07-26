@@ -159,7 +159,7 @@ void attachInterrupts() {
 bool failsafeActive = false;
 bool receiverSignalsValid = true;
 
-int sThrottlePct = 0;
+float sThrottlePct = 0.0;
 int sSteerPct = 0; 
 String sShiftGear = "low";
 
@@ -190,9 +190,71 @@ bool timerTick(struct repeating_timer *t) {
   (void) t;
   srx.timerTick();
   OdomHandler();
+  watchdogTimer();
   return true;
 }
 
+/********************************************************
+* Ackerman conversion
+* Convert linear and angular velocity to steering and throttle percent
+*********************************************************/
+float wheelCircumference = 750.0; // mm
+float odomCountPerWheelRotation = 3201.6;
+void AckermanConvert(float linX, float angZ) {
+  // Ackerman steering conversion
+  // linear X is in m/s, angular Z is in rad/s  
+  // From test plots, need to determine a good formula from measured data
+  // mps = about 0 at thrPct = 20;
+  // mps = about 0.8 at thrPct = 100;
+  float pctPerFwdMps = 90.58;
+  float pctPerRvsMps = 106.05;
+  // TODO: PWM for lower speeds?
+  if(linX==0.0) sThrottlePct = 0;
+  else if(linX>0.0) {
+    sThrottlePct = 20 + (linX * pctPerFwdMps);
+    if(sThrottlePct > 100) sThrottlePct = 100;
+    if(sThrottlePct < 21) sThrottlePct = 0;
+  } else {
+    sThrottlePct = -20 + (linX * pctPerRvsMps);
+    if(sThrottlePct < -100) sThrottlePct = -100;
+    if(sThrottlePct > -21) sThrottlePct = 0;
+  }
+  Serial.print("throttle = ");
+  Serial.println(sThrottlePct);
+  srx.setThrottlePct(sThrottlePct);
+  
+  // TODO: steering conversion from angular velocity
+}
+
+/********************************************************
+* Watchdog timer
+* Called from timer "Tick" interrupt
+*********************************************************/
+uint32_t wdTimeStopMsec = 0; // watchdog time in msec, 0=disabled
+uint32_t wdTimeMsec = 0;
+// Called from interrupt 
+void watchdogTimer() {
+  if (wdTimeStopMsec > 0) {
+    if (millis() > wdTimeStopMsec) {
+      // watchdog timeout
+      wdTimeStopMsec = 0; // disable watchdog until new command
+      Serial.println("Watchdog timeout, stopping motor");
+      sThrottlePct = 0;
+      sSteerPct = 0;
+      srx.setThrottlePct(sThrottlePct);
+      pwm.setSteerPct(sSteerPct);
+    }
+  }
+}
+
+// Call at each valid command to reset the watchdog timer
+void resetWatchdogTimer() {
+  if (wdTimeMsec > 0) {
+    wdTimeStopMsec = millis() + wdTimeMsec;
+  } else {
+    wdTimeStopMsec = 0; // disable watchdog
+  }
+}
 
 /********************************************************
 * USB serial JSON code
@@ -211,12 +273,15 @@ bool jsonParse(const char *jsonStr) {
 
   JSONVar myObject = JSON.parse(jsonStr);
 
-  if (JSON.typeof(myObject) == "undefined") {
-    Serial.println("Parsing JSON string input failed!");
+//  if (JSON.typeof(myObject) == "undefined") {
+  if (JSON.typeof(myObject) != "object") {
+    Serial.println("Parsing JSON string input failed! Not a valid object");
     return false;
   }
 
+  resetWatchdogTimer();
 
+  // mode bypass/passthru/term
   if (myObject.hasOwnProperty("mode")) {
     mode_g = (String) myObject["mode"];
     Serial.print("mode = ");
@@ -227,6 +292,32 @@ bool jsonParse(const char *jsonStr) {
     pwm.setMode(mode_g);
   }
 
+  // Watchdog time integer milli-seconds, 0=disabled
+  // any command will reset the watchdog timer
+  // If watchdog times out then the motor stops
+  if (myObject.hasOwnProperty("wd")) {
+    wdTimeMsec = (int) myObject["wd"];
+    Serial.print("wdTimeMsec = ");
+    Serial.println(wdTimeMsec);
+    resetWatchdogTimer();
+  }
+
+  // Command Velocity array [linear_X, angular_Z]
+  if (myObject.hasOwnProperty("cv")) {
+    JSONVar cv;
+    cv = myObject["cv"];
+    Serial.print("CmdVar = [lx=");
+    Serial.print((double)cv[0]);
+    Serial.print(", az=");
+    Serial.print((double)cv[1]);
+    Serial.println("]");
+
+    float linX = (double)cv[0];
+    float angZ = (double)cv[1];
+    AckermanConvert(linX, angZ);
+  }
+
+  // Steering percent
   if (myObject.hasOwnProperty("str")) {
     sSteerPct = (int) myObject["str"];
     Serial.print("steer = ");
@@ -235,13 +326,15 @@ bool jsonParse(const char *jsonStr) {
     srx.setSteerPct(sSteerPct);
   }
 
+  // Throttle percent
   if (myObject.hasOwnProperty("thr")) {
-    sThrottlePct = (int) myObject["thr"];
+    sThrottlePct = (double) myObject["thr"];
     Serial.print("throttle = ");
     Serial.println(sThrottlePct);
     srx.setThrottlePct(sThrottlePct);
   }
 
+  // Shift gear high/low
   if (myObject.hasOwnProperty("sft")) {
     sShiftGear = (String) myObject["sft"];
     Serial.print("gear = ");
