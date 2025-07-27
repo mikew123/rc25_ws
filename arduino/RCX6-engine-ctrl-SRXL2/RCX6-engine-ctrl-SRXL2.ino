@@ -34,7 +34,7 @@ PioEncoder shaftEncoder = {PIN_SHAFT_ODOM_A};
 uint32_t odomTimerLastMs = 0;
 
 int encoderPolarity = 1;
-int32_t currEncoderCount = 0;
+volatile int32_t currEncoderCount[2] = {0, 0}; // [0]: millis timestamp, [1]: encoder count
 
 int32_t lastEncoderCount = 0;
 int16_t diffEncoderCount = 0;
@@ -52,8 +52,10 @@ void ResetEncoderValues() {
   odomLastTimeMs = odomCurrTimeMs;
   odomDiffTimeMs = 0;
 
-  currEncoderCount = 0;
-
+  noInterrupts();
+  currEncoderCount[0] = millis(); // timestamp
+  currEncoderCount[1] = 0;        // encoder count
+  interrupts();
 
   lastEncoderCount = 0;
   diffEncoderCount = 0;
@@ -87,16 +89,20 @@ void OdomHandler() {
     odomDiffTimeMs = odomCurrTimeMs - odomLastTimeMs;
     odomLastTimeMs = odomCurrTimeMs;
     // read pod encoder
-    currEncoderCount = shaftEncoder.getCount() * encoderPolarity;
+    noInterrupts();
+    currEncoderCount[0] = millis(); // timestamp
+    currEncoderCount[1] = shaftEncoder.getCount() * encoderPolarity; // encoder count
+    interrupts();
     // Next odom sample time
     odomTickCount = odomTickCounter + ODOM_PER_USEC;
   }
 
   // PID code
   if(odomTickCounter > pidTickCount) {
-    // Process pod encoder values 
-    diffEncoderCount = currEncoderCount - lastEncoderCount;
-    lastEncoderCount = currEncoderCount;
+    noInterrupts();
+    diffEncoderCount = currEncoderCount[1] - lastEncoderCount;
+    lastEncoderCount = currEncoderCount[1];
+    interrupts();
     // Next PID process time
     pidTickCount = odomTickCounter + ODOM_PER_USEC;
   }
@@ -231,17 +237,33 @@ bool timerTick(struct repeating_timer *t) {
 * Ackerman conversion
 * Convert linear and angular velocity to steering and throttle percent
 *********************************************************/
-float wheelCircumference = 750.0; // mm
-float odomCountPerWheelRotation = 3201.6;
+const float wheelCircumference = 750.0; // mm
+const float odomCountPerWheelRotation = 3201.6;
+
+// conversion  of linear x to throttle percent, + and - are different
+const float pctPerFwdMps = 90.58;
+const float pctPerRvsMps = 106.05;
+
+// Ackermann steering parameters
+const float wheelBase = 0.490; // meters, front to back
+const float trackWidth = 0.310; // meters, left to right
+const float maxSteeringRad = 0.523; // ~30 deg, adjust for your hardware
+
+// Add global variables for last commanded velocities
+float lastLinX = 0.0;
+float lastAngZ = 0.0;
+// Add global for limited angular Z
+float limitedAngZ = 0.0;
+
 void AckermanConvert(float linX, float angZ) {
   // Ackerman steering conversion
   // linear X is in m/s, angular Z is in rad/s  
-  // From test plots, need to determine a good formula from measured data
-  // mps = about 0 at thrPct = 20;
-  // mps = about 0.8 at thrPct = 100;
-  float pctPerFwdMps = 90.58;
-  float pctPerRvsMps = 106.05;
-  // TODO: PWM for lower speeds?
+
+  // Save last commanded velocities
+  lastLinX = linX;
+  lastAngZ = angZ;
+
+  // Throttle calculation
   if(linX==0.0) sThrottlePct = 0;
   else if(linX>0.0) {
     sThrottlePct = 20 + (linX * pctPerFwdMps);
@@ -254,9 +276,23 @@ void AckermanConvert(float linX, float angZ) {
   }
   Serial.print("throttle = ");
   Serial.println(sThrottlePct);
+
+  // Ackermann steering calculation
+  // steering_angle = atan2(wheelBase * angular_z, linX)
+  float steeringAngleRad = atan2(wheelBase * angZ, linX);
+
+  // Map steering angle to percent [-100, 100]
+  sSteerPct = (int)(steeringAngleRad / maxSteeringRad * 100.0);
+  if(sSteerPct > 100) sSteerPct = 100;
+  if(sSteerPct < -100) sSteerPct = -100;
+  Serial.print("steer = ");
+  Serial.println(sSteerPct);
+
+  // Convert limited percent back to angular Z
+  limitedAngZ = (sSteerPct / 100.0) * maxSteeringRad * linX / wheelBase;
+
   srx.setThrottlePct(sThrottlePct);
-  
-  // TODO: steering conversion from angular velocity
+  pwm.setSteerPct(sSteerPct);
 }
 
 /********************************************************
@@ -424,8 +460,15 @@ void configSerial(){
 
 void sendOdomMsg() {
   JSONVar myObject;
-  myObject["stamp"] = millis();
-  myObject["enc"] = currEncoderCount;
+  uint32_t stamp, enc;
+
+  noInterrupts();
+  stamp = currEncoderCount[0]; // timestamp
+  enc = currEncoderCount[1]; // encoder count
+  interrupts();
+
+  myObject["stamp"] = (uint32_t)stamp;
+  myObject["enc"] = (int32_t)enc; // encoder values are + or -
 
   String jsonString = JSON.stringify(myObject);
   Serial.println(jsonString);
@@ -449,6 +492,10 @@ void sendStatusMsg() {
   // get motor RPM from telemetry
   int motorRpm = srx.getEscRpm();
   myObject["rpm"] = motorRpm; 
+
+  // Add last commanded linear X and limited angular Z
+  myObject["linx"] = lastLinX;
+  myObject["angz"] = limitedAngZ;
 
   String jsonString = JSON.stringify(myObject);
   Serial.println(jsonString);
