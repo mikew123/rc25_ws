@@ -38,8 +38,10 @@ public:
 
   // Create timers for clearing the serial transmit enable pins
   void timerTick();
-  void configTimerTickIntervalUsec(uint32_t usec);
+  void setTimerTickIntervalUsec(uint32_t usec);
   uint32_t getTimerTickCount();
+  void setTxEscUsec(uint32_t usec);
+
 
 private:
   String mode = "bypass";
@@ -95,7 +97,7 @@ private:
 
   int telemetryRate = 10; // every 10th packet
 
-  uint32_t txEscUsec = 33333; // 30/sec
+  uint32_t txEscUsec = 33333; //default 30/sec
   uint32_t TxEscCnt = 0;
   uint32_t TxEscRateCnt = 0;
   bool txEscNow = false;

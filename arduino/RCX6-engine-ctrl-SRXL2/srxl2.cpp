@@ -82,10 +82,15 @@ void SRXL2::startTxRcvEnable(uint32_t tus) {
   packetTxRcvBusy = true;
 }
 
-void SRXL2::configTimerTickIntervalUsec(uint32_t usec) {
+void SRXL2::setTimerTickIntervalUsec(uint32_t usec) {
   timerTickIntervalUsec = usec;
 }
 
+void SRXL2::setTxEscUsec(uint32_t usec) {
+  txEscUsec = usec;
+  // syncronize the TX ESC counter
+  TxEscRateCnt = timerTickCount + txEscUsec/timerTickIntervalUsec;
+}
 
 void SRXL2::configPins(){
   pinMode(BYPASS, OUTPUT);

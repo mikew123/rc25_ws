@@ -19,8 +19,12 @@ RPI_PICO_Timer ITimer(0);
 #include "pio_encoder.h"
 #define PIN_SHAFT_ODOM_A 14
 #define PIN_SHAFT_ODOM_B 15
-#define ODOM_PER_MSEC 10 /* 10 msec, 100 Hz */
 PioEncoder shaftEncoder = {PIN_SHAFT_ODOM_A};
+#define ODOM_PER_USEC 333 /* 30 Hz odom encoder sample rate, PID */
+// OFFSETS to stagger the processing in the interrupt code
+#define ODOM_OFFSET_USEC 100
+#define PID_OFFSET_USEC 200
+#define OMSG_OFFSET_USEC 300
 
 // ODOM POD
 #define ODOM_RADUIS_M (0.048/2)
@@ -67,23 +71,35 @@ void InitEncoders() {
 
 // This is called from an interrupt handler - be quick!
 // TODO: should it have its own interrupt?
+uint32_t odomTickCounter = 0;
+uint32_t odomTickCount = 0;
+uint32_t pidTickCount = 0;
+uint32_t omsgTickCount = 0;
+bool sendOdom = false;
+
 void OdomHandler() {
 
+  // odomCurrTimeMs = millis();
+  // if(odomCurrTimeMs < (odomLastTimeMs + ODOM_PER_MSEC)) return;
 
-  odomCurrTimeMs = millis();
+  // Read the drive shaft odom encoder
+  if(odomTickCounter > odomTickCount) {
+    odomDiffTimeMs = odomCurrTimeMs - odomLastTimeMs;
+    odomLastTimeMs = odomCurrTimeMs;
+    // read pod encoder
+    currEncoderCount = shaftEncoder.getCount() * encoderPolarity;
+    // Next odom sample time
+    odomTickCount = odomTickCounter + ODOM_PER_USEC;
+  }
 
-  if(odomCurrTimeMs < (odomLastTimeMs + ODOM_PER_MSEC)) return;
-
-  odomDiffTimeMs = odomCurrTimeMs - odomLastTimeMs;
-  odomLastTimeMs = odomCurrTimeMs;
-
-  // read pod encoder
-  currEncoderCount = shaftEncoder.getCount() * encoderPolarity;
-
-
-  // Process pod encoder values 
-  diffEncoderCount = currEncoderCount - lastEncoderCount;
-  lastEncoderCount = currEncoderCount;
+  // PID code
+  if(odomTickCounter > pidTickCount) {
+    // Process pod encoder values 
+    diffEncoderCount = currEncoderCount - lastEncoderCount;
+    lastEncoderCount = currEncoderCount;
+    // Next PID process time
+    pidTickCount = odomTickCounter + ODOM_PER_USEC;
+  }
 //Serial.print(diffEncoderCount);Serial.print(":");
   // currTravelMeters = (currEncoderCount/ODOM_ENCODER_COUNT_PER_ROTATION)*ODOM_CIRCUMFERENCE_M;
   // diffTravelMeters = (diffEncoderCount/ODOM_ENCODER_COUNT_PER_ROTATION)*ODOM_CIRCUMFERENCE_M;
@@ -123,6 +139,14 @@ void OdomHandler() {
   // // Set wheel motor drive PWM percent
   // MotorDrivePct(MotorPct[1], MotorPct[0]);
 
+  // PID code
+  if(odomTickCounter > omsgTickCount) {
+    sendOdom = true;
+    // Next Odom message time
+    omsgTickCount = odomTickCounter + ODOM_PER_USEC;
+  }
+
+  odomTickCounter++;
 }
 
 /**************************************************************************************
@@ -167,17 +191,25 @@ String sShiftGear = "low";
 unsigned long statusMillis_last = 0;
 
 String mode_g = "bypass";
-int loopStatusPeriod = 100;//1000;
-
+int loopStatusPeriod = 1000;
 
 /***************************************
 * Hardware PICO TIMER 
 *******************************************/
-
+#define TX_ESC_USEC 33333 // 30/sec
 // Configure the timer for the SRXL2, used to time TXEN signals
 // Also used for Odom wheel encoder
 void configTimer() {
-  srx.configTimerTickIntervalUsec(TIMER_PER_USEC);
+  srx.setTimerTickIntervalUsec(TIMER_PER_USEC);
+  srx.setTxEscUsec(TX_ESC_USEC); // also syncronizes
+
+  // syncronize the Odom timer
+  odomTickCount = odomTickCounter + ODOM_PER_USEC + ODOM_OFFSET_USEC;
+  // syncronize the PID loop timer
+  pidTickCount = odomTickCounter + ODOM_PER_USEC + PID_OFFSET_USEC;
+  // syncronize the odom message timer
+  omsgTickCount = odomTickCounter + ODOM_PER_USEC + OMSG_OFFSET_USEC;
+
   if (ITimer.attachInterruptInterval(TIMER_PER_USEC, timerTick))
     {Serial.print(F("Starting ITimer OK, period usec = ")); Serial.println(TIMER_PER_USEC);}
   else
@@ -186,6 +218,7 @@ void configTimer() {
 }
 
 // Tick the timer in SRXL2 and execute Odom Wheel encoder
+// Interrupt drive at 10 KHz
 bool timerTick(struct repeating_timer *t) { 
   (void) t;
   srx.timerTick();
@@ -389,25 +422,29 @@ void configSerial(){
   // pwm.setFailsafeActive(failsafeActive);
 //}
 
+void sendOdomMsg() {
+  JSONVar myObject;
+  myObject["stamp"] = millis();
+  myObject["enc"] = currEncoderCount;
+
+  String jsonString = JSON.stringify(myObject);
+  Serial.println(jsonString);
+}
+
 // Send status message to host computer
 void sendStatusMsg() {
 
   JSONVar myObject;
 
-  // myObject["gear"] = pwm.getShiftGear();
+  myObject["mode"] = mode_g;
 
-  // myObject["mode"] = mode_g;
+  myObject["gear"] = pwm.getShiftGear();
 
   // myObject["fsa"] = failsafeActive;
 
   // myObject["rca"] = receiverSignalsValid;
 
 
-  myObject["millis"] = millis();
-
-  myObject["ocurr"] = currEncoderCount;
-
-  myObject["odiff"] = diffEncoderCount;
 
   // get motor RPM from telemetry
   int motorRpm = srx.getEscRpm();
@@ -467,11 +504,19 @@ void srxLoopCode() {
   srx.loopCode();
 }
 
-// Send status 1/sec
-void sendStatus(unsigned long loopMillis) {
+// Send messages to serial port (to ROS node)
+// Called from loop code
+void sendMsgs(unsigned long loopMillis) {
+  // send status message 1/sec (every loopStatusPeriod msec)
   if ((loopMillis - statusMillis_last) >= loopStatusPeriod) {
     sendStatusMsg();
     statusMillis_last = loopMillis;
+  }
+
+  // send Odom wheel encoder data
+  if (sendOdom) {
+    sendOdom = false;
+    sendOdomMsg();
   }
 }
 
@@ -506,6 +551,6 @@ void loop() {
 
   pwmLoopCode();
 
-  sendStatus(loopMillis);
+  sendMsgs(loopMillis);
 
 }
