@@ -241,8 +241,9 @@ const float wheelCircumference = 750.0; // mm
 const float odomCountPerWheelRotation = 3201.6;
 
 // conversion  of linear x to throttle percent, + and - are different
-const float pctPerFwdMps = 90.58;
-const float pctPerRvsMps = 106.05;
+const float pctPerFwdMps = 47.04;
+const float pctPerRvsMps = 48.30;
+const float pctOffset = 10.0;
 
 // Ackermann steering parameters
 const float wheelBase = 0.490; // meters, front to back
@@ -253,46 +254,73 @@ const float maxSteeringRad = 0.523; // ~30 deg, adjust for your hardware
 float lastLinX = 0.0;
 float lastAngZ = 0.0;
 // Add global for limited angular Z
-float limitedAngZ = 0.0;
+// float limitedAngZ = 0.0;
 
+// Ackerman conversion called when serial command is decoded
 void AckermanConvert(float linX, float angZ) {
   // Ackerman steering conversion
   // linear X is in m/s, angular Z is in rad/s  
 
-  // Save last commanded velocities
-  lastLinX = linX;
-  lastAngZ = angZ;
-
   // Throttle calculation
   if(linX==0.0) sThrottlePct = 0;
   else if(linX>0.0) {
-    sThrottlePct = 20 + (linX * pctPerFwdMps);
+    sThrottlePct = (pctOffset-1) + (linX * pctPerFwdMps);
     if(sThrottlePct > 100) sThrottlePct = 100;
-    if(sThrottlePct < 21) sThrottlePct = 0;
+    if(sThrottlePct < pctOffset) sThrottlePct = 0;
+    // convert back to linear velocity x m/s
+    linX = (sThrottlePct - pctOffset) / pctPerFwdMps;
   } else {
-    sThrottlePct = -20 + (linX * pctPerRvsMps);
+    sThrottlePct = -(pctOffset-1) + (linX * pctPerRvsMps);
     if(sThrottlePct < -100) sThrottlePct = -100;
-    if(sThrottlePct > -21) sThrottlePct = 0;
+    if(sThrottlePct > -pctOffset) sThrottlePct = 0;
+    // convert back to linear velocity x m/s
+    linX = (sThrottlePct + pctOffset) / pctPerRvsMps;
   }
-  Serial.print("throttle = ");
-  Serial.println(sThrottlePct);
+
+  Serial.print("throttle pct = ");
+  Serial.print(sThrottlePct);
+  Serial.print(" M/s = ");
+  Serial.println(linX);
 
   // Ackermann steering calculation
-  // steering_angle = atan2(wheelBase * angular_z, linX)
   float steeringAngleRad = atan2(wheelBase * angZ, linX);
+  // manage negative linear velocity using atan2
+  if (linX < 0) {
+    if(angZ>=0) steeringAngleRad -= 3.14159;
+    else steeringAngleRad += 3.14159;
+  }
 
-  // Map steering angle to percent [-100, 100]
-  sSteerPct = (int)(steeringAngleRad / maxSteeringRad * 100.0);
+  // Map steering angle to percent
+  sSteerPct = (int)(100.0 * (steeringAngleRad / maxSteeringRad));
   if(sSteerPct > 100) sSteerPct = 100;
   if(sSteerPct < -100) sSteerPct = -100;
-  Serial.print("steer = ");
-  Serial.println(sSteerPct);
+  // convert back to angular z radians/sec
+  angZ = (sSteerPct / 100.0) * maxSteeringRad * linX / wheelBase;
+
+  steeringAngleRad = (sSteerPct / 100.0) * maxSteeringRad;
+  angZ = tan(steeringAngleRad) * linX / wheelBase;
+
+  Serial.print("steer");
+  Serial.print(" angZ = ");
+  Serial.print(angZ);
+  Serial.print(" linX = ");
+  Serial.print(linX);
+  Serial.print(" Rad = ");
+  Serial.print(steeringAngleRad);
+  Serial.print(" pct = ");
+  Serial.print(sSteerPct);
+  Serial.print(" Rad/s = ");
+  Serial.println(angZ);
 
   // Convert limited percent back to angular Z
-  limitedAngZ = (sSteerPct / 100.0) * maxSteeringRad * linX / wheelBase;
+  // limitedAngZ = angZ;
 
   srx.setThrottlePct(sThrottlePct);
   pwm.setSteerPct(sSteerPct);
+
+  // Save last commanded velocities
+  lastLinX = linX;
+  lastAngZ = angZ;
 }
 
 /********************************************************
@@ -495,7 +523,7 @@ void sendStatusMsg() {
 
   // Add last commanded linear X and limited angular Z
   myObject["linx"] = lastLinX;
-  myObject["angz"] = limitedAngZ;
+  myObject["angz"] = lastAngZ;
 
   String jsonString = JSON.stringify(myObject);
   Serial.println(jsonString);

@@ -288,8 +288,8 @@ void SRXL2::decodePacketDataRxRcv() {
     rcvThrottle = packetDataRxRcv.cPacket.payload.channelData.esc.throttle;
     rcvSteer    = packetDataRxRcv.cPacket.payload.channelData.esc.steer;
     rcvShift    = packetDataRxRcv.cPacket.payload.channelData.esc.shift;
-//if(rcvReplyID == 0x40) Serial.println("RxRcv: Telemetry request");
-//Serial.print("rcvThrottle = ");Serial.println(rcvThrottle);
+if(rcvReplyID == 0x40) Serial.println("RxRcv: Telemetry request");
+// Serial.print("rcvThrottle = ");Serial.println(rcvThrottle);
 // Serial.print("rcvSteer = ");Serial.println(rcvSteer);
 // Serial.print("rcvShift = ");Serial.println(rcvShift);
 //printPacketRaw(packetDataRxRcv.b, packetLen, "RxRcv: ");
@@ -341,13 +341,15 @@ void SRXL2::packetTermEsc(){
     packetCnt++;
     if(packetCnt%telemetryRate==0) replyID = 0x40; // request telemetry
     if(packetCnt%2==0) rssi = 0xCF; // alternate rssi 0x64/0xCF like RxRcv
-    uint16_t throttle = usbThrottlePct*100 + 0x8000;
     packetDataTxEsc = packetDataTxEsc_default; // init with default
     // Control data throttle, steer, shift to ESC
     packetDataTxEsc.cPacket.payload.replyID = replyID;
     packetDataTxEsc.cPacket.payload.channelData.rssi = rssi;
+    // Channel PWM values, shifted to full 16-bit range (32768 = mid-scale); lowest 2 bits RFU
     packetDataTxEsc.cPacket.payload.channelData.esc.throttle 
-        = (uint16_t)(0x8000 + usbThrottlePct*5*21);
+        = ((uint16_t)(0x8000 + (usbThrottlePct*0x5310)/100))&0xFFFC;
+        // = (uint16_t)(0x8000 + usbThrottlePct*5*21);
+    // I dont think that steer and shift in this packet are used PWM only
     packetDataTxEsc.cPacket.payload.channelData.esc.steer
         = (uint16_t)(0x8000 + usbSteerPct*5*21);
     packetDataTxEsc.cPacket.payload.channelData.esc.shift
@@ -399,7 +401,9 @@ void SRXL2::sendPacketTxEsc(void){
     startTxEscEnable(tus); // enable TXEN for Serial1, disables using interrupt
     Serial1.write(packetDataTxEsc.b, packetLen);
 
-//printPacketRaw(packetDataTxEsc.b, packetDataTxEsc.hdr.length, "TxEsc: ");
+    uint16_t throttle = packetDataTxEsc.cPacket.payload.channelData.esc.throttle;
+    Serial.print("TxEsc: throttle = ");
+    Serial.println(throttle, HEX);
 
     packetTxEscready = false;
   }
