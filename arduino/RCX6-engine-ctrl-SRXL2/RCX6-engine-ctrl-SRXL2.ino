@@ -268,13 +268,13 @@ void AckermanConvert(float linX, float angZ) {
     if(sThrottlePct > 100) sThrottlePct = 100;
     if(sThrottlePct < throttlePctDeadZone) sThrottlePct = 0;
     // convert back to linear velocity x m/s
-    linX = (sThrottlePct - throttlePctDeadZone) / throttleFwdPctPerMps;
+    linX = (sThrottlePct - (throttlePctDeadZone-1)) / throttleFwdPctPerMps;
   } else {
     sThrottlePct = -(throttlePctDeadZone-1) + (linX * throttleRvsPctPerMps);
     if(sThrottlePct < -100) sThrottlePct = -100;
     if(sThrottlePct > -throttlePctDeadZone) sThrottlePct = 0;
     // convert back to linear velocity x m/s
-    linX = (sThrottlePct + throttlePctDeadZone) / throttleRvsPctPerMps;
+    linX = (sThrottlePct + (throttlePctDeadZone-1)) / throttleRvsPctPerMps;
   }
 
   Serial.print("throttle pct = ");
