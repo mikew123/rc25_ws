@@ -241,9 +241,9 @@ const float wheelCircumference = 750.0; // mm
 const float odomCountPerWheelRotation = 3201.6;
 
 // conversion  of linear x to throttle percent, + and - are different
-const float pctPerFwdMps = 47.04;
-const float pctPerRvsMps = 48.30;
-const float pctOffset = 10.0;
+const float throttleFwdPctPerMps = 47.04*(1/0.87)*(3/3.05);
+const float throttleRvsPctPerMps = 48.30;
+const float throttlePctDeadZone = 10.0;
 
 // Ackermann steering parameters
 const float wheelBase = 0.490; // meters, front to back
@@ -264,17 +264,17 @@ void AckermanConvert(float linX, float angZ) {
   // Throttle calculation
   if(linX==0.0) sThrottlePct = 0;
   else if(linX>0.0) {
-    sThrottlePct = (pctOffset-1) + (linX * pctPerFwdMps);
+    sThrottlePct = (throttlePctDeadZone-1) + (linX * throttleFwdPctPerMps);
     if(sThrottlePct > 100) sThrottlePct = 100;
-    if(sThrottlePct < pctOffset) sThrottlePct = 0;
+    if(sThrottlePct < throttlePctDeadZone) sThrottlePct = 0;
     // convert back to linear velocity x m/s
-    linX = (sThrottlePct - pctOffset) / pctPerFwdMps;
+    linX = (sThrottlePct - throttlePctDeadZone) / throttleFwdPctPerMps;
   } else {
-    sThrottlePct = -(pctOffset-1) + (linX * pctPerRvsMps);
+    sThrottlePct = -(throttlePctDeadZone-1) + (linX * throttleRvsPctPerMps);
     if(sThrottlePct < -100) sThrottlePct = -100;
-    if(sThrottlePct > -pctOffset) sThrottlePct = 0;
+    if(sThrottlePct > -throttlePctDeadZone) sThrottlePct = 0;
     // convert back to linear velocity x m/s
-    linX = (sThrottlePct + pctOffset) / pctPerRvsMps;
+    linX = (sThrottlePct + throttlePctDeadZone) / throttleRvsPctPerMps;
   }
 
   Serial.print("throttle pct = ");
@@ -515,7 +515,9 @@ void sendStatusMsg() {
 
   // myObject["rca"] = receiverSignalsValid;
 
-
+  // get Battery Voltage from telemetry
+  float escVin = srx.getEscVin();
+  myObject["vbat"] = escVin;
 
   // get motor RPM from telemetry
   int motorRpm = srx.getEscRpm();
