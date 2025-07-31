@@ -43,10 +43,10 @@ void setMode(String m);
 void setFailsafeActive(bool failsafe);
 void configPWM();
 
-void setSteerPct(int steerPct);
+void setSteerPct(float steerPct);
 void setShiftGear(String shiftGear);
 
-int getSteerPct();
+float getSteerPct();
 String getShiftGear();
 
 void pin_mSteer_interruptX(void);
@@ -56,7 +56,7 @@ private:
 
 
 // PWM values 
-const int steerCenter = 1575;
+const int steerCenter = 1550; //1575*0.985; // -1.5* correction to balance "toe"
 const int steerRightMax = 2000;
 const int steerLeftMax = 1000;
 const int shiftLow = 1100;
@@ -78,7 +78,7 @@ bool shiftState = false;
 bool failsafeActive = false;
 
 // Computer (slave mux input) signals
-int sSteerPct = 0;
+float sSteerPct = 0;
 String sShiftGear = "low";
 
 String mode = "bypass";

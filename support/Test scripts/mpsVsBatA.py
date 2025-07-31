@@ -1,7 +1,10 @@
 #!/usr/bin python3
-# This script runs 1 meter ffwd and reverse and shows delta odom 
+# This script runs multiple M/S and runTimes to travel 1M (on bench)
+# the voltage is recorded to understand how battery level affect M/S
+# updated to run for 1/2sec before starting measuremment run time is 
+# measured using the time stamps and a stop command is given
 
-from pdb import run
+#from pdb import run
 import serial
 import json
 import time
@@ -42,6 +45,13 @@ def SendSerial(cmd) :
     ser.write(cmd.encode('utf-8') + b'\n')
     ser.flush() 
 
+def SendJsonCmd(jsonCmd) :
+    cmd = json.dumps(jsonCmd)
+    SendSerial(cmd)
+
+def PurgeSerial():
+    while ser.in_waiting:
+        ser.readline()
 
 def GetJsonData():
     while True :
@@ -73,6 +83,10 @@ except serial.SerialException as e:
 cmd = json.dumps({"mode": "term"})
 SendSerial(cmd)
 
+# Send stop command - there seems to be an issue after Pico reset
+cmd = json.dumps({"wd":1, "cv":[0,0]}) # STOP
+SendSerial(cmd)
+
 # print data header
 print("TimeMs, RunTime, MPS, Vbat, DeltaEnc", flush=True)
 
@@ -80,16 +94,18 @@ try:
     # Main loop to collect encoder counts vs battery voltage
     while vbat > minVbat :
         for runTime, mps in loopData:
-            # purge serial RX data
-            while ser.in_waiting:
-                ser.readline()
+            PurgeSerial()
 
-            jsonCmd = {"wd":runTime, "cv":[mps,0]}
-            cmd = json.dumps(jsonCmd)
-            #print(f"{jsonCmd=} {cmd=}")
+            rt = runTime+2
+            jsonCmd = {"wd":rt, "cv":[mps,0]}
+            SendJsonCmd(jsonCmd)
 
-            ser.write(cmd.encode('utf-8') + b'\n')
-            ser.flush()
+            time.sleep(0.5) # let mechanics settle
+            PurgeSerial()
+
+            # send command to cause battery voltage update during motor running
+            jsonCmd = {"wd":rt, "cv":[mps,0]}
+            SendJsonCmd(jsonCmd)
 
             runActive = True
 
@@ -109,11 +125,14 @@ try:
                     stampStart = stamp
                     encStart = enc
 
-                if(stamp - stampStart) > runTime+2000 :
+                if(stamp - stampStart) > runTime :
+                    jsonCmd = {"wd":1, "cv":[0,0]} # STOP
+                    SendJsonCmd(jsonCmd)
                     if diffEnc == 0:
-                        runActive = False
                         deltaEnc = enc - encStart
                         print(f"{stamp}, {runTime}, {mps}, {vbat:.2f}, {deltaEnc}", flush=True)
+                        time.sleep(0.5)
+                        runActive = False
 
                 runActiveLast = runActive
 

@@ -29,9 +29,9 @@ void RCXPWM::loopCode() {
     // Decode steering and shift signals from the receiver
     if(mSteer_meas_rdy == 1) {
       if(mSteer_wid>steerCenter) {
-        sSteerPct = (100L*(mSteer_wid-steerCenter))/(steerRightMax-steerCenter);
+        sSteerPct = (100.0*(mSteer_wid-steerCenter))/(steerRightMax-steerCenter);
       } else if(mSteer_wid<steerCenter) {
-        sSteerPct = -(100L*(steerCenter-mSteer_wid)/(steerCenter-steerLeftMax));
+        sSteerPct = -(100.0*(steerCenter-mSteer_wid)/(steerCenter-steerLeftMax));
       } else {
         sSteerPct = 0;
       }
@@ -73,6 +73,9 @@ void RCXPWM::loopCode() {
     muxSelPwm = SEL_RCVR;
   }
 
+// Serial.print("steerPwm = ");
+// Serial.println(steerPwm);
+
   // send signals to pwm mux
   sSteer.writeMicroseconds(steerPwm);
   sShift.writeMicroseconds(shiftGearPwm);
@@ -80,16 +83,20 @@ void RCXPWM::loopCode() {
 }
 
 
-void RCXPWM::setSteerPct(int steerPct){
+void RCXPWM::setSteerPct(float steerPct){
   sSteerPct = steerPct;
+Serial.print("set steerPct = ");
+Serial.println(sSteerPct);
 }
+
 void RCXPWM::setShiftGear(String shiftGear){
   sShiftGear = shiftGear;
 }
 
-int RCXPWM::getSteerPct(){
+float RCXPWM::getSteerPct(){
   return sSteerPct;
 }
+
 String RCXPWM::getShiftGear(){
   return sShiftGear;
 }

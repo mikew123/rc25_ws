@@ -288,7 +288,7 @@ void SRXL2::decodePacketDataRxRcv() {
     rcvThrottle = packetDataRxRcv.cPacket.payload.channelData.esc.throttle;
     rcvSteer    = packetDataRxRcv.cPacket.payload.channelData.esc.steer;
     rcvShift    = packetDataRxRcv.cPacket.payload.channelData.esc.shift;
-if(rcvReplyID == 0x40) Serial.println("RxRcv: Telemetry request");
+//if(rcvReplyID == 0x40) Serial.println("RxRcv: Telemetry request");
 // Serial.print("rcvThrottle = ");Serial.println(rcvThrottle);
 // Serial.print("rcvSteer = ");Serial.println(rcvSteer);
 // Serial.print("rcvShift = ");Serial.println(rcvShift);
@@ -402,8 +402,8 @@ void SRXL2::sendPacketTxEsc(void){
     Serial1.write(packetDataTxEsc.b, packetLen);
 
     uint16_t throttle = packetDataTxEsc.cPacket.payload.channelData.esc.throttle;
-    Serial.print("TxEsc: throttle = ");
-    Serial.println(throttle, HEX);
+    // Serial.print("TxEsc: throttle = ");
+    // Serial.println(throttle, HEX);
 
     packetTxEscready = false;
   }
