@@ -78,6 +78,7 @@ uint32_t odomTickCount = 0;
 uint32_t pidTickCount = 0;
 uint32_t omsgTickCount = 0;
 bool sendOdom = false;
+bool runPID = false;
 
 void OdomHandler() {
 
@@ -99,10 +100,14 @@ void OdomHandler() {
 
   // PID code
   if(odomTickCounter > pidTickCount) {
+    // protect stamp,count pair from changing by disabling interrupts
     noInterrupts();
     diffEncoderCount = currEncoderCount[1] - lastEncoderCount;
     lastEncoderCount = currEncoderCount[1];
     interrupts();
+
+    runPID = true;
+
     // Next PID process time
     pidTickCount = odomTickCounter + ODOM_PER_USEC;
   }
@@ -196,7 +201,7 @@ String sShiftGear = "low";
 // Loop timer for precise interval periods
 unsigned long statusMillis_last = 0;
 
-String mode_g = "bypass";
+String mode_g = "bypass"; // power/reset default
 int loopStatusPeriod = 1000;
 
 /***************************************
@@ -234,6 +239,43 @@ bool timerTick(struct repeating_timer *t) {
 }
 
 /********************************************************
+* PID loop code 
+* Uses linear M/S from command with the shaft encoder feedback
+* And executes the Ackermann conversion after each PID sample
+* The angular velocity does not have a PID loop (no servo encoder)
+*********************************************************/
+const float coeffA = 0.2;  // proportional scale
+const float coeffB = 0.02; // integral scale
+float pidInt = 0;
+
+// from "cv":[linX,angZ] command velocity from serial port
+float cmdVelLinX = 0;
+float cmdVelAngZ = 0;
+
+// Add global variables for last commanded velocities
+float lastLinX = 0.0;
+float lastAngZ = 0.0;
+
+void resetPID(){
+  runPID = false;
+  cmdVelLinX = 0;
+  cmdVelAngZ = 0;
+  lastLinX = 0;
+  lastAngZ = 0;
+  sThrottlePct = 0;
+  sSteerPct = 0;
+  pidInt = 0;
+}
+
+void pidLoopCode(){
+  if(runPID!=true || mode_g!="cv") return;
+  runPID = false;
+
+  // No PID yet
+  AckermanConvert(cmdVelLinX, cmdVelAngZ);
+}
+
+/********************************************************
 * Ackerman conversion
 * Convert linear and angular velocity to steering and throttle percent
 *********************************************************/
@@ -255,10 +297,6 @@ const float wheelBase = 0.490; // meters, front to back
 const float trackWidth = 0.310; // meters, left to right
 // const float maxSteeringRad = 0.523; // ~30 deg, adjust for your hardware
 const float maxSteeringRad = 0.611; // ~35 deg at steer percent=100
-
-// Add global variables for last commanded velocities
-float lastLinX = 0.0;
-float lastAngZ = 0.0;
 
 float throttlePctPerMpsScale = 1.0;  // mpy 1.0 = no scale
 float throttlePctDeadZoneAdj = 0.0;  // add Adj
@@ -299,10 +337,10 @@ void AckermanConvert(float linX, float angZ) {
     linX *= scale; // apply reverse Vbat correction
   }
 
-  Serial.print("throttle pct = ");
-  Serial.print(sThrottlePct);
-  Serial.print(" M/s = ");
-  Serial.println(linX);
+  // Serial.print("throttle pct = ");
+  // Serial.print(sThrottlePct);
+  // Serial.print(" M/s = ");
+  // Serial.println(linX);
 
   // Ackermann steering calculation
   float wb = wheelBase + wheelBaseAdj; // Adjust the wheel base length
@@ -324,17 +362,17 @@ void AckermanConvert(float linX, float angZ) {
   steeringAngleRad = ((sSteerPct - steerCenterPctAdj) / 100.0) * maxSteeringRad;
   angZ = tan(steeringAngleRad) * linX / wheelBase;
 
-  Serial.print("steer");
-  Serial.print(" angZ = ");
-  Serial.print(angZ);
-  Serial.print(" linX = ");
-  Serial.print(linX);
-  Serial.print(" Rad = ");
-  Serial.print(steeringAngleRad);
-  Serial.print(" pct = ");
-  Serial.print(sSteerPct);
-  Serial.print(" Rad/s = ");
-  Serial.println(angZ);
+  // Serial.print("steer");
+  // Serial.print(" angZ = ");
+  // Serial.print(angZ);
+  // Serial.print(" linX = ");
+  // Serial.print(linX);
+  // Serial.print(" Rad = ");
+  // Serial.print(steeringAngleRad);
+  // Serial.print(" pct = ");
+  // Serial.print(sSteerPct);
+  // Serial.print(" Rad/s = ");
+  // Serial.println(angZ);
 
   srx.setThrottlePct(sThrottlePct);
   pwm.setSteerPct(sSteerPct);
@@ -343,6 +381,7 @@ void AckermanConvert(float linX, float angZ) {
   lastLinX = linX;
   lastAngZ = angZ;
 }
+
 
 /********************************************************
 * Watchdog timer
@@ -379,11 +418,12 @@ void resetWatchdogTimer() {
 *********************************************************/
 // retrieve JSON messages from USB serial port
 void getJsonMsgs() {
-  if (Serial.available() > 0) {
-    // read the incoming string and parse it
-    String incomingString = Serial.readStringUntil('\n');
-    jsonParse(incomingString.c_str());
-  }
+  if (Serial.available()== 0) return;
+
+  // read the incoming string and parse it
+  String incomingString = Serial.readStringUntil('\n');
+  jsonParse(incomingString.c_str());
+
 }
 
 bool jsonParse(const char *jsonStr) {
@@ -399,7 +439,11 @@ bool jsonParse(const char *jsonStr) {
 
   resetWatchdogTimer();
 
-  // mode bypass/passthru/term
+  // mode bypass/passthru/cv/pct
+  // bypass and passthru use the RC transmitter to control
+  // cv and pct use the serial commands:
+  //  cv for command velocity style "cv":[linX, angZ] radians/sec float
+  //  pct for percent control "thr":N and "str":N percent float
   if (myObject.hasOwnProperty("mode")) {
     mode_g = (String) myObject["mode"];
     Serial.print("mode = ");
@@ -420,39 +464,48 @@ bool jsonParse(const char *jsonStr) {
     resetWatchdogTimer();
   }
 
-  // Command Velocity array [linear_X, angular_Z]
-  if (myObject.hasOwnProperty("cv")) {
-    JSONVar cv;
-    cv = myObject["cv"];
-    Serial.print("CmdVar = [lx=");
-    Serial.print((double)cv[0]);
-    Serial.print(", az=");
-    Serial.print((double)cv[1]);
-    Serial.println("]");
+  if(mode_g == "cv") {
+    // Command Velocity array [linear_X, angular_Z]
+    if (myObject.hasOwnProperty("cv")) {
+      JSONVar cv;
+      cv = myObject["cv"];
+      Serial.print("CmdVar = [lx=");
+      Serial.print((double)cv[0]);
+      Serial.print(", az=");
+      Serial.print((double)cv[1]);
+      Serial.println("]");
 
-    float linX = (double)cv[0];
-    float angZ = (double)cv[1];
-    AckermanConvert(linX, angZ);
+      cmdVelLinX = (double)cv[0];
+      cmdVelAngZ = (double)cv[1];
+      // AckermanConvert(linX, angZ);
+    }
+  } else {
+    cmdVelLinX = 0;
+    cmdVelAngZ = 0;
   }
 
-
-  // Steering percent
-  if (myObject.hasOwnProperty("str")) {
-    sSteerPct = (double) myObject["str"];
-    Serial.print("steer = ");
-    Serial.println(sSteerPct);
-    // add steering percent offset
-    pwm.setSteerPct(sSteerPct);
-    srx.setSteerPct(sSteerPct);
+  if (mode_g == "pct") {
+    // Steering percent
+    if (myObject.hasOwnProperty("str")) {
+      sSteerPct = (double) myObject["str"];
+      Serial.print("steer = ");
+      Serial.println(sSteerPct);
+      // add steering percent offset
+      pwm.setSteerPct(sSteerPct);
+      srx.setSteerPct(sSteerPct);
+    }
+    // Throttle percent
+    if (myObject.hasOwnProperty("thr")) {
+      sThrottlePct = (double) myObject["thr"];
+      Serial.print("throttle = ");
+      Serial.println(sThrottlePct);
+      srx.setThrottlePct(sThrottlePct);
+    }
+  } else {
+    sThrottlePct = 0;
+    sSteerPct = 0;
   }
 
-  // Throttle percent
-  if (myObject.hasOwnProperty("thr")) {
-    sThrottlePct = (double) myObject["thr"];
-    Serial.print("throttle = ");
-    Serial.println(sThrottlePct);
-    srx.setThrottlePct(sThrottlePct);
-  }
 
   // Shift gear high/low
   if (myObject.hasOwnProperty("sft")) {
@@ -501,9 +554,13 @@ void configureMode(){
   if(mode_g == "bypass") {
     digitalWrite(BYPASS, 0); // enable bypass switch 
   }
-  else if(mode_g == "passthru" || mode_g == "term") {
+  else if(mode_g == "passthru" || mode_g == "cv" || mode_g == "pct") {
     digitalWrite(BYPASS, 1); // disable bypass switch
   }
+
+  // to be safe reset PID when mode changes
+  resetPID();
+
   // to be safe disable SRXL2 serial transmits
   srx.disableTX();
 }
@@ -677,6 +734,8 @@ void loop() {
   srxLoopCode();
 
   pwmLoopCode();
+
+  pidLoopCode();
 
   sendMsgs(loopMillis);
 

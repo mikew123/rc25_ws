@@ -81,7 +81,7 @@ bool failsafeActive = false;
 float sSteerPct = 0;
 String sShiftGear = "low";
 
-String mode = "bypass";
+String mode = "bypass"; // default
 
 };
 

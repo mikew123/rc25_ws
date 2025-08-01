@@ -300,8 +300,7 @@ void SRXL2::decodePacketDataRxRcv() {
 // mode term - terminates both RX and generates TX packets
 // called in main loop code
 void SRXL2::packetTermRcv() {
-  if(mode!="term") return;
-
+  if(mode!="cv" && mode!="pct") return;
 
   // Generate the 0x42,0x10 TX packet with telemetry data to the receiver
   if(txRcvNow) { // timer sets rate
@@ -334,7 +333,7 @@ void SRXL2::packetTermEsc(){
   static uint16_t packetCnt = 0;
   uint8_t replyID = 0x00; 
   uint8_t rssi = 0x64;
-  if(mode!="term") return;
+  if(mode!="cv" && mode!="pct") return;
 
   if(txEscNow) { // timer sets rate
     txEscNow = false;

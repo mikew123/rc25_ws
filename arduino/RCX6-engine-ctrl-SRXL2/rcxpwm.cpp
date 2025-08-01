@@ -49,7 +49,7 @@ void RCXPWM::loopCode() {
   } 
 
   // Generate PWM signals for PWM MUX
-  if ((mode=="passthru") || ((mode=="term") && (failsafeActive==false))) {
+  if ((mode=="passthru") || ((mode=="cv" || mode=="pct") && (failsafeActive==false))) {
     // send decoded or generated signals to pwm mux
     // Convert steering percent to PWM widths
     int steerPwmOffset = 0;
@@ -85,8 +85,8 @@ void RCXPWM::loopCode() {
 
 void RCXPWM::setSteerPct(float steerPct){
   sSteerPct = steerPct;
-Serial.print("set steerPct = ");
-Serial.println(sSteerPct);
+// Serial.print("set steerPct = ");
+// Serial.println(sSteerPct);
 }
 
 void RCXPWM::setShiftGear(String shiftGear){
