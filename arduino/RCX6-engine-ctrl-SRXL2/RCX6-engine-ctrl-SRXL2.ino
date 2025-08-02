@@ -239,14 +239,55 @@ bool timerTick(struct repeating_timer *t) {
 }
 
 /********************************************************
+* Watchdog timer
+* Called from timer "Tick" interrupt
+*********************************************************/
+uint32_t wdTimeStopMsec = 0; // watchdog time in msec, 0=disabled
+uint32_t wdTimeMsec = 0;
+bool wdTimedOut = true;
+// Called from interrupt 
+void watchdogTimer() {
+  if (wdTimeStopMsec > 0) {
+    if (millis() > wdTimeStopMsec) {
+      // watchdog timeout
+      wdTimedOut = true;
+      wdTimeStopMsec = 0; // disable watchdog until new command
+      Serial.println("Watchdog timeout, stopping motor");
+      sThrottlePct = 0;
+      sSteerPct = 0;
+      resetPID();
+      srx.setThrottlePct(sThrottlePct);
+      pwm.setSteerPct(sSteerPct);
+    }
+  }
+}
+
+// Call at each valid command to reset the watchdog timer
+void resetWatchdogTimer() {
+  if (wdTimeMsec > 0) {
+    wdTimeStopMsec = millis() + wdTimeMsec;
+  } else {
+    wdTimeStopMsec = 0; // disable watchdog
+  }
+  wdTimedOut = false;
+}
+
+/********************************************************
 * PID loop code 
 * Uses linear M/S from command with the shaft encoder feedback
 * And executes the Ackermann conversion after each PID sample
 * The angular velocity does not have a PID loop (no servo encoder)
 *********************************************************/
-const float coeffA = 0.2;  // proportional scale
-const float coeffB = 0.02; // integral scale
+float coeffA = 0.2;  // proportional scale
+float coeffB = 0.05; // integral scale
+int encPerMeter = 6000; // encoder counts per meter
+
 float pidInt = 0;
+float pidMaxMps = 2.0; // +- maximum meters/sec output and integrator
+
+// TODO: timestamps are uint32_t?
+int32_t pidLastStamp = 0;
+int32_t pidLastEnc = 0;
 
 // from "cv":[linX,angZ] command velocity from serial port
 float cmdVelLinX = 0;
@@ -268,11 +309,79 @@ void resetPID(){
 }
 
 void pidLoopCode(){
-  if(runPID!=true || mode_g!="cv") return;
+  if(runPID!=true) return;
   runPID = false;
+  if(mode_g!="cv" || wdTimedOut==true) return;
 
-  // No PID yet
-  AckermanConvert(cmdVelLinX, cmdVelAngZ);
+  // PID code
+  float linX = 0;
+  float angZ = 0;
+  float encMps = 0;
+  float err = 0;
+  float propErr = 0;
+  float intErr = 0;
+
+  int32_t stamp = 0;
+  int32_t enc = 0;
+  float encTsec = 0;
+  float deltaEnc = 0;
+
+  // protect timestamp and encoder value pair from interrupt
+  noInterrupts();
+  stamp = currEncoderCount[0]; // timestamp
+  enc   = currEncoderCount[1]; // encoder count
+  interrupts();
+
+  /****************** start PID *********************/
+
+  encTsec = (stamp - pidLastStamp)/1000.0; // delta stamp time in msec to seconds
+  pidLastStamp = stamp;
+  if(encTsec>0.1 || encTsec<=0) return; // bad sample
+  deltaEnc = enc - pidLastEnc;
+  pidLastEnc = enc;
+  if(deltaEnc > 15000 || deltaEnc < -15000) return; // bad sample
+
+  encMps = (deltaEnc/encPerMeter)/encTsec; // convert encoder counts to meters/sec
+
+  err = cmdVelLinX - encMps; 
+  propErr = err*coeffA;
+  intErr  = err*coeffB;
+
+  pidInt += intErr;
+  // Limit integrator value
+  if(pidInt>pidMaxMps) pidInt = pidMaxMps;
+  else if(pidInt<-pidMaxMps) pidInt = -pidMaxMps;
+
+  linX = propErr + pidInt;
+  // Limit PID output value
+  if(linX>pidMaxMps) linX = pidMaxMps;
+  else if(linX<-pidMaxMps) linX = -pidMaxMps;
+
+  /****************** end PID *********************/
+Serial.print("PID");
+Serial.print(", stamp=");
+Serial.print(stamp);
+Serial.print(", encTsec=");
+Serial.print(encTsec, 4);
+Serial.print(", deltaEnc=");
+Serial.print(deltaEnc);
+Serial.print(", encMps=");
+Serial.print(encMps, 4);
+Serial.print(", err=");
+Serial.print(err, 4);
+Serial.print(", propErr=");
+Serial.print(propErr, 4);
+Serial.print(", intErr=");
+Serial.print(intErr, 4);
+Serial.print(", pidInt=");
+Serial.print(pidInt, 6);
+Serial.print(", linX=");
+Serial.print(linX, 4);
+Serial.println();
+
+  // Ackerman conversion and output to ESC via RXCL2
+  //TODO: move output to this function?
+  AckermanConvert(linX, cmdVelAngZ);
 }
 
 /********************************************************
@@ -382,36 +491,6 @@ void AckermanConvert(float linX, float angZ) {
   lastAngZ = angZ;
 }
 
-
-/********************************************************
-* Watchdog timer
-* Called from timer "Tick" interrupt
-*********************************************************/
-uint32_t wdTimeStopMsec = 0; // watchdog time in msec, 0=disabled
-uint32_t wdTimeMsec = 0;
-// Called from interrupt 
-void watchdogTimer() {
-  if (wdTimeStopMsec > 0) {
-    if (millis() > wdTimeStopMsec) {
-      // watchdog timeout
-      wdTimeStopMsec = 0; // disable watchdog until new command
-      Serial.println("Watchdog timeout, stopping motor");
-      sThrottlePct = 0;
-      sSteerPct = 0;
-      srx.setThrottlePct(sThrottlePct);
-      pwm.setSteerPct(sSteerPct);
-    }
-  }
-}
-
-// Call at each valid command to reset the watchdog timer
-void resetWatchdogTimer() {
-  if (wdTimeMsec > 0) {
-    wdTimeStopMsec = millis() + wdTimeMsec;
-  } else {
-    wdTimeStopMsec = 0; // disable watchdog
-  }
-}
 
 /********************************************************
 * USB serial JSON code
