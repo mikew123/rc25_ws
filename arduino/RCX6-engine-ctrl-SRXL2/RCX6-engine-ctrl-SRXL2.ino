@@ -289,6 +289,9 @@ float pidMaxMps = 2.0; // +- maximum meters/sec output and integrator
 int32_t pidLastStamp = 0;
 int32_t pidLastEnc = 0;
 
+// data for the median-3 filter
+float medianData[3] = {0,0,0};
+
 // from "cv":[linX,angZ] command velocity from serial port
 float cmdVelLinX = 0;
 float cmdVelAngZ = 0;
@@ -306,6 +309,9 @@ void resetPID(){
   sThrottlePct = 0;
   sSteerPct = 0;
   pidInt = 0;
+  pidLastEnc = 0;
+  for(int i=0;i<3;i++) medianData[i]=0;
+
 }
 
 void pidLoopCode(){
@@ -325,6 +331,8 @@ void pidLoopCode(){
   int32_t enc = 0;
   float encTsec = 0;
   float deltaEnc = 0;
+  
+  float sortM3[3];
 
   // protect timestamp and encoder value pair from interrupt
   noInterrupts();
@@ -332,16 +340,28 @@ void pidLoopCode(){
   enc   = currEncoderCount[1]; // encoder count
   interrupts();
 
+
   /****************** start PID *********************/
 
-  encTsec = (stamp - pidLastStamp)/1000.0; // delta stamp time in msec to seconds
-  pidLastStamp = stamp;
-  if(encTsec>0.1 || encTsec<=0) return; // bad sample
+  // encTsec = (stamp - pidLastStamp)/1000.0; // delta stamp time in msec to seconds
+  // pidLastStamp = stamp;
+  // if(encTsec>0.1 || encTsec<=0) return; // bad sample
+  encTsec = 1e-6*ODOM_PER_USEC*TIMER_PER_USEC; // reduce jitter in time
+
   deltaEnc = enc - pidLastEnc;
   pidLastEnc = enc;
   if(deltaEnc > 15000 || deltaEnc < -15000) return; // bad sample
 
-  encMps = (deltaEnc/encPerMeter)/encTsec; // convert encoder counts to meters/sec
+  // filter deltaEnc uing a median filter - reduce jitter in encoder data
+  medianData[1]=medianData[0]; medianData[2]=medianData[1]; // shift in new data
+  medianData[0]=deltaEnc;
+  for(int i=0;i<3;i++) sortM3[i]=medianData[i];
+  if(sortM3[1]<sortM3[0]) std::swap(sortM3[1],sortM3[0]);
+  if(sortM3[2]<sortM3[0]) std::swap(sortM3[2],sortM3[0]);
+  if(sortM3[2]<sortM3[1]) std::swap(sortM3[2],sortM3[1]);
+  float filtEnc = sortM3[1];
+
+  encMps = (filtEnc/encPerMeter)/encTsec; // convert encoder counts to meters/sec
 
   err = cmdVelLinX - encMps; 
   propErr = err*coeffA;
@@ -363,8 +383,8 @@ Serial.print(", stamp=");
 Serial.print(stamp);
 Serial.print(", encTsec=");
 Serial.print(encTsec, 4);
-Serial.print(", deltaEnc=");
-Serial.print(deltaEnc);
+Serial.print(", filtEnc=");
+Serial.print(filtEnc);
 Serial.print(", encMps=");
 Serial.print(encMps, 4);
 Serial.print(", err=");
