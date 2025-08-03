@@ -278,7 +278,7 @@ void resetWatchdogTimer() {
 * And executes the Ackermann conversion after each PID sample
 * The angular velocity does not have a PID loop (no servo encoder)
 *********************************************************/
-float coeffA = 0.2;  // proportional scale
+float coeffA = 0.5;  // proportional scale
 float coeffB = 0.05; // integral scale
 int encPerMeter = 6000; // encoder counts per meter
 
@@ -433,17 +433,17 @@ void AckermanConvert(float linX, float angZ) {
     sThrottlePct /= scale; // apply Vbat correction
     if(sThrottlePct > 100) sThrottlePct = 100;
     if(sThrottlePct < dz) sThrottlePct = 0;
-    // convert back to linear velocity x m/s
-    linX = (sThrottlePct - (dz-1)) / ppm;
-    linX *= scale; // apply reverse Vbat correction
+    // // convert back to linear velocity x m/s
+    // linX = (sThrottlePct - (dz-1)) / ppm;
+    // linX *= scale; // apply reverse Vbat correction
   } else {
     sThrottlePct = -(dz-1) + (linX * ppm);
     sThrottlePct /= scale; // apply Vbat correction
     if(sThrottlePct < -100) sThrottlePct = -100;
     if(sThrottlePct > -dz) sThrottlePct = 0;
-    // convert back to linear velocity x m/s
-    linX = (sThrottlePct + (dz-1)) / ppm;
-    linX *= scale; // apply reverse Vbat correction
+    // // convert back to linear velocity x m/s
+    // linX = (sThrottlePct + (dz-1)) / ppm;
+    // linX *= scale; // apply reverse Vbat correction
   }
 
   // Serial.print("throttle pct = ");
@@ -486,7 +486,7 @@ void AckermanConvert(float linX, float angZ) {
   srx.setThrottlePct(sThrottlePct);
   pwm.setSteerPct(sSteerPct);
 
-  // Save last commanded velocities
+  // Save last velocities to ESC
   lastLinX = linX;
   lastAngZ = angZ;
 }
@@ -556,12 +556,25 @@ bool jsonParse(const char *jsonStr) {
 
       cmdVelLinX = (double)cv[0];
       cmdVelAngZ = (double)cv[1];
-      // AckermanConvert(linX, angZ);
+    }
+    // PID loop coefficients [prop, int]
+    if (myObject.hasOwnProperty("pid")) {
+      JSONVar pid;
+      pid = myObject["pid"];
+      coeffA = (double)pid[0];
+      coeffB = (double)pid[1];
+
+      Serial.print("pid = [coeffA=");
+      Serial.print(coeffA);
+      Serial.print(", coeffB=");
+      Serial.print(coeffB);
+      Serial.println("]");
     }
   } else {
     cmdVelLinX = 0;
     cmdVelAngZ = 0;
   }
+
 
   if (mode_g == "pct") {
     // Steering percent
@@ -686,6 +699,9 @@ void sendOdomMsg() {
 
   myObject["stamp"] = (uint32_t)stamp;
   myObject["enc"] = (int32_t)enc; // encoder values are + or -
+
+  myObject["linx"] = (float)lastLinX;
+  myObject["int"] = (float)pidInt;
 
   String jsonString = JSON.stringify(myObject);
   Serial.println(jsonString);
