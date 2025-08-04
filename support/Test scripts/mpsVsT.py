@@ -19,11 +19,15 @@ minVbat = 11.0
 mpsIn = 0
 runTime = 0
 
+#PI coefficients
 coeffA = 0.2
 coeffB = 0.04
+# Diff coefficients
+coeffDA = 0.15
+coeffDB = 0.075
 
 loopData = [ # runtime, M/S
-    (4.0,0.1), 
+    (4.0,0.5), 
     # (5000,0.2), 
     # (3333,0.3), 
     # (2500,0.4), 
@@ -108,7 +112,7 @@ cmd = json.dumps({"wd":10000})
 SendSerial(cmd)
 
 # configure PID loop coefficients
-cmd = json.dumps({"pid":[coeffA,coeffB]})
+cmd = json.dumps({"pid":[coeffA,coeffB,coeffDA,coeffDB]})
 SendSerial(cmd)
 
 # print data header

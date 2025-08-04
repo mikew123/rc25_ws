@@ -280,9 +280,13 @@ void resetWatchdogTimer() {
 *********************************************************/
 float coeffA = 0.5;  // proportional scale
 float coeffB = 0.05; // integral scale
+float coeffDA = 0.0;  // diff proportional scale
+float coeffDB = 0.0; // diff integral scale
+float coeffDd = 0.5; // diff decay rate
 int encPerMeter = 6000; // encoder counts per meter
 
 float pidInt = 0;
+float pidDd = 0; // Diff signal decay
 float pidMaxMps = 2.0; // +- maximum meters/sec output and integrator
 
 // TODO: timestamps are uint32_t?
@@ -299,6 +303,7 @@ float cmdVelAngZ = 0;
 // Add global variables for last commanded velocities
 float lastLinX = 0.0;
 float lastAngZ = 0.0;
+float lastCmdVelLinX = 0;
 
 void resetPID(){
   runPID = false;
@@ -306,9 +311,11 @@ void resetPID(){
   cmdVelAngZ = 0;
   lastLinX = 0;
   lastAngZ = 0;
+  lastCmdVelLinX = 0;
   sThrottlePct = 0;
   sSteerPct = 0;
   pidInt = 0;
+  pidDd = 0;
   pidLastEnc = 0;
   for(int i=0;i<3;i++) medianData[i]=0;
 
@@ -368,11 +375,21 @@ void pidLoopCode(){
   intErr  = err*coeffB;
 
   pidInt += intErr;
+
+  // Add differential signal from chance of input
+  float diff = cmdVelLinX - lastCmdVelLinX;
+  lastCmdVelLinX = cmdVelLinX;
+  pidDd += diff - pidDd*coeffDd;
+  float propDerr = pidDd*coeffDA;
+  float intDerr = pidDd*coeffDB;
+  if(fabs(intDerr) < 2.0) pidInt += intDerr;
+
   // Limit integrator value
   if(pidInt>pidMaxMps) pidInt = pidMaxMps;
   else if(pidInt<-pidMaxMps) pidInt = -pidMaxMps;
 
-  linX = propErr + pidInt;
+  linX = propErr + pidInt + propDerr;
+  
   // Limit PID output value
   if(linX>pidMaxMps) linX = pidMaxMps;
   else if(linX<-pidMaxMps) linX = -pidMaxMps;
@@ -577,17 +594,24 @@ bool jsonParse(const char *jsonStr) {
       cmdVelLinX = (double)cv[0];
       cmdVelAngZ = (double)cv[1];
     }
-    // PID loop coefficients [prop, int]
+
+    // PID loop coefficients [prop, int, diffProp, diffInt]
     if (myObject.hasOwnProperty("pid")) {
       JSONVar pid;
       pid = myObject["pid"];
       coeffA = (double)pid[0];
       coeffB = (double)pid[1];
+      coeffDA = (double)pid[2];
+      coeffDB = (double)pid[3];
 
       Serial.print("pid = [coeffA=");
       Serial.print(coeffA);
       Serial.print(", coeffB=");
       Serial.print(coeffB);
+      Serial.print(", [coeffDA=");
+      Serial.print(coeffDA);
+      Serial.print(", coeffDB=");
+      Serial.print(coeffDB);
       Serial.println("]");
     }
   } else {
@@ -613,7 +637,8 @@ bool jsonParse(const char *jsonStr) {
       Serial.println(sThrottlePct);
       srx.setThrottlePct(sThrottlePct);
     }
-  } else {
+  } 
+  else {
     sThrottlePct = 0;
     sSteerPct = 0;
   }
