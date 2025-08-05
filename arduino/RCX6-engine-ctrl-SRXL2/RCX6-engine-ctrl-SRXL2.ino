@@ -400,26 +400,26 @@ void pidLoopCode(){
 
   /****************** end PID *********************/
 
-Serial.print("PID");
-Serial.print(", stamp=");
-Serial.print(stamp);
-Serial.print(", encTsec=");
-Serial.print(encTsec, 4);
-Serial.print(", filtEnc=");
-Serial.print(filtEnc);
-Serial.print(", encMps=");
-Serial.print(encMps, 4);
-Serial.print(", err=");
-Serial.print(err, 4);
-Serial.print(", propErr=");
-Serial.print(propErr, 4);
-Serial.print(", intErr=");
-Serial.print(intErr, 4);
-Serial.print(", pidInt=");
-Serial.print(pidInt, 6);
-Serial.print(", linX=");
-Serial.print(linX, 4);
-Serial.println();
+// Serial.print("PID");
+// Serial.print(", stamp=");
+// Serial.print(stamp);
+// Serial.print(", encTsec=");
+// Serial.print(encTsec, 4);
+// Serial.print(", filtEnc=");
+// Serial.print(filtEnc);
+// Serial.print(", encMps=");
+// Serial.print(encMps, 4);
+// Serial.print(", err=");
+// Serial.print(err, 4);
+// Serial.print(", propErr=");
+// Serial.print(propErr, 4);
+// Serial.print(", intErr=");
+// Serial.print(intErr, 4);
+// Serial.print(", pidInt=");
+// Serial.print(pidInt, 6);
+// Serial.print(", linX=");
+// Serial.print(linX, 4);
+// Serial.println();
 
   // Ackerman conversion and output to ESC via RXCL2
   //TODO: move output to this function?
@@ -744,22 +744,30 @@ void configSerial(){
   // pwm.setFailsafeActive(failsafeActive);
 //}
 
+// This is an interrupt handler
+// send the odometry message to serial port
+// this is used by ROS2 for its odom message
+// {"odom": {"stamp":T, "enc":E, "linx":X, "angz":Z}}
 void sendOdomMsg() {
-  JSONVar myObject;
+  JSONVar data;
+  JSONVar odom;
   uint32_t stamp, enc;
 
-  noInterrupts();
+  // this routine is part of the interrupt handler
+  // noInterrupts();
   stamp = currEncoderCount[0]; // timestamp
   enc = currEncoderCount[1]; // encoder count
-  interrupts();
+  // interrupts();
 
-  myObject["stamp"] = (uint32_t)stamp;
-  myObject["enc"] = (int32_t)enc; // encoder values are + or -
+  data["stamp"] = (uint32_t)stamp;
+  data["enc"] = (int32_t)enc; // encoder values are + or -
 
-  myObject["linx"] = (float)lastLinX;
-  myObject["int"] = (float)pidInt;
+  data["linx"] = (float)lastLinX;
+  data["angz"] = (float)lastAngZ;
 
-  String jsonString = JSON.stringify(myObject);
+  odom["odom"] = data;
+
+  String jsonString = JSON.stringify(odom);
   Serial.println(jsonString);
 }
 

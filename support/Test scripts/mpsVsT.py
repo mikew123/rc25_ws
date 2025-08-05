@@ -85,11 +85,12 @@ def printData():
     if 'vbat' in data:
         vbat = data['vbat']
 
-    if 'stamp' in data:
-        stamp = data['stamp']
-        enc = data['enc']
-        mpsEsc = data['linx']
-        pidInt = data['int']
+    if 'odom' in data:
+        odom = data['odom']
+        stamp = odom['stamp']
+        enc = odom['enc']
+        linX = odom['linx']
+        angZ = odom['angz']
 
         diffEnc = enc - encLast 
         encLast = enc
@@ -104,7 +105,7 @@ def printData():
             mpsEnc = (diffEnc/6000)/timeSec
             t = time.monotonic() - timeStart
 
-            print(f"{t:.3f}, {cycleT:.3f}, {cycleMps}, {mpsIn:.3f}, {mpsEnc:.3f}, {mpsEsc:.3f}, {pidInt:.4f}, {vbat:.2f}", flush=True)
+            print(f"{t:.3f}, {cycleT:.3f}, {cycleMps}, {mpsIn:.3f}, {mpsEnc:.3f}, {linX:.3f}, {angZ:.4f}, {vbat:.2f}", flush=True)
 
 #######################################################
 # Execution starts here
@@ -130,7 +131,7 @@ time.sleep(5)
 purgeSerial()
 
 # print data header
-print("Tsec, Tcyc, mpsCyc, mpsIn, mpsEnc, mpsEsc, pidInt, Vbat", flush=True)
+print("Tsec, Tcyc, mpsCyc, mpsIn, mpsEnc, linX, angZ, Vbat", flush=True)
 
 timeStart = time.monotonic()
 
@@ -146,8 +147,6 @@ try:
 
             cmd = json.dumps({"cv":[mpsIn,0]})
             SendSerial(cmd)
-
-            while true: time.sleep(0.1)
 
             cycleStartT = time.monotonic()
             timeStop = time.monotonic()  + runTime
