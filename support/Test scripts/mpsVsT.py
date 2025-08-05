@@ -26,12 +26,13 @@ coeffB = 0.04
 coeffDA = 0.15
 coeffDB = 0.075
 
+wdTms = 0 # watchdog time out
 loopData = [ # runtime, M/S
-    (4.0,0.5), 
-    # (5000,0.2), 
-    # (3333,0.3), 
-    # (2500,0.4), 
-    # (2000,0.5), 
+    (5,0.1), 
+    (5,0.2), 
+    (5,0.3), 
+    (5,0.4), 
+    (5,0.5), 
     # (1666,0.6), 
     # (1428,0.7), 
     # (1250,0.8), 
@@ -44,7 +45,8 @@ loopData = [ # runtime, M/S
 #######################################################
 
 def Stop() :
-    cmd = json.dumps({"wd":1, "cv":[0,0]})
+    # print(f"Stop motor 0")
+    cmd = json.dumps({"cv":[0,0]})
     ser.write(cmd.encode('utf-8') + b'\n')
     ser.flush()
 
@@ -106,10 +108,10 @@ except serial.SerialException as e:
 
 # Set engine controller to term mode to allow computer control
 # Set a 10sec command timeout
-cmd = json.dumps({"mode":"cv", "wd":1})
+cmd = json.dumps({"mode":"cv"})
 SendSerial(cmd)
-cmd = json.dumps({"wd":10000})
-SendSerial(cmd)
+# cmd = json.dumps({"wd":wdTms})
+# SendSerial(cmd)
 
 # configure PID loop coefficients
 cmd = json.dumps({"pid":[coeffA,coeffB,coeffDA,coeffDB]})
@@ -129,13 +131,13 @@ try:
                 ser.readline()
 
             # Start motor
-            #print("Start motor")
+            # print(f"Start motor, {mpsIn}")
             cmd = json.dumps({"cv":[mpsIn,0]})
             SendSerial(cmd)
 
             timeStop = time.monotonic()  + runTime
             while time.monotonic() < timeStop :
-                printData()
+                printData() # from json message
 
             # Stop motor
             #print("Stop motor")
@@ -145,7 +147,7 @@ try:
 
             timeStop = time.monotonic()  + runTime
             while time.monotonic() < timeStop :
-                printData()
+                printData() # from json message
 
 
 except KeyboardInterrupt:

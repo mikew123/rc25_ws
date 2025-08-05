@@ -38,9 +38,9 @@ volatile int32_t currEncoderCount[2] = {0, 0}; // [0]: millis timestamp, [1]: en
 
 int32_t lastEncoderCount = 0;
 int16_t diffEncoderCount = 0;
-double currTravelMeters = 0;
-double diffTravelMeters = 0;
-double velocityMPS = 0;
+// double currTravelMeters = 0;
+// double diffTravelMeters = 0;
+// double velocityMPS = 0;
 uint32_t odomCurrTimeMs = 0;
 uint32_t odomLastTimeMs = 0;
 uint32_t odomDiffTimeMs = 0;
@@ -59,9 +59,9 @@ void ResetEncoderValues() {
 
   lastEncoderCount = 0;
   diffEncoderCount = 0;
-  currTravelMeters = 0;
-  diffTravelMeters = 0;
-  velocityMPS = 0;
+  // currTravelMeters = 0;
+  // diffTravelMeters = 0;
+  // velocityMPS = 0;
 }
 
 void InitEncoders() {
@@ -80,6 +80,7 @@ uint32_t omsgTickCount = 0;
 bool sendOdom = false;
 bool runPID = false;
 
+// Interrupt handler
 void OdomHandler() {
 
   // odomCurrTimeMs = millis();
@@ -90,21 +91,22 @@ void OdomHandler() {
     odomDiffTimeMs = odomCurrTimeMs - odomLastTimeMs;
     odomLastTimeMs = odomCurrTimeMs;
     // read pod encoder
-    noInterrupts();
+    // noInterrupts();
     currEncoderCount[0] = millis(); // timestamp
     currEncoderCount[1] = shaftEncoder.getCount() * encoderPolarity; // encoder count
-    interrupts();
+    // interrupts();
     // Next odom sample time
     odomTickCount = odomTickCounter + ODOM_PER_USEC;
   }
 
   // PID code
   if(odomTickCounter > pidTickCount) {
-    // protect stamp,count pair from changing by disabling interrupts
-    noInterrupts();
-    diffEncoderCount = currEncoderCount[1] - lastEncoderCount;
-    lastEncoderCount = currEncoderCount[1];
-    interrupts();
+    // // protect stamp,count pair from changing by disabling interrupts
+    // noInterrupts();
+    float enc = currEncoderCount[1];
+    diffEncoderCount = enc - lastEncoderCount;
+    lastEncoderCount = enc;
+    // interrupts();
 
     runPID = true;
 
@@ -150,7 +152,7 @@ void OdomHandler() {
   // // Set wheel motor drive PWM percent
   // MotorDrivePct(MotorPct[1], MotorPct[0]);
 
-  // PID code
+  // Send odom message to port
   if(odomTickCounter > omsgTickCount) {
     sendOdom = true;
     // Next Odom message time
@@ -253,9 +255,9 @@ void watchdogTimer() {
       wdTimedOut = true;
       wdTimeStopMsec = 0; // disable watchdog until new command
       Serial.println("Watchdog timeout, stopping motor");
+      resetPID();
       sThrottlePct = 0;
       sSteerPct = 0;
-      resetPID();
       srx.setThrottlePct(sThrottlePct);
       pwm.setSteerPct(sSteerPct);
     }
@@ -278,8 +280,8 @@ void resetWatchdogTimer() {
 * And executes the Ackermann conversion after each PID sample
 * The angular velocity does not have a PID loop (no servo encoder)
 *********************************************************/
-float coeffA = 0.5;  // proportional scale
-float coeffB = 0.05; // integral scale
+float coeffA = 0.2;  // proportional scale
+float coeffB = 0.04; // integral scale
 float coeffDA = 0.0;  // diff proportional scale
 float coeffDB = 0.0; // diff integral scale
 float coeffDd = 0.5; // diff decay rate
@@ -307,24 +309,25 @@ float lastCmdVelLinX = 0;
 
 void resetPID(){
   runPID = false;
-  cmdVelLinX = 0;
-  cmdVelAngZ = 0;
-  lastLinX = 0;
-  lastAngZ = 0;
-  lastCmdVelLinX = 0;
-  sThrottlePct = 0;
-  sSteerPct = 0;
   pidInt = 0;
   pidDd = 0;
-  pidLastEnc = 0;
-  for(int i=0;i<3;i++) medianData[i]=0;
-
+  // float enc = currEncoderCount[1]; // stopping interrupts not needed
+//Serial.print("resetPID: enc = ");Serial.println(enc);
+  pidLastEnc = 0;// enc;
+  for(int i=0;i<3;i++) medianData[i] = 0;// enc;
+  cmdVelLinX = 0;
+  cmdVelAngZ = 0;
+  lastCmdVelLinX = 0;
+  lastLinX = 0;
+  lastAngZ = 0;
+  sThrottlePct = 0;
+  sSteerPct = 0;
 }
 
 void pidLoopCode(){
   if(runPID!=true) return;
   runPID = false;
-  if(mode_g!="cv" || wdTimedOut==true) return;
+  if(mode_g!="cv") return;
 
   // PID code
   float linX = 0;
@@ -339,13 +342,13 @@ void pidLoopCode(){
   float encTsec = 0;
   float deltaEnc = 0;
   
-  float sortM3[3];
+  float sortM3[3] = {0,0,0};
 
-  // protect timestamp and encoder value pair from interrupt
-  noInterrupts();
-  stamp = currEncoderCount[0]; // timestamp
-  enc   = currEncoderCount[1]; // encoder count
-  interrupts();
+  // // protect timestamp and encoder value pair from interrupt
+  // noInterrupts();
+  // stamp = currEncoderCount[0]; // timestamp
+  // enc   = currEncoderCount[1]; // encoder count
+  // interrupts();
 
 
   /****************** start PID *********************/
@@ -353,13 +356,14 @@ void pidLoopCode(){
   // encTsec = (stamp - pidLastStamp)/1000.0; // delta stamp time in msec to seconds
   // pidLastStamp = stamp;
   // if(encTsec>0.1 || encTsec<=0) return; // bad sample
-  encTsec = 1e-6*ODOM_PER_USEC*TIMER_PER_USEC; // reduce jitter in time
+  encTsec = 1e-6*ODOM_PER_USEC*TIMER_PER_USEC; // reduces jitter in time
 
-  deltaEnc = enc - pidLastEnc;
-  pidLastEnc = enc;
-  if(deltaEnc > 15000 || deltaEnc < -15000) return; // bad sample
+  // deltaEnc = enc - pidLastEnc;
+  // pidLastEnc = enc;
+  deltaEnc = diffEncoderCount;
+  if(deltaEnc > 15000 || deltaEnc < -15000) deltaEnc=0; // bad sample
 
-  // filter deltaEnc uing a median filter - reduce jitter in encoder data
+  // filter deltaEnc using a median filter - reduce jitter in encoder data
   medianData[1]=medianData[0]; medianData[2]=medianData[1]; // shift in new data
   medianData[0]=deltaEnc;
   for(int i=0;i<3;i++) sortM3[i]=medianData[i];
@@ -376,7 +380,7 @@ void pidLoopCode(){
 
   pidInt += intErr;
 
-  // Add differential signal from chance of input
+  // Add differential signal from change of velocity input
   float diff = cmdVelLinX - lastCmdVelLinX;
   lastCmdVelLinX = cmdVelLinX;
   pidDd += diff - pidDd*coeffDd;
@@ -395,6 +399,7 @@ void pidLoopCode(){
   else if(linX<-pidMaxMps) linX = -pidMaxMps;
 
   /****************** end PID *********************/
+
 Serial.print("PID");
 Serial.print(", stamp=");
 Serial.print(stamp);
@@ -419,6 +424,13 @@ Serial.println();
   // Ackerman conversion and output to ESC via RXCL2
   //TODO: move output to this function?
   AckermanConvert(linX, cmdVelAngZ);
+
+  // Ackermann saves the resulting percent values in the global variables
+  if (wdTimedOut!=true) {
+    srx.setThrottlePct(sThrottlePct);
+    pwm.setSteerPct(sSteerPct);
+  }
+
 }
 
 /********************************************************
@@ -520,9 +532,6 @@ void AckermanConvert(float linX, float angZ) {
   // Serial.print(" Rad/s = ");
   // Serial.println(angZ);
 
-  srx.setThrottlePct(sThrottlePct);
-  pwm.setSteerPct(sSteerPct);
-
   // Save last velocities to ESC
   lastLinX = linX;
   lastAngZ = angZ;
@@ -590,6 +599,8 @@ bool jsonParse(const char *jsonStr) {
       Serial.print(", az=");
       Serial.print((double)cv[1]);
       Serial.println("]");
+
+      //resetPID();
 
       cmdVelLinX = (double)cv[0];
       cmdVelAngZ = (double)cv[1];
