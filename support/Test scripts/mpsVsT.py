@@ -18,6 +18,8 @@ vbat = 12.0
 minVbat = 11.0
 mpsIn = 0
 runTime = 0
+cycleMps = 0
+cycleStartT: float = 0
 
 #PI coefficients
 coeffA = 0.2
@@ -69,6 +71,7 @@ def GetJsonData():
 
 def printData():
     global encLast, stampLast, vbat, timeStart, mpsIn
+    global cycleStartT,cycleMps
     data = GetJsonData()
     #print(f"{data=}")
     if 'vbat' in data:
@@ -87,10 +90,13 @@ def printData():
         stampLast = stamp
         timeSec = diffStamp/1000.0
 
+        cycleT = time.monotonic() - cycleStartT
+        
         if timeSec>0 and abs(diffEnc<15000) :
             mpsEnc = (diffEnc/6000)/timeSec
             t = time.monotonic() - timeStart
-            print(f"{t:.3f}, {mpsIn:.3f}, {mpsEsc:.3f}, {mpsEnc:.3f}, {pidInt:.4f}, {vbat:.2f}", flush=True)
+
+            print(f"{t:.3f}, {cycleT:.3f}, {cycleMps}, {mpsIn:.3f}, {mpsEnc:.3f}, {mpsEsc:.3f}, {pidInt:.4f}, {vbat:.2f}", flush=True)
 
 #######################################################
 # Execution starts here
@@ -118,7 +124,7 @@ cmd = json.dumps({"pid":[coeffA,coeffB,coeffDA,coeffDB]})
 SendSerial(cmd)
 
 # print data header
-print("Tsec, mpsIn, mpsEsc, mpsEnc, pidInt, Vbat", flush=True)
+print("Tsec, Tcyc, mpsCyc, mpsIn, mpsEnc, mpsEsc, pidInt, Vbat", flush=True)
 
 timeStart = time.monotonic()
 
@@ -130,11 +136,13 @@ try:
             while ser.in_waiting:
                 ser.readline()
 
+            cycleMps = mpsIn # save for plotting 
             # Start motor
             # print(f"Start motor, {mpsIn}")
             cmd = json.dumps({"cv":[mpsIn,0]})
             SendSerial(cmd)
 
+            cycleStartT = time.monotonic()
             timeStop = time.monotonic()  + runTime
             while time.monotonic() < timeStop :
                 printData() # from json message
