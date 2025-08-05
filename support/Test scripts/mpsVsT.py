@@ -6,6 +6,8 @@ import serial
 import json
 import time
 
+from sympy import true
+
 stamp = 0
 enc = 0
 encLast = 0
@@ -28,7 +30,7 @@ coeffB = 0.04
 coeffDA = 0.15
 coeffDB = 0.075
 
-wdTms = 0 # watchdog time out
+wdTms = 10000 # watchdog time out
 loopData = [ # runtime, M/S
     (5,0.1), 
     (5,0.2), 
@@ -53,8 +55,14 @@ def Stop() :
     ser.flush()
 
 def SendSerial(cmd) :
+    print(cmd)
     ser.write(cmd.encode('utf-8') + b'\n')
     ser.flush() 
+
+def purgeSerial() :
+    # purge serial RX data
+    while ser.in_waiting:
+        ser.readline()
 
 
 def GetJsonData():
@@ -114,14 +122,12 @@ except serial.SerialException as e:
 
 # Set engine controller to term mode to allow computer control
 # Set a 10sec command timeout
-cmd = json.dumps({"mode":"cv"})
+cmd = json.dumps({"mode":"cv", "pid":[coeffA,coeffB,coeffDA,coeffDB], "wd":wdTms})
+#cmd = json.dumps({"mode":"cv", "pid":[coeffA,coeffB,coeffDA,coeffDB]})
 SendSerial(cmd)
-# cmd = json.dumps({"wd":wdTms})
-# SendSerial(cmd)
 
-# configure PID loop coefficients
-cmd = json.dumps({"pid":[coeffA,coeffB,coeffDA,coeffDB]})
-SendSerial(cmd)
+time.sleep(5)
+purgeSerial()
 
 # print data header
 print("Tsec, Tcyc, mpsCyc, mpsIn, mpsEnc, mpsEsc, pidInt, Vbat", flush=True)
@@ -132,15 +138,16 @@ try:
     # Main loop to collect encoder counts vs battery voltage
     while vbat > minVbat :
         for runTime, mpsIn in loopData:
-            # purge serial RX data
-            while ser.in_waiting:
-                ser.readline()
+            purgeSerial()
 
             cycleMps = mpsIn # save for plotting 
             # Start motor
             # print(f"Start motor, {mpsIn}")
+
             cmd = json.dumps({"cv":[mpsIn,0]})
             SendSerial(cmd)
+
+            while true: time.sleep(0.1)
 
             cycleStartT = time.monotonic()
             timeStop = time.monotonic()  + runTime
