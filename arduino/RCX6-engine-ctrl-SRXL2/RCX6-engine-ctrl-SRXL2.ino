@@ -298,13 +298,13 @@ int32_t pidLastEnc = 0;
 // data for the median-3 filter
 float medianData[3] = {0,0,0};
 
-// from "cv":[linX,angZ] command velocity from serial port
+// from "cv":[linX,steerRad] command velocity from serial port
 float cmdVelLinX = 0;
-float cmdVelAngZ = 0;
+float cmdVelAngRad = 0;
 
 // Add global variables for last commanded velocities
-float lastLinX = 0.0;
-float lastAngZ = 0.0;
+float lastLinX = 0.0; // wheel velocity in Meter/Sec
+float lastSteerRad = 0.0; // steering angle in Radians
 float lastCmdVelLinX = 0;
 
 void resetPID(){
@@ -316,10 +316,10 @@ void resetPID(){
   pidLastEnc = 0;// enc;
   for(int i=0;i<3;i++) medianData[i] = 0;// enc;
   cmdVelLinX = 0;
-  cmdVelAngZ = 0;
+  cmdVelAngRad = 0;
   lastCmdVelLinX = 0;
   lastLinX = 0;
-  lastAngZ = 0;
+  lastSteerRad = 0;
   sThrottlePct = 0;
   sSteerPct = 0;
 }
@@ -331,7 +331,7 @@ void pidLoopCode(){
 
   // PID code
   float linX = 0;
-  float angZ = 0;
+//  float angZ = 0;
   float encMps = 0;
   float err = 0;
   float propErr = 0;
@@ -423,9 +423,14 @@ void pidLoopCode(){
 
   // Ackerman conversion and output to ESC via RXCL2
   //TODO: move output to this function?
-  AckermanConvert(linX, cmdVelAngZ);
+  // AckermanConvert(linX, cmdVelAngRad);
 
-  // Ackermann saves the resulting percent values in the global variables
+  // force linear velocity to 0 when input is zero
+  if (cmdVelLinX == 0) linX = 0;
+  // saves the resulting percent values in the global variables
+  cvToPct(linX, cmdVelAngRad);
+
+  
   if (wdTimedOut!=true) {
     srx.setThrottlePct(sThrottlePct);
     pwm.setSteerPct(sSteerPct);
@@ -433,18 +438,8 @@ void pidLoopCode(){
 
 }
 
-/********************************************************
-* Ackerman conversion
-* Convert linear and angular velocity to steering and throttle percent
-*********************************************************/
-const float wheelCircumference = 750.0; // mm
-const float odomCountPerWheelRotation = 3201.6;
-
-// conversion  of linear x to throttle percent, + and - are different
-// const float throttleFwdPctPerMps = 53.18*22/25; // 47.04*(1/0.87)*(3/3.05);
-// const float throttleRvsPctPerMps = 53.0*22/25; // was not tweaked
-const float throttlePctPerMps = 46.80; // use for both fwd and rvs
-const float throttlePctDeadZone = 10.0; // this is +- dead zone around 0 percent
+float throttlePctPerMps = 46.80; // use for both fwd and rvs
+float throttlePctDeadZone = 10.0; // this is +- dead zone around 0 percent
 
 // M/S to Percent vs Vbat correction scale factor equation = A*Vbat + B
 const float throttlePctVbatScaleA = 0.078545; // from test deltaEnc vs Vbat on bench 
@@ -456,8 +451,10 @@ const float trackWidth = 0.310; // meters, left to right
 // const float maxSteeringRad = 0.523; // ~30 deg, adjust for your hardware
 const float maxSteeringRad = 0.611; // ~35 deg at steer percent=100
 
+//float steeringAngleRad = 0.0;
+
 float throttlePctPerMpsScale = 1.0;  // mpy 1.0 = no scale
-float throttlePctDeadZoneAdj = 0.0;  // add Adj
+// float throttlePctDeadZoneAdj = 0.0;  // add Adj
 float steerCenterPctAdj = 0.0;       // add Adj
 float wheelBaseAdj = 0.0;            // add Adj
 
@@ -466,76 +463,156 @@ float wheelBaseAdj = 0.0;            // add Adj
 float escVin = 12.0; // default value
 int motorRpm = 0; // default value
 
-// Ackerman conversion called when serial command is decoded
-void AckermanConvert(float linX, float angZ) {
-  // Ackerman steering conversion
-  // linear X is in m/s, angular Z is in rad/s  
 
-  // Throttle calculation
-  // TODO: adjust for high and low gear, current is for low gear only
+/********************************************************
+* Convert linear velocity and steering angle to percent
+* linX Meters/Sec
+* angle in Radians
+* updates sThrottlePct and sSteerPct
+*********************************************************/
+void cvToPct(float linX, float angle) {
   float scale = (throttlePctVbatScaleA * escVin) + throttlePctVbatScaleB;
-  float dz = throttlePctDeadZone + throttlePctDeadZoneAdj; // adjust dead zone
+  float dz = throttlePctDeadZone;
   float ppm = throttlePctPerMps * throttlePctPerMpsScale; // scale percent to meters
+  
   if(linX==0.0) sThrottlePct = 0;
   else if(linX>0.0) {
-    sThrottlePct = (dz-1) + (linX * ppm);
+    sThrottlePct = (dz-0) + (linX * ppm);
     sThrottlePct /= scale; // apply Vbat correction
     if(sThrottlePct > 100) sThrottlePct = 100;
     if(sThrottlePct < dz) sThrottlePct = 0;
-    // // convert back to linear velocity x m/s
+    // // convert limited pct back to linear velocity x m/s
     // linX = (sThrottlePct - (dz-1)) / ppm;
     // linX *= scale; // apply reverse Vbat correction
   } else {
-    sThrottlePct = -(dz-1) + (linX * ppm);
+    sThrottlePct = -(dz-0) + (linX * ppm);
     sThrottlePct /= scale; // apply Vbat correction
     if(sThrottlePct < -100) sThrottlePct = -100;
     if(sThrottlePct > -dz) sThrottlePct = 0;
-    // // convert back to linear velocity x m/s
+    // // convert limited pct back to linear velocity x m/s
     // linX = (sThrottlePct + (dz-1)) / ppm;
     // linX *= scale; // apply reverse Vbat correction
   }
 
-  // Serial.print("throttle pct = ");
-  // Serial.print(sThrottlePct);
-  // Serial.print(" M/s = ");
-  // Serial.println(linX);
-
-  // Ackermann steering calculation
-  float wb = wheelBase + wheelBaseAdj; // Adjust the wheel base length
-  float steeringAngleRad = atan2(wb * angZ, linX);
-  // manage negative linear velocity using atan2
-  if (linX < 0) {
-    if(angZ>=0) steeringAngleRad -= 3.14159;
-    else steeringAngleRad += 3.14159;
+  // Convert steering angle to percent
+  sSteerPct = (100.0 * (cmdVelAngRad / maxSteeringRad)) + steerCenterPctAdj;
+  if(sSteerPct > 100) {
+    sSteerPct = 100;
+    // calc limited steer angle
+  }
+  if(sSteerPct < -100) {
+    sSteerPct = -100;
+    // calc limited steer angle
   }
 
-  // Convert steering angle to percent
-  sSteerPct = (100.0 * (steeringAngleRad / maxSteeringRad)) + steerCenterPctAdj;
-  if(sSteerPct > 100) sSteerPct = 100;
-  if(sSteerPct < -100) sSteerPct = -100;
-  // convert back to angular z radians/sec
-  angZ = (sSteerPct / 100.0) * maxSteeringRad * linX / wheelBase;
-
-  // Reverse conversion
-  steeringAngleRad = ((sSteerPct - steerCenterPctAdj) / 100.0) * maxSteeringRad;
-  angZ = tan(steeringAngleRad) * linX / wheelBase;
-
-  // Serial.print("steer");
-  // Serial.print(" angZ = ");
-  // Serial.print(angZ);
-  // Serial.print(" linX = ");
-  // Serial.print(linX);
-  // Serial.print(" Rad = ");
-  // Serial.print(steeringAngleRad);
-  // Serial.print(" pct = ");
-  // Serial.print(sSteerPct);
-  // Serial.print(" Rad/s = ");
-  // Serial.println(angZ);
-
-  // Save last velocities to ESC
+  
   lastLinX = linX;
-  lastAngZ = angZ;
+  lastSteerRad = cmdVelAngRad;
 }
+
+// /********************************************************
+// * Ackerman conversion
+// * Convert linear and angular velocity to steering and throttle percent
+// *********************************************************/
+// const float wheelCircumference = 750.0; // mm
+// const float odomCountPerWheelRotation = 3201.6;
+
+// // conversion  of linear x to throttle percent, + and - are different
+// // const float throttleFwdPctPerMps = 53.18*22/25; // 47.04*(1/0.87)*(3/3.05);
+// // const float throttleRvsPctPerMps = 53.0*22/25; // was not tweaked
+// const float throttlePctPerMps = 46.80; // use for both fwd and rvs
+// const float throttlePctDeadZoneAdj = 10.0; // this is +- dead zone around 0 percent
+
+// // M/S to Percent vs Vbat correction scale factor equation = A*Vbat + B
+// const float throttlePctVbatScaleA = 0.078545; // from test deltaEnc vs Vbat on bench 
+// const float throttlePctVbatScaleB = 0.018182; // from test deltaEnc vs Vbat on bench
+
+// // Ackermann steering parameters
+// const float wheelBase = 0.490; // meters, front to back
+// const float trackWidth = 0.310; // meters, left to right
+// // const float maxSteeringRad = 0.523; // ~30 deg, adjust for your hardware
+// const float maxSteeringRad = 0.611; // ~35 deg at steer percent=100
+
+// float throttlePctPerMpsScale = 1.0;  // mpy 1.0 = no scale
+// float throttlePctDeadZoneAdj = 0.0;  // add Adj
+// float steerCenterPctAdj = 0.0;       // add Adj
+// float wheelBaseAdj = 0.0;            // add Adj
+
+// // TODO: read values in PID loop and calculate using scale in PID loop?
+// // currently these are read in the command process loop
+// float escVin = 12.0; // default value
+// int motorRpm = 0; // default value
+
+// // Ackerman conversion called when serial command is decoded
+// void AckermanConvert(float linX, float angZ) {
+//   // Ackerman steering conversion
+//   // linear X is in m/s, angular Z is in rad/s  
+
+//   // Throttle calculation
+//   // TODO: adjust for high and low gear, current is for low gear only
+//   float scale = (throttlePctVbatScaleA * escVin) + throttlePctVbatScaleB;
+//   float dz = throttlePctDeadZone + throttlePctDeadZoneAdj; // adjust dead zone
+//   float ppm = throttlePctPerMps * throttlePctPerMpsScale; // scale percent to meters
+//   if(linX==0.0) sThrottlePct = 0;
+//   else if(linX>0.0) {
+//     sThrottlePct = (dz-1) + (linX * ppm);
+//     sThrottlePct /= scale; // apply Vbat correction
+//     if(sThrottlePct > 100) sThrottlePct = 100;
+//     if(sThrottlePct < dz) sThrottlePct = 0;
+//     // // convert back to linear velocity x m/s
+//     // linX = (sThrottlePct - (dz-1)) / ppm;
+//     // linX *= scale; // apply reverse Vbat correction
+//   } else {
+//     sThrottlePct = -(dz-1) + (linX * ppm);
+//     sThrottlePct /= scale; // apply Vbat correction
+//     if(sThrottlePct < -100) sThrottlePct = -100;
+//     if(sThrottlePct > -dz) sThrottlePct = 0;
+//     // // convert back to linear velocity x m/s
+//     // linX = (sThrottlePct + (dz-1)) / ppm;
+//     // linX *= scale; // apply reverse Vbat correction
+//   }
+
+//   // Serial.print("throttle pct = ");
+//   // Serial.print(sThrottlePct);
+//   // Serial.print(" M/s = ");
+//   // Serial.println(linX);
+
+//   // Ackermann steering calculation
+//   float wb = wheelBase + wheelBaseAdj; // Adjust the wheel base length
+//   float steeringAngleRad = atan2(wb * angZ, linX);
+//   // manage negative linear velocity using atan2
+//   if (linX < 0) {
+//     if(angZ>=0) steeringAngleRad -= 3.14159;
+//     else steeringAngleRad += 3.14159;
+//   }
+
+//   // Convert steering angle to percent
+//   sSteerPct = (100.0 * (steeringAngleRad / maxSteeringRad)) + steerCenterPctAdj;
+//   if(sSteerPct > 100) sSteerPct = 100;
+//   if(sSteerPct < -100) sSteerPct = -100;
+//   // convert back to angular z radians/sec
+//   angZ = (sSteerPct / 100.0) * maxSteeringRad * linX / wheelBase;
+
+//   // Reverse conversion
+//   steeringAngleRad = ((sSteerPct - steerCenterPctAdj) / 100.0) * maxSteeringRad;
+//   angZ = tan(steeringAngleRad) * linX / wheelBase;
+
+//   // Serial.print("steer");
+//   // Serial.print(" angZ = ");
+//   // Serial.print(angZ);
+//   // Serial.print(" linX = ");
+//   // Serial.print(linX);
+//   // Serial.print(" Rad = ");
+//   // Serial.print(steeringAngleRad);
+//   // Serial.print(" pct = ");
+//   // Serial.print(sSteerPct);
+//   // Serial.print(" Rad/s = ");
+//   // Serial.println(angZ);
+
+//   // Save last velocities to ESC
+//   lastLinX = linX;
+//   lastAngZ = angZ;
+// }
 
 
 /********************************************************
@@ -590,20 +667,20 @@ bool jsonParse(const char *jsonStr) {
   }
 
   if(mode_g == "cv") {
-    // Command Velocity array [linear_X, angular_Z]
+    // Command Velocity array [linear_X, steer_rad]
     if (myObject.hasOwnProperty("cv")) {
       JSONVar cv;
       cv = myObject["cv"];
-      Serial.print("CmdVar = [lx=");
+      Serial.print("CmdVar = [linx=");
       Serial.print((double)cv[0]);
-      Serial.print(", az=");
+      Serial.print(", steer=");
       Serial.print((double)cv[1]);
       Serial.println("]");
 
       //resetPID();
 
       cmdVelLinX = (double)cv[0];
-      cmdVelAngZ = (double)cv[1];
+      cmdVelAngRad = (double)cv[1];
     }
 
     // PID loop coefficients [prop, int, diffProp, diffInt]
@@ -627,7 +704,7 @@ bool jsonParse(const char *jsonStr) {
     }
   } else {
     cmdVelLinX = 0;
-    cmdVelAngZ = 0;
+    cmdVelAngRad = 0;
   }
 
 
@@ -667,7 +744,7 @@ bool jsonParse(const char *jsonStr) {
   // Throttle trim - floats - 0 is no trim for all
   // [
   // throttlePctPerMpsScale,  mpy scale 
-  // throttlePctDeadZoneAdj,  add Adj
+  // throttlePctDeadZone,  
   // steerCenterPctAdj,       add Adj
   // wheelBaseAdj             add Adj
   //]
@@ -675,13 +752,13 @@ bool jsonParse(const char *jsonStr) {
     JSONVar trim;
     trim = myObject["trim"];
     throttlePctPerMpsScale = 1+(double)trim[0]; // trim[0]==0 no trim
-    throttlePctDeadZoneAdj = (double)trim[1];
+    throttlePctDeadZone = (double)trim[1];
     steerCenterPctAdj      = (double)trim[2];
     wheelBaseAdj           = (double)trim[3];
     Serial.print("throttlePctPerMpsScale = ");
     Serial.print(throttlePctPerMpsScale, 3);
-    Serial.print(", throttlePctDeadZoneAdj = ");
-    Serial.print(throttlePctDeadZoneAdj, 3);
+    Serial.print(", throttlePctDeadZone = ");
+    Serial.print(throttlePctDeadZone, 3);
     Serial.print(", steerCenterPctAdj = ");
     Serial.print(steerCenterPctAdj, 3);
     Serial.print(", wheelBaseAdj = ");
@@ -747,7 +824,7 @@ void configSerial(){
 // This is an interrupt handler
 // send the odometry message to serial port
 // this is used by ROS2 for its odom message
-// {"odom": {"stamp":T, "enc":E, "linx":X, "angz":Z}}
+// {"odom": {"stamp":T, "enc":E, "linx":X, "steer":R}}
 void sendOdomMsg() {
   JSONVar data;
   JSONVar odom;
@@ -763,7 +840,7 @@ void sendOdomMsg() {
   data["enc"] = (int32_t)enc; // encoder values are + or -
 
   data["linx"] = (float)lastLinX;
-  data["angz"] = (float)lastAngZ;
+  data["steer"] = (float)lastSteerRad;
 
   odom["odom"] = data;
 
@@ -784,14 +861,14 @@ void sendStatusMsg() {
 
   // myObject["rca"] = receiverSignalsValid;
 
-  // add ESV Vin and RPM
+  // add ESC Vin and RPM
   myObject["vbat"] = escVin;
 
   myObject["rpm"] = motorRpm; 
 
   // Add last commanded linear X and limited angular Z
   myObject["linx"] = lastLinX;
-  myObject["angz"] = lastAngZ;
+  myObject["steer"] = lastSteerRad;
 
   String jsonString = JSON.stringify(myObject);
   Serial.println(jsonString);

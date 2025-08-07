@@ -27,7 +27,6 @@ class Robocolumbus25TeleopNode(Node):
         self.get_logger().info("Teleop Started")
        
     # Get button commands from Joy message
-    # TODO: Process steering joystick controls, replace teleop_twist_joy 
     def joy_callback(self, msg):
         cmd_vel = Twist()
 
@@ -41,7 +40,7 @@ class Robocolumbus25TeleopNode(Node):
         # Basic steering calculation wheel angle to angular velocity
         angularZ = math.tan(steerAngleRad) * linearX / self.wheelBase
 
-        self.get_logger().info(f"{axes1=:.3f} {axes3=:.3f} : {linearX=:.3f} {angularZ=:.3f} {steerAngleRad=:.3f}")
+        # self.get_logger().info(f"{axes1=:.3f} {axes3=:.3f} : {linearX=:.3f} {angularZ=:.3f} {steerAngleRad=:.3f}")
 
         # Publish /cmd_vel
         cmd_vel.linear.x = linearX

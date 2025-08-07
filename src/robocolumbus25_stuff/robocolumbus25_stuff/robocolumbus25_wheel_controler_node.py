@@ -62,7 +62,7 @@ class WheelControllerNode(Node):
         self.get_logger().info(f"WheelControllerNode: Started node")
 
     def send_json_cmd(self,cmd) :
-        self.get_logger().info(f"send_json_cmd: {cmd=}")
+        # self.get_logger().info(f"send_json_cmd: {cmd=}")
         if self.ser and self.ser.is_open:
             try:
                 json_cmd = json.dumps(cmd) + '\n'
@@ -95,59 +95,59 @@ class WheelControllerNode(Node):
         stamp = int(odom['stamp'])
         enc = int(odom['enc'])
         linX = float(odom['linx'])
-        angZ = float(odom['angz'])
+        steerRad = float(odom['steer'])
     
-        # Odometry calculation
-        # TODO: use time stamp
-        current_time = self.get_clock().now()
-        dt = (current_time - self.last_time).nanoseconds * 1e-9
-        self.last_time = current_time
+        # # Odometry calculation
+        # # TODO: use time stamp
+        # current_time = self.get_clock().now()
+        # dt = (current_time - self.last_time).nanoseconds * 1e-9
+        # self.last_time = current_time
 
-        # Simple differential drive odometry update
-        # TODO: use encoder counts
-        delta_x = linX * math.cos(self.yaw) * dt
-        delta_y = linX * math.sin(self.yaw) * dt
-        delta_yaw = angZ * dt
+        # # Simple differential drive odometry update
+        # # TODO: use encoder counts
+        # delta_x = linX * math.cos(self.yaw) * dt
+        # delta_y = linX * math.sin(self.yaw) * dt
+        # delta_yaw = angZ * dt
 
-        self.x += delta_x
-        self.y += delta_y
-        self.yaw += delta_yaw
+        # self.x += delta_x
+        # self.y += delta_y
+        # self.yaw += delta_yaw
 
-        # Prepare odometry message
-        odom_msg = Odometry()
-        odom_msg.header.stamp = current_time.to_msg()
-        odom_msg.header.frame_id = "odom"
-        odom_msg.child_frame_id = "base_link"
-        odom_msg.pose.pose.position.x = self.x
-        odom_msg.pose.pose.position.y = self.y
-        odom_msg.pose.pose.position.z = 0.0
+        # # Prepare odometry message
+        # odom_msg = Odometry()
+        # odom_msg.header.stamp = current_time.to_msg()
+        # odom_msg.header.frame_id = "odom"
+        # odom_msg.child_frame_id = "base_link"
+        # odom_msg.pose.pose.position.x = self.x
+        # odom_msg.pose.pose.position.y = self.y
+        # odom_msg.pose.pose.position.z = 0.0
     
-        # Convert yaw to quaternion
-        q = tf_transformations.quaternion_from_euler(0, 0, self.yaw)
-        odom_msg.pose.pose.orientation = Quaternion(x=q[0], y=q[1], z=q[2], w=q[3])
+        # # Convert yaw to quaternion
+        # q = tf_transformations.quaternion_from_euler(0, 0, self.yaw)
+        # odom_msg.pose.pose.orientation = Quaternion(x=q[0], y=q[1], z=q[2], w=q[3])
 
-        odom_msg.twist.twist.linear.x = linX
-        odom_msg.twist.twist.angular.z = angZ
+        # odom_msg.twist.twist.linear.x = linX
+        # odom_msg.twist.twist.angular.z = angZ
 
-        # self.get_logger().info(f"proc_odom_msg {odom_msg=}")
+        # # self.get_logger().info(f"proc_odom_msg {odom_msg=}")
 
-        self.odom_publisher.publish(odom_msg)
+        # self.odom_publisher.publish(odom_msg)
 
     def cmd_vel_callback(self, msg):
-        self.get_logger().info(f"cmd_vel_callback {msg=}")
+        # self.get_logger().info(f"cmd_vel_callback {msg=}")
 
         linear_x = msg.linear.x
         angular_z = msg.angular.z
 
-        # # Compute rear wheel velocity (m/s)
-        # wheel_velocity = linear_x
+        # Compute rear wheel velocity (m/s)
+        wheel_velocity = linear_x
 
-        # # Compute front wheel steering angle (Ackermann)
-        # if angular_z != 0 and linear_x != 0:
-        #     turning_radius = linear_x / angular_z
-        #     steering_angle = math.atan(self.wheel_base / turning_radius)
-        # else:
-        #     steering_angle = 0.0
+        # Compute front wheel steering angle (Ackermann)
+        if angular_z != 0 and linear_x != 0:
+            turning_radius = linear_x / angular_z
+            steering_angle = math.atan(self.wheel_base / turning_radius)
+        else:
+            steering_angle = 0.0
 
         # self.get_logger().info(
         #     f"Rear wheel velocity: {wheel_velocity:.3f} m/s, "
@@ -155,9 +155,9 @@ class WheelControllerNode(Node):
         # )
 
         # # Send commands over serial interface as JSON
-        # cmd = {"cv":[wheel_velocity, steering_angle]}
+        # cmd = {"cv":[wheel_velocity, angular_z]}
 
-        cmd = {"cv":[linear_x, angular_z]}
+        cmd = {"cv":[wheel_velocity, steering_angle]}
         self.send_json_cmd(cmd)
 
     def destroy_node(self):
