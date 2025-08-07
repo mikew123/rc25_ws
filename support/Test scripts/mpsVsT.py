@@ -23,7 +23,7 @@ runTime = 0
 cycleMps = 0
 cycleStartT: float = 0
 
-#PI coefficients
+#PID coefficients
 coeffA = 0.2
 coeffB = 0.04
 # Diff coefficients

@@ -282,8 +282,8 @@ void resetWatchdogTimer() {
 *********************************************************/
 float coeffA = 0.2;  // proportional scale
 float coeffB = 0.04; // integral scale
-float coeffDA = 0.0;  // diff proportional scale
-float coeffDB = 0.0; // diff integral scale
+float coeffDA = 0.15;  // diff proportional scale
+float coeffDB = 0.075; // diff integral scale
 float coeffDd = 0.5; // diff decay rate
 int encPerMeter = 6000; // encoder counts per meter
 
