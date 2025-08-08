@@ -89,8 +89,9 @@ A waterproof box is mounted to the rear battery holder. This box holds the DC-DC
 The steering wheel and speed switch on the RC transmitter is used to switch to-from computer control. This must be done with throttle at idle.
 - Switch to computer control: Turn steering left (CCW) and press speed switch DN(high) then UP (low)
 - Switch to receiver control: Turn steering right and press speed switch DN then UP
-## Electronics board
-The electronic modules are connected using soldered wires and a 0.1" breadboard cut to fit the waterproff box interior
+## Electronics boards
+### Engine Controller Board
+The electronic module is connected using soldered wires and a 0.1" breadboard cut to fit the waterproff box interior
 The RC receiver signals are connected to the MASTER pins of the RC switch module using standard servo cables
 The motor and servo signals are connected to the OUT pins of the RC switch module using standard servo cables
 The controler pins are hard wired to the SLAVE pins of the RC switch
@@ -99,6 +100,9 @@ The DC-DC converters are inside the waterproof box. The power input from the bat
 <img src="support/engine_compartment_electronics_module.jpg"></br>
 <br>
 <img src="support/RCX6_engine_electronics_schematic.jpg"></br>
+
+### IMU and GPS Controller Board
+<img src="support/rc25_ImuGpsController.jpg"></br>
 
 # Micro controller firmware
 The microcontroller firmware is C-code developed using the Arduino IDE. The interface to the controller uses the USB port for a serial communications interface. A simple Json data structure sends data to-from the computer in the cabin over the USB serial interface.
