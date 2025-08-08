@@ -11,19 +11,24 @@ The wheel base is TBD
 The wheel spacing is TBD
 """
 
+# from asyncio.windows_events import NULL
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Quaternion
+
+from sensor_msgs.msg import BatteryState
+
 import math
 import serial
 import json
 import tf_transformations
+import time
 
 class WheelControllerNode(Node):
     def __init__(self):
-        super().__init__('robocolumbus25_wheel_controller')
+        super().__init__('robocolumbus25_wheel_controler_node')
         self.subscription = self.create_subscription(
             Twist,
             '/cmd_vel',
@@ -31,9 +36,21 @@ class WheelControllerNode(Node):
             10
         )
         self.odom_publisher = self.create_publisher(Odometry, 'odom', 10)
+        self.battery_status_msg_publisher = self.create_publisher(BatteryState, 'battery_status', 10)
+        self.serialTimer = self.create_timer(0.010, self.serialTimerCallback)
+
+        #PID coefficients
+        coeffA = 0.2
+        coeffB = 0.04
+        # Diff coefficients to help get ESC to speed faster
+        coeffDA = 0.15
+        coeffDB = 0.075
+
+        self.last_time = 0
+
         # Example parameters (replace with actual values)
-        self.wheel_base = 0.5  # meters, TBD
-        self.wheel_diameter = 0.15  # meters, TBD
+        self.wheel_base = 0.490  # meters
+        self.encoderCountsPerMeter = 6000
 
         # Robot pose state
         self.x = 0.0
@@ -42,8 +59,8 @@ class WheelControllerNode(Node):
         self.last_time = self.get_clock().now()
 
         # Serial port configuration (update as needed)
-        self.serial_port = 'COM3'  # Change to your serial port
-        self.baudrate = 115200
+        self.serial_port = "/dev/serial/by-id/usb-Waveshare_RP2040_PiZero_E6625887D37C3E30-if00"
+        self.baudrate = 1000000
         try:
             self.ser = serial.Serial(self.serial_port, self.baudrate, timeout=1)
             self.get_logger().info(f"Serial port {self.serial_port} opened.")
@@ -51,46 +68,82 @@ class WheelControllerNode(Node):
             self.get_logger().error(f"Failed to open serial port: {e}")
             self.ser = None
 
-    def cmd_vel_callback(self, msg):
-        linear_x = msg.linear.x
-        angular_z = msg.angular.z
+        cmd = {"pid":[coeffA,coeffB,coeffDA,coeffDB]}
+        self.send_json_cmd(cmd)
+        cmd = {"mode":"cv"}
+        self.send_json_cmd(cmd)
 
-        # Compute rear wheel velocity (m/s)
-        wheel_velocity = linear_x
+        self.ser.flush()
+        time.sleep(5)  # engine controller seems to act weird if no delay
 
-        # Compute front wheel steering angle (Ackermann)
-        if angular_z != 0 and linear_x != 0:
-            turning_radius = linear_x / angular_z
-            steering_angle = math.atan(self.wheel_base / turning_radius)
-        else:
-            steering_angle = 0.0
+        self.get_logger().info(f"WheelControllerNode: Started node")
 
-        self.get_logger().info(
-            f"Rear wheel velocity: {wheel_velocity:.3f} m/s, "
-            f"Front steering angle: {math.degrees(steering_angle):.3f} deg"
-        )
-
-        # Send commands over serial interface as JSON
+    def send_json_cmd(self,cmd) :
+        # self.get_logger().info(f"send_json_cmd: {cmd=}")
         if self.ser and self.ser.is_open:
-            command = {
-                "wheel_velocity": wheel_velocity,
-                "steering_angle": steering_angle  # radians
-            }
             try:
-                json_cmd = json.dumps(command) + '\n'
+                json_cmd = json.dumps(cmd) + '\n'
                 self.ser.write(json_cmd.encode('utf-8'))
             except Exception as e:
                 self.get_logger().error(f"Failed to write to serial: {e}")
 
+    # Process received serial messages
+    def serialTimerCallback(self) :
+        # self.get_logger().info(f"serialTimerCallback")
+        data = {}
+        while self.ser.in_waiting :
+            line = self.ser.readline().decode('utf-8').strip()
+            #self.get_logger().info(f"Received: {line=}")
+            try:
+                data = json.loads(line)
+                break
+            except json.JSONDecodeError:
+                continue
+
+        if 'odom' in data:
+            odom = data['odom']
+            self.proc_odom_msg(odom)
+
+        if 'vbat' in data:
+            vbat = data['vbat']
+            self.processBatteryInfo(vbat)
+        
+    def processBatteryInfo(self, vbat) -> None :
+        bmsg = BatteryState()
+        bmsg.header.stamp = self.get_clock().now().to_msg()
+        bmsg.header.frame_id = "base_link"
+        bmsg.voltage = float(vbat)
+        bmsg.present = True
+        self.battery_status_msg_publisher.publish(bmsg)
+
+    def proc_odom_msg(self, odom) :
+        self.get_logger().info(f"proc_odom_msg {odom=}")
+
+        # TODO: how to cast stamp as unsigned 32 for roll over
+        # But may not be needed since it is a very large number and long time
+        stamp = int(odom['stamp'])
+        enc = int(odom['enc'])
+        linX = float(odom['linx'])
+        angRad = float(odom['steer'])
+    
+        # convert steering angle to steering angle velocity
+        if (linX==0 or angRad==0) :
+            angZ = 0.0
+        else :
+            angZ = math.tan(angRad)*linX/self.wheel_base
+
         # Odometry calculation
+        # TODO: use time stamp from engine controller
         current_time = self.get_clock().now()
-        dt = (current_time - self.last_time).nanoseconds * 1e-9
+        dt = (current_time - self.last_time).nanoseconds * 1e-9 # converted to seconds
         self.last_time = current_time
+        if(dt>1.0) : return # delta time too large, probably just start up
 
         # Simple differential drive odometry update
-        delta_x = wheel_velocity * math.cos(self.yaw) * dt
-        delta_y = wheel_velocity * math.sin(self.yaw) * dt
-        delta_yaw = angular_z * dt
+        # TODO: use encoder counts from engine controller
+        delta_x = linX * math.cos(self.yaw) * dt
+        delta_y = linX * math.sin(self.yaw) * dt
+        delta_yaw = angZ * dt
 
         self.x += delta_x
         self.y += delta_y
@@ -104,18 +157,58 @@ class WheelControllerNode(Node):
         odom_msg.pose.pose.position.x = self.x
         odom_msg.pose.pose.position.y = self.y
         odom_msg.pose.pose.position.z = 0.0
-
+    
         # Convert yaw to quaternion
         q = tf_transformations.quaternion_from_euler(0, 0, self.yaw)
         odom_msg.pose.pose.orientation = Quaternion(x=q[0], y=q[1], z=q[2], w=q[3])
 
-        odom_msg.twist.twist.linear.x = wheel_velocity
-        odom_msg.twist.twist.angular.z = angular_z
+        odom_msg.twist.twist.linear.x = linX
+        odom_msg.twist.twist.angular.z = angZ
+
+        self.get_logger().info(f"proc_odom_msg {angZ=:.3f} {odom_msg=}")
 
         self.odom_publisher.publish(odom_msg)
 
+    def cmd_vel_callback(self, msg):
+        # self.get_logger().info(f"cmd_vel_callback {msg=}")
+
+        linear_x = msg.linear.x
+        angular_z = msg.angular.z
+
+        # Compute rear wheel velocity (m/s)
+        wheel_velocity = linear_x
+
+        # Compute front wheel steering angle (Ackermann)
+        if angular_z != 0 and linear_x != 0:
+            turning_radius = linear_x / angular_z
+            steering_angle = math.atan(self.wheel_base / turning_radius)
+        else:
+            steering_angle = 0.0
+
+        # self.get_logger().info(
+        #     f"Rear wheel velocity: {wheel_velocity:.3f} m/s, "
+        #     f"Front steering angle: {math.degrees(steering_angle):.3f} deg"
+        # )
+
+        # # Send commands over serial interface as JSON
+        # cmd = {"cv":[wheel_velocity, angular_z]}
+        if(wheel_velocity!=0.0):
+            cmd = {"wd":1000,"cv":[wheel_velocity, steering_angle]}
+        else :
+            cmd = {"wd":1,"cv":[0, 0]}
+        self.send_json_cmd(cmd)
+
     def destroy_node(self):
+        self.get_logger().info("destroy_node")
         if hasattr(self, 'ser') and self.ser and self.ser.is_open:
+            # stop the motor
+            cmd = {"wd":100,"cv":[0, 0]}
+            self.send_json_cmd(cmd)
+            # change mode to bypass
+            cmd = {"mode":"bypass"}
+            self.send_json_cmd(cmd)
+            # wait for message to be sent before closing
+            self.ser.flush()
             self.ser.close()
             self.get_logger().info("Serial port closed.")
         super().destroy_node()
@@ -124,9 +217,19 @@ class WheelControllerNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = WheelControllerNode()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    # rclpy.spin(node)
+    # node.destroy_node()
+    # rclpy.shutdown()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        from rclpy.impl import rcutils_logger
+        logger = rcutils_logger.RcutilsLogger(name="node")
+        logger.info('Received Keyboard Interrupt (^C). Shutting down.')
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
 
 if __name__ == '__main__':
     main()

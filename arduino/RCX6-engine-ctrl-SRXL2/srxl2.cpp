@@ -27,12 +27,14 @@ void SRXL2::timerTick(){
       TxRcvCnt=0;
     }
   }
+
   // receiver TX packet rate
   if(timerTickCount >= TxRcvRateCnt) {
     TxRcvRateCnt = timerTickCount+txRcvUsec/timerTickIntervalUsec; // 5/sec
     txRcvNow = true;
   }
-  // receiver TX packet rate
+
+  // ESC controller TX packet rate
   if(timerTickCount >= TxEscRateCnt) {
     TxEscRateCnt = timerTickCount+txEscUsec/timerTickIntervalUsec; // 30/sec
     txEscNow = true;
@@ -44,6 +46,7 @@ uint32_t SRXL2::getTimerTickCount() {
   return timerTickCount;
 }
 
+// call from arduino loop() to execute SRXL2 code
 void SRXL2::loopCode() {
   getPacketDataRxEsc();
   packetPassthruRxEsc();
@@ -79,10 +82,15 @@ void SRXL2::startTxRcvEnable(uint32_t tus) {
   packetTxRcvBusy = true;
 }
 
-void SRXL2::configTimerTickIntervalUsec(uint32_t usec) {
+void SRXL2::setTimerTickIntervalUsec(uint32_t usec) {
   timerTickIntervalUsec = usec;
 }
 
+void SRXL2::setTxEscUsec(uint32_t usec) {
+  txEscUsec = usec;
+  // syncronize the TX ESC counter
+  TxEscRateCnt = timerTickCount + txEscUsec/timerTickIntervalUsec;
+}
 
 void SRXL2::configPins(){
   pinMode(BYPASS, OUTPUT);
@@ -127,6 +135,14 @@ void SRXL2::configSerialRCV(){
     usbShift = gear=="high"?true:false;
   }
 
+  int SRXL2::getEscRpm(void) {
+    return escRpm;
+  }
+
+  float SRXL2::getEscVin(void) {
+    return escVin;
+  }
+
 // get a packet from the ESC RX pin
 // returns packet ID type, 0xCD, 0x80, ...
 void SRXL2::getPacketDataRxEsc(){
@@ -146,14 +162,14 @@ void SRXL2::getPacketDataRxEsc(){
 
   static bool lastReady = false;
   if(packetRxEscReady==true && lastReady==false) {
-    extractPacketDataRxEsc();
+    decodePacketDataRxEsc();
   }
   lastReady = packetRxEscReady;
 }
-void SRXL2::extractPacketDataRxEsc() {
+
+void SRXL2::decodePacketDataRxEsc() {
   // Process telemetry data
   uint8_t *buff = packetDataRxEsc.b;
-  // uint8_t packetID = buff[1];
   uint8_t packetLen = packetDataRxEsc.hdr.length;
   uint8_t packetID = packetDataRxEsc.hdr.packetType;
 
@@ -245,12 +261,12 @@ void SRXL2::getPacketDataRxRcv(){
 
   static bool lastReady = false;
   if(packetRxRcvReady==true && lastReady==false) {
-    extractPacketDataRxRcv();
+    decodePacketDataRxRcv();
   }
   lastReady = packetRxRcvReady;
 }
 
-void SRXL2::extractPacketDataRxRcv() {
+void SRXL2::decodePacketDataRxRcv() {
   srxlPkt pkt = packetDataRxRcv;
 
   uint8_t packetID = packetDataRxRcv.hdr.packetType;
@@ -284,8 +300,7 @@ void SRXL2::extractPacketDataRxRcv() {
 // mode term - terminates both RX and generates TX packets
 // called in main loop code
 void SRXL2::packetTermRcv() {
-  if(mode!="term") return;
-
+  if(mode!="cv" && mode!="pct") return;
 
   // Generate the 0x42,0x10 TX packet with telemetry data to the receiver
   if(txRcvNow) { // timer sets rate
@@ -318,20 +333,22 @@ void SRXL2::packetTermEsc(){
   static uint16_t packetCnt = 0;
   uint8_t replyID = 0x00; 
   uint8_t rssi = 0x64;
-  if(mode!="term") return;
+  if(mode!="cv" && mode!="pct") return;
 
   if(txEscNow) { // timer sets rate
     txEscNow = false;
     packetCnt++;
     if(packetCnt%telemetryRate==0) replyID = 0x40; // request telemetry
     if(packetCnt%2==0) rssi = 0xCF; // alternate rssi 0x64/0xCF like RxRcv
-    uint16_t throttle = usbThrottlePct*100 + 0x8000;
     packetDataTxEsc = packetDataTxEsc_default; // init with default
     // Control data throttle, steer, shift to ESC
     packetDataTxEsc.cPacket.payload.replyID = replyID;
     packetDataTxEsc.cPacket.payload.channelData.rssi = rssi;
+    // Channel PWM values, shifted to full 16-bit range (32768 = mid-scale); lowest 2 bits RFU
     packetDataTxEsc.cPacket.payload.channelData.esc.throttle 
-        = (uint16_t)(0x8000 + usbThrottlePct*5*21);
+        = ((uint16_t)(0x8000 + (usbThrottlePct*0x5310)/100))&0xFFFC;
+        // = (uint16_t)(0x8000 + usbThrottlePct*5*21);
+    // I dont think that steer and shift in this packet are used PWM only
     packetDataTxEsc.cPacket.payload.channelData.esc.steer
         = (uint16_t)(0x8000 + usbSteerPct*5*21);
     packetDataTxEsc.cPacket.payload.channelData.esc.shift
@@ -383,7 +400,9 @@ void SRXL2::sendPacketTxEsc(void){
     startTxEscEnable(tus); // enable TXEN for Serial1, disables using interrupt
     Serial1.write(packetDataTxEsc.b, packetLen);
 
-//printPacketRaw(packetDataTxEsc.b, packetDataTxEsc.hdr.length, "TxEsc: ");
+    uint16_t throttle = packetDataTxEsc.cPacket.payload.channelData.esc.throttle;
+    // Serial.print("TxEsc: throttle = ");
+    // Serial.println(throttle, HEX);
 
     packetTxEscready = false;
   }
@@ -730,4 +749,3 @@ void SRXL2::printPacket(String s, uint8_t *buff, int id){
 // //     SrxlControlData payload;
 // // //  uint16_t        crc;    // NOTE: Since this packet is variable-length, we can't use this value anyway
 // // } PACKED SrxlControlPacket;
-
