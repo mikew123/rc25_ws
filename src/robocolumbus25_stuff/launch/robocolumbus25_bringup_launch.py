@@ -201,6 +201,13 @@ def generate_launch_description():
 
         launch_ros.actions.Node(
             package='robocolumbus25_stuff',
+            executable='robocolumbus25_imu_gps_node',
+            name='imu_gps_node',
+            namespace="",
+        ),
+
+        launch_ros.actions.Node(
+            package='robocolumbus25_stuff',
             executable='robocolumbus25_wheel_controler_node',
             name='wheel_controler_node',
             namespace="",

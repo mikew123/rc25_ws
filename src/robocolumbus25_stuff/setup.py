@@ -28,6 +28,7 @@ setup(
         'console_scripts': [
             'robocolumbus25_wheel_controler_node = robocolumbus25_stuff.robocolumbus25_wheel_controler_node:main',
             'robocolumbus25_teleop_node = robocolumbus25_stuff.robocolumbus25_teleop_node:main',
+            'robocolumbus25_imu_gps_node = robocolumbus25_stuff.robocolumbus25_imu_gps_node:main',
         ],
     },
 )
