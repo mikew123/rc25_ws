@@ -1,3 +1,16 @@
+/* ***************************************************************
+* imu-gps_ctrl.ino
+* Uses the BNO085 IMU and uBlox-M10Q GPS modules, each has own serial port
+* The M10Q module also has a QMC5883L compass but the library I chose
+* seems to interfere with the imu and gps so please do not enable it
+*
+* Processes JSON formated JSON strings on USB serial
+* Creates JSON formated data strings on USB serial
+* This was designed for interfacing with a ROS2 node
+*
+* Mike Williamson 8/11/2025
+**************************************************************** */
+
 #include <Arduino.h>
 #include <Arduino_JSON.h>
 
@@ -22,6 +35,11 @@
 #define SDA0 8
 #define SCL0 9
 
+#define IMU_HZ 30
+#define IMU_PER_US (1000000L/IMU_HZ)
+#define GPS_HZ 10
+#define GPS_PER_US (1000000L/GPS_HZ)
+
 Adafruit_BNO08x  bno08x(BNO08X_RESET);
 
 SFE_UBLOX_GNSS_SERIAL myGNSS;
@@ -36,13 +54,18 @@ bool g_imuEna = false;
 bool g_gpsEna = false;
 bool g_cmpEna = false;
 
-int g_gpsInterval = 100;
+int g_gpsIntervalMsec = GPS_PER_US/1000;
+int g_cmpIntervalMsec = 1000; // 1/sec
+uint32_t g_gpsReadMillis = 0;
+uint32_t g_cmpReadMillis = 0;
+
 dynModel g_dyn_model = DYN_MODEL_PORTABLE;
 //dynModel g_dyn_model = DYN_MODEL_PEDESTRIAN;
 //dynModel g_dyn_model = DYN_MODEL_AUTOMOTIVE;
 
 void setReports(void) {
-  uint32_t period = 500000; // 2 Hz
+//  uint32_t period = 500000; // 2 Hz
+  uint32_t period = IMU_PER_US;
   Serial.println("Setting desired reports");
   if (! bno08x.enableReport(SH2_GYROSCOPE_CALIBRATED, period)) { //0x02
     Serial.print("Could not enable report SH2_GYROSCOPE_CALIBRATED 0x");
@@ -99,11 +122,11 @@ void setupGps(void) {
   } while(1);
   Serial.println("GNSS serial connected");
 
-  myGNSS.setUART1Output(COM_TYPE_UBX); //Set the UART port to output UBX only
-  myGNSS.setMeasurementRate(g_gpsInterval);
-
+  myGNSS.setUART2Output(COM_TYPE_UBX); //Set the UART port to output UBX only
+  myGNSS.setNavigationFrequency(IMU_HZ); // Set to not block IMU reads
   myGNSS.setDynamicModel(g_dyn_model);
 
+  g_gpsReadMillis = millis() + g_gpsIntervalMsec;
 }
 
 void setupCmp(void) {
@@ -111,6 +134,9 @@ void setupCmp(void) {
   Wire.setSCL(SCL0);
    
   compass.init();
+  // compass.setMode(0x01,0x00,0x10,0XC0); // default: MODE=cont, ODR=10Hz, RNG=8g, OSR=64
+  // compass.setMode(0x01,0x0C,0x10,0X00); // default: MODE=cont, ODR=200Hz, RNG=8g, OSR=512
+  // compass.setSmoothing(10,true); 
 
 // #1
 //  compass.setCalibrationOffsets(-121.00, -114.00, 610.00);
@@ -135,36 +161,18 @@ void setupCmp(void) {
 //  compass.setCalibrationScales(1.34, 0.85, 0.93);
 
   compass.setMagneticDeclination(13, 0); // tweaked from Dallas = 2, 37
-  compass.setSmoothing(10,true); 
+
+  g_cmpReadMillis = millis() + g_cmpIntervalMsec;
 
   Serial.println("Compass I2C connected and calibrated");
 }
 
-void setup(void) {
 
-  Serial.begin(115200);
-  while (!Serial) delay(10);     //  pause  until serial console opens
-
-  Serial.println("IMU + GPS");
-  
-  setupImu();
-
-  setupGps();
-
-  setupCmp();
-  
-  delay(10);
-}
+///////////////////////////////////////////////////////////////////////
+// Loop functions
 
 
-void loop() {
-  serialRx();
-  procImu();
-  procGps();
-  procCmp();
-}
-
-
+// process JSON formated commands on USB serial port
 void serialRx() {
   // Check serial port for a JSON message
   if (Serial.available() > 0) {
@@ -219,16 +227,20 @@ bool jsonParseCfg(JSONVar cfgObject) {
 void procCmp(void) {
   if(g_cmpEna == false) return;
 
+  uint32_t lmillis = millis();
+  if(lmillis < g_cmpReadMillis) return;
+  g_cmpReadMillis = lmillis + g_cmpIntervalMsec;
+
   int a;
   
   // Read compass values
   compass.read();
 
   // Return Azimuth reading
-    JSONVar jsonObject;
-    jsonObject["cmp"]["azi"] = compass.getAzimuth();
+  JSONVar jsonObject;
+  jsonObject["cmp"]["azi"] = compass.getAzimuth();
 
-    Serial.println(jsonObject);
+  Serial.println(jsonObject);
 }
 
 // process the serial port connected to the uBlox GNSS M10Q
@@ -236,16 +248,18 @@ void procCmp(void) {
 void procGps() {
   if (g_gpsEna == false) return;
 
-  // Check to see if data is available
+  uint32_t lmillis = millis();
+  if(lmillis < g_gpsReadMillis) return;
+  g_gpsReadMillis = lmillis + g_gpsIntervalMsec;
 
-  if (myGNSS.getPVT()) {
-    JSONVar jsonObject;
-    jsonObject["gps"]["lat"] = myGNSS.getLatitude();
-    jsonObject["gps"]["lon"] = myGNSS.getLongitude();
-    jsonObject["gps"]["alt"] = myGNSS.getAltitude();
-    jsonObject["gps"]["siv"] = myGNSS.getSIV();
-    Serial.println(jsonObject);
-  }
+  // Assume GPS info is ready, it will block if not ready
+  // GPS generation rate set to IMU rate to minimize blocking
+  JSONVar jsonObject;
+  jsonObject["gps"]["lat"] = myGNSS.getLatitude();
+  jsonObject["gps"]["lon"] = myGNSS.getLongitude();
+  jsonObject["gps"]["alt"] = myGNSS.getAltitude();
+  jsonObject["gps"]["siv"] = myGNSS.getSIV();
+  Serial.println(jsonObject);
 }
 
 void procImu(void) {
@@ -300,4 +314,29 @@ void json_SH2_ARVR_STABILIZED_RV(sh2_SensorValue_t sensorValue) {
   jsonObject["imu"]["rvec"]["k"] = sensorValue.un.arvrStabilizedRV.k;
   jsonObject["imu"]["rvec"]["real"] = sensorValue.un.arvrStabilizedRV.real;
   Serial.println(jsonObject);
+}
+///////////////////////////////////////////
+
+void setup(void) {
+
+  Serial.begin(115200);
+  while (!Serial) delay(10);     //  pause  until serial console opens
+
+  Serial.println("IMU + GPS");
+  
+  setupImu();
+
+  setupGps();
+
+  setupCmp();
+  
+  delay(10);
+}
+
+
+void loop() {
+  serialRx();
+  procImu();
+  procGps();
+  procCmp();
 }
