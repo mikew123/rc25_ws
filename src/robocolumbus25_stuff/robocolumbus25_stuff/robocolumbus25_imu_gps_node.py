@@ -16,13 +16,10 @@ class ImuGpsNode(Node):
     '''
 
     timerRateHz = 110.0; # Rate to check serial port for messages
-    
-    # Try opening serial ports and checking "id"
-    serialPorts = ("/dev/ttyACM0", "/dev/ttyACM1", "/dev/ttyACM2", "/dev/ttyACM3")
-    serialId = "imu_gps"
-    
-    # Dont know how to enable by-id on the Docker container
-    #serial_port:str = "/dev/serial/by-id/usb-Waveshare_RP2040_Zero_E6625887D3477130-if00"
+
+    # Serial port configuration (update as needed)
+    serial_port = "/dev/serial/by-id/usb-Waveshare_RP2040_Zero_E6635C469F25492A-if00"
+    baudrate = 1000000
 
     laccJsonPacket = None
     rvelJsonPacket = None
@@ -37,9 +34,12 @@ class ImuGpsNode(Node):
     def __init__(self):
         super().__init__('imu_gps_node')
 
-        self.imu_gps_serial_port = self.determineSerialPort(self.serialId)
-        if self.imu_gps_serial_port == None :
-            self.get_logger().info(f"ImuGpsNode Serial port id {self.serialId} not found - Exit node")
+        try:
+            self.ser = serial.Serial(self.serial_port, self.baudrate, timeout=1)
+            self.get_logger().info(f"Serial port {self.serial_port} opened.")
+        except serial.SerialException as e:
+            self.get_logger().error(f"Failed to open serial port: {e}")
+            self.ser = None
             exit(1)
             
         self.imu_test_publisher = self.create_publisher(String, 'imu_test', 10)
@@ -54,42 +54,51 @@ class ImuGpsNode(Node):
         self.timer = self.create_timer((1.0/self.timerRateHz), self.timer_callback)
         
         # configure interface
-        self.imu_gps_serial_port.write("{\"cfg\":{\"imu\":true, \"gps\":true, \"cmp\":true}}".encode())
-        
+        self.send_json_cmd({"cfg":{"imu":True, "gps":True, "cmp":False}})
+
         self.get_logger().info(f"ImuGpsNode Started")
 
-    # check serial ports to find the one that matches the id
-    def determineSerialPort(self, id) :
-        for a in range(10):
-            for serial_port in self.serialPorts :
-                try:
-                    self.get_logger().info(f"Try {serial_port}")
-                    node_serial_port = serial.Serial(serial_port, 1000000, timeout=0.01)
-                    node_serial_port.write("{\"id\":0}".encode())
-                    time.sleep(1)
-                    # read port multiple times checking for "id"
-                    for i in range(10):
-                        received_data = node_serial_port.readline().decode().strip()
-                        #self.get_logger().info(f"Received engine json: {received_data}")
-                        try :
-                            packet = json.loads(received_data)
-                            if "id" in packet:
-                                if packet.get("id") == id :
-                                    self.get_logger().info(f"Found {id} serial port: {serial_port}")
-                                    return node_serial_port
-                        except Exception as ex:
-                            if received_data != "" :
-                                self.get_logger().info(f"Bad json.loads packet {received_data}: {ex}")
-                except Exception as ex:
-                    self.get_logger().info(f"Serial port {serial_port} did not open: {ex}")
-        return None
+    def send_json_cmd(self,cmd) :
+        # self.get_logger().info(f"send_json_cmd: {cmd=}")
+        if self.ser and self.ser.is_open:
+            try:
+                json_cmd = json.dumps(cmd) + '\n'
+                self.ser.write(json_cmd.encode('utf-8'))
+            except Exception as e:
+                self.get_logger().error(f"Failed to write to serial: {e}")
+
+    # # check serial ports to find the one that matches the id
+    # def determineSerialPort(self, id) :
+    #     for a in range(10):
+    #         for serial_port in self.serialPorts :
+    #             try:
+    #                 self.get_logger().info(f"Try {serial_port}")
+    #                 node_serial_port = serial.Serial(serial_port, 1000000, timeout=0.01)
+    #                 node_serial_port.write("{\"id\":0}".encode())
+    #                 time.sleep(1)
+    #                 # read port multiple times checking for "id"
+    #                 for i in range(10):
+    #                     received_data = node_serial_port.readline().decode().strip()
+    #                     #self.get_logger().info(f"Received engine json: {received_data}")
+    #                     try :
+    #                         packet = json.loads(received_data)
+    #                         if "id" in packet:
+    #                             if packet.get("id") == id :
+    #                                 self.get_logger().info(f"Found {id} serial port: {serial_port}")
+    #                                 return node_serial_port
+    #                     except Exception as ex:
+    #                         if received_data != "" :
+    #                             self.get_logger().info(f"Bad json.loads packet {received_data}: {ex}")
+    #             except Exception as ex:
+    #                 self.get_logger().info(f"Serial port {serial_port} did not open: {ex}")
+    #     return None
     
     # check serial port at timerRateHz and parse out messages to publish
     def timer_callback(self):
         # Check if a line has been received on the serial port
-        if self.imu_gps_serial_port.in_waiting > 0:
+        if self.ser.in_waiting > 0:
             try :
-                received_data = self.imu_gps_serial_port.readline().decode().strip()
+                received_data = self.ser.readline().decode().strip()
                 #self.get_logger().info(f"Received engine json: {received_data}")
             except Exception as ex:
                 self.get_logger().error(f"IMU GPS serial read failure : {ex}")
@@ -212,6 +221,8 @@ class ImuGpsNode(Node):
                     msg.linear_acceleration.z = float(self.laccJsonPacket.get("z"))
 
                     self.imu_msg_publisher.publish(msg)
+
+                    #DEBUG print out
 
         except Exception as ex:
             self.get_logger().error(f"imuPublish json exception : {ex}")
