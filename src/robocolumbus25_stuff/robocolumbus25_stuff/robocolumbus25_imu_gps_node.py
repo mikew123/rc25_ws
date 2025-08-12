@@ -1,3 +1,4 @@
+from ctypes.wintypes import PMSG
 import rclpy
 import json
 import serial
@@ -8,6 +9,8 @@ from std_msgs.msg import String, Int32, Float32MultiArray
 from sensor_msgs.msg import Imu
 from sensor_msgs.msg import NavSatFix
 from geometry_msgs.msg import Pose
+from geometry_msgs.msg import Quaternion
+import tf_transformations
 
 class ImuGpsNode(Node):
     '''
@@ -15,9 +18,7 @@ class ImuGpsNode(Node):
     in the cabin
     '''
 
-    timerRateHz = 110.0; # Rate to check serial port for messages
-
-    # Serial port configuration (update as needed)
+    timerRateHz = 100.0; # Rate to check serial port for messages
     serial_port = "/dev/serial/by-id/usb-Waveshare_RP2040_Zero_E6635C469F25492A-if00"
     baudrate = 1000000
 
@@ -34,6 +35,7 @@ class ImuGpsNode(Node):
     def __init__(self):
         super().__init__('imu_gps_node')
 
+        # Open serial port to imu_gps controll over USB
         try:
             self.ser = serial.Serial(self.serial_port, self.baudrate, timeout=1)
             self.get_logger().info(f"Serial port {self.serial_port} opened.")
@@ -66,32 +68,6 @@ class ImuGpsNode(Node):
                 self.ser.write(json_cmd.encode('utf-8'))
             except Exception as e:
                 self.get_logger().error(f"Failed to write to serial: {e}")
-
-    # # check serial ports to find the one that matches the id
-    # def determineSerialPort(self, id) :
-    #     for a in range(10):
-    #         for serial_port in self.serialPorts :
-    #             try:
-    #                 self.get_logger().info(f"Try {serial_port}")
-    #                 node_serial_port = serial.Serial(serial_port, 1000000, timeout=0.01)
-    #                 node_serial_port.write("{\"id\":0}".encode())
-    #                 time.sleep(1)
-    #                 # read port multiple times checking for "id"
-    #                 for i in range(10):
-    #                     received_data = node_serial_port.readline().decode().strip()
-    #                     #self.get_logger().info(f"Received engine json: {received_data}")
-    #                     try :
-    #                         packet = json.loads(received_data)
-    #                         if "id" in packet:
-    #                             if packet.get("id") == id :
-    #                                 self.get_logger().info(f"Found {id} serial port: {serial_port}")
-    #                                 return node_serial_port
-    #                     except Exception as ex:
-    #                         if received_data != "" :
-    #                             self.get_logger().info(f"Bad json.loads packet {received_data}: {ex}")
-    #             except Exception as ex:
-    #                 self.get_logger().info(f"Serial port {serial_port} did not open: {ex}")
-    #     return None
     
     # check serial port at timerRateHz and parse out messages to publish
     def timer_callback(self):
@@ -120,9 +96,10 @@ class ImuGpsNode(Node):
                     self.get_logger().info(f"IMU GPS serial json unknown : {received_data}")
                     return  
             except Exception as ex:
-                self.get_logger().error(f"IMU GPS serial json failure {ex} : {received_data}")
+                self.get_logger().error(f"IMU GPS serial json Exception {ex} : {received_data}")
                 return
-            
+
+    # GPS pose
     def gps_nav_subscription_callback(self, msg: NavSatFix) -> None:
         
         lon = msg.longitude
@@ -144,17 +121,19 @@ class ImuGpsNode(Node):
         pmsg = Pose()
         pmsg.position.x = lonX
         pmsg.position.y = latY
-        
+
         self.gps_pose_publisher.publish(pmsg)
         
         #self.get_logger().info(f"gps_msg_subscription_callback : {latY=} {lonX=}")
         
+    # Process Compass data
     def cmpPublish(self, cmpJsonPacket) -> None:        
         #self.get_logger().info(f"cmpPublish : {cmpJsonPacket=}")
         msg = Int32()
         msg.data = cmpJsonPacket.get("azi")
         self.cmp_azi_publisher.publish(msg)
         
+    # Process GPS data
     def gpsPublish(self, gpsJsonPacket) -> None:        
         #self.get_logger().info(f"gpsPublish : {gpsJsonPacket=}")
 
@@ -176,6 +155,7 @@ class ImuGpsNode(Node):
 
         self.gps_nav_publisher.publish(msg)
 
+    # Process IMU data
     def imuPublish(self, imuJsonPacket) :        
         #self.get_logger().info(f"imuPublish : {imuJsonPacket=}")
 
@@ -221,8 +201,6 @@ class ImuGpsNode(Node):
                     msg.linear_acceleration.z = float(self.laccJsonPacket.get("z"))
 
                     self.imu_msg_publisher.publish(msg)
-
-                    #DEBUG print out
 
         except Exception as ex:
             self.get_logger().error(f"imuPublish json exception : {ex}")

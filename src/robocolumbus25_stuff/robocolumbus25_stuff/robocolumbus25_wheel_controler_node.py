@@ -116,8 +116,9 @@ class WheelControllerNode(Node):
         bmsg.present = True
         self.battery_status_msg_publisher.publish(bmsg)
 
+    # Process /odom_msg to get /odom_pose
     def proc_odom_msg(self, odom) :
-        self.get_logger().info(f"proc_odom_msg {odom=}")
+        #self.get_logger().info(f"proc_odom_msg {odom=}")
 
         # TODO: how to cast stamp as unsigned 32 for roll over
         # But may not be needed since it is a very large number and long time
@@ -165,7 +166,7 @@ class WheelControllerNode(Node):
         odom_msg.twist.twist.linear.x = linX
         odom_msg.twist.twist.angular.z = angZ
 
-        self.get_logger().info(f"proc_odom_msg {angZ=:.3f} {odom_msg=}")
+        # self.get_logger().info(f"proc_odom_msg {angZ=:.3f} {odom_msg=}")
 
         self.odom_publisher.publish(odom_msg)
 
