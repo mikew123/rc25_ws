@@ -8,8 +8,11 @@
 * Creates JSON formated data strings on USB serial
 * This was designed for interfacing with a ROS2 node
 *
+* Uses both RP2040 cores
+*
 * Mike Williamson 8/11/2025
 **************************************************************** */
+
 
 #include <Arduino.h>
 #include <Arduino_JSON.h>
@@ -19,6 +22,12 @@
 #include <SparkFun_u-blox_GNSS_v3.h> //http://librarymanager/All#SparkFun_u-blox_GNSS_v3
 
 #include <QMC5883LCompass.h>
+
+#include <atomic>
+
+// Each core has its own 8K stack
+// Not sure where to place this so did it at the "top"
+bool core1_separate_stack = true;
 
 // No reset pin for UART
 #define BNO08X_RESET -1
@@ -40,15 +49,25 @@
 #define GPS_HZ 10
 #define GPS_PER_US (1000000L/GPS_HZ)
 
+// serial TX string buffer size
+#define SERTXSTR_SIZE 10
+
+// Instance libraries
 Adafruit_BNO08x  bno08x(BNO08X_RESET);
 
 SFE_UBLOX_GNSS_SERIAL myGNSS;
 
 QMC5883LCompass compass;
 
-sh2_SensorValue_t sensorValue;
 
 // Global variables
+
+sh2_SensorValue_t sensorValue;
+
+String g_serialStrings[SERTXSTR_SIZE];
+volatile int g_serialStringWrIdx = 0;
+volatile int g_serialStringRdIdx = 0;
+volatile std::atomic<int16_t> g_serialStringCnt = 0;
 
 bool g_imuEna = false;
 bool g_gpsEna = false;
@@ -109,6 +128,7 @@ void setupGps(void) {
 
     delay(100);
     Serial.println("GNSS: trying 9600 baud");
+    
     Serial2.begin(9600);
     if (myGNSS.begin(Serial2) == true) {
         Serial.println("GNSS: connected at 9600 baud, switching to 115200");
@@ -123,7 +143,7 @@ void setupGps(void) {
   Serial.println("GNSS serial connected");
 
   myGNSS.setUART2Output(COM_TYPE_UBX); //Set the UART port to output UBX only
-  myGNSS.setNavigationFrequency(IMU_HZ); // Set to not block IMU reads
+  myGNSS.setNavigationFrequency(GPS_HZ); // Set to not block IMU reads
   myGNSS.setDynamicModel(g_dyn_model);
 
   g_gpsReadMillis = millis() + g_gpsIntervalMsec;
@@ -171,6 +191,29 @@ void setupCmp(void) {
 ///////////////////////////////////////////////////////////////////////
 // Loop functions
 
+// send saved strings to USB serial port
+void serialTx() {
+  if(g_serialStringCnt == 0) return;
+  Serial.println(g_serialStrings[g_serialStringRdIdx]);
+  g_serialStringRdIdx++;
+  if(g_serialStringRdIdx>=SERTXSTR_SIZE) g_serialStringRdIdx = 0;
+
+  //************* ATOMIC VARIABLE PROTECTION ***************
+  g_serialStringCnt--;
+  //*************************************************
+}
+
+void sendSerialTxString(String str) {
+  if(g_serialStringCnt >= SERTXSTR_SIZE) return;
+  g_serialStrings[g_serialStringWrIdx] = str;
+  g_serialStringWrIdx++;
+  if(g_serialStringWrIdx>=SERTXSTR_SIZE) g_serialStringWrIdx = 0;
+
+  //************* ATOMIC VARIABLE PROTECTION ***************
+  g_serialStringCnt++;
+  //*************************************************
+
+}
 
 // process JSON formated commands on USB serial port
 void serialRx() {
@@ -248,9 +291,9 @@ void procCmp(void) {
 void procGps() {
   if (g_gpsEna == false) return;
 
-  uint32_t lmillis = millis();
-  if(lmillis < g_gpsReadMillis) return;
-  g_gpsReadMillis = lmillis + g_gpsIntervalMsec;
+  static uint32_t lastMillis = 0;
+  int t1 = millis() - lastMillis;
+  lastMillis = millis();
 
   // Assume GPS info is ready, it will block if not ready
   // GPS generation rate set to IMU rate to minimize blocking
@@ -259,7 +302,8 @@ void procGps() {
   jsonObject["gps"]["lon"] = myGNSS.getLongitude();
   jsonObject["gps"]["alt"] = myGNSS.getAltitude();
   jsonObject["gps"]["siv"] = myGNSS.getSIV();
-  Serial.println(jsonObject);
+  // Serial.println(jsonObject);
+  sendSerialTxString(JSON.stringify(jsonObject));
 }
 
 void procImu(void) {
@@ -323,10 +367,10 @@ void setup(void) {
   while (!Serial) delay(10);     //  pause  until serial console opens
 
   Serial.println("IMU + GPS");
-  
+
   setupImu();
 
-  setupGps();
+  // setupGps();
 
   setupCmp();
   
@@ -335,8 +379,17 @@ void setup(void) {
 
 
 void loop() {
+  serialTx();
   serialRx();
   procImu();
-  procGps();
+  // procGps();
   procCmp();
+}
+
+void setup1() {
+  setupGps();
+}
+
+void loop1() {
+  procGps();
 }
