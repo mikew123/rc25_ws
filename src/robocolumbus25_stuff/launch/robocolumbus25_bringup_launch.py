@@ -20,9 +20,10 @@ from ament_index_python.packages import get_package_share_directory
 # from launch_ros.actions import Node
 # #added for life cycle support
 # from launch_ros.actions import LifecycleNode
-# #added to launch other launch files
-# from launch.actions import IncludeLaunchDescription
-# from launch.launch_description_sources import PythonLaunchDescriptionSource
+
+#added to launch other launch files
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 
 def generate_launch_description():
@@ -198,6 +199,12 @@ def generate_launch_description():
         #     executable='robo24_watch_serial_node',
         #     name='robo24_watch_serial'
         # ),
+
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join('src/sllidar_ros2/launch/sllidar_s3_launch.py')
+            )
+        ),
 
         launch_ros.actions.Node(
             package='robocolumbus25_stuff',
