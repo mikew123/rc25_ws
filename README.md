@@ -61,8 +61,12 @@ Time Of Flight sensors on front, rear and optional sides with mm resolution for 
   
 # Software
 ## ROS2
-- ROS2 Humble or Iron versions requires Linux Ubuntu 20.04 OS
+- Using ROS2 Jazzy which requires Linux Ubuntu 24.04 OS
+- Ubuntu 24.04 is running natively on the SSD
+- The ROS software package in the rc25_ws directory is published on https://github.com/mikew123/rc25_ws.git
+
 ## 3rd party ROS2 
+These packages are used for the Lidar and cone detection on the OAK-D-Lite camera. They are cloned into the home directory.
 - Cone detection AI
 https://github.com/mw46d/ros_coneslayer.git
 - Lidar management
@@ -169,7 +173,12 @@ This is a detail view of the first 200 samples:
 <img src="support/Test scripts/test_plot_detail.png"></br>
 
 # ROS code
-The Lidar is managed using the https://github.com/Slamtec/sllidar_ros2.git library<br>
-The Camera cone detection AI uses the https://github.com/mw46d/ros_coneslayer.git library<br>
-The complete TF frame link map (pdftoppm -png rc25_08_17_25.pdf rc25_08_17_25):<br>
+## 3rd party libraries used
+The Lidar is managed using the https://github.com/Slamtec/sllidar_ros2.git package<br>
+The Camera cone detection AI uses the https://github.com/mw46d/ros_coneslayer.git package<br>
+The 3rd party libraries are used by launching them within the rc25 launch file<br>
+
+## TF link map
+The oak-d TF frames are created in ros_coneslayer and connected to in the URDF file<br>
+The complete TF frame map (pdftoppm -png rc25_08_17_25.pdf rc25_08_17_25):<br>
 <img src="support/rc25_08_17_25-1.png"><br>
