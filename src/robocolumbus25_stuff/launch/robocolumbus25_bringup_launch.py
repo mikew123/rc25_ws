@@ -206,6 +206,19 @@ def generate_launch_description():
             )
         ),
 
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join('../ros_coneslayer/launch/coneslayer_publisher.launch.py')
+            )
+        ),
+
+        launch_ros.actions.Node(
+            package='robocolumbus25_stuff',
+            executable='robocolumbus25_cone_node',
+            name='cone_node',
+            namespace="",
+        ),
+
         launch_ros.actions.Node(
             package='robocolumbus25_stuff',
             executable='robocolumbus25_imu_gps_node',
