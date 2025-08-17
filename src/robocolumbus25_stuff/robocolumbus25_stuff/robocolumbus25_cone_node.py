@@ -46,8 +46,8 @@ class ConeNode(Node):
                 pmsg = PointStamped()
                 pmsg.header.frame_id="oak-d_frame"
                 pmsg.point.x = z # Forward meters
-                pmsg.point.y = x # Side meters
-                pmsg.point.z = 0.0 # No elevation
+                pmsg.point.y = -x # Side meters (-x fixes rviz location mapping)
+                pmsg.point.z = y # 0.0 # No elevation
                 self.cone_point_publisher.publish(pmsg)
 
 

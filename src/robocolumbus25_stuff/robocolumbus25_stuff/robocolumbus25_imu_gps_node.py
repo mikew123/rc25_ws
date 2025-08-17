@@ -143,7 +143,7 @@ class ImuGpsNode(Node):
         msg.header.stamp = self.get_clock().now().to_msg()
         # The IMU is located close to the rear differential 
         # and aligned XY so no offest is needed
-        msg.header.frame_id = "base_link"
+        msg.header.frame_id = "gps_link"
 
         # TODO: status fields
         # put num sat in view into status field service
@@ -182,7 +182,7 @@ class ImuGpsNode(Node):
                     msg.header.stamp = self.get_clock().now().to_msg()
                     # The IMU is located at the centroid of the rear differential 
                     # and aligned XY so no offest is needed
-                    msg.header.frame_id = "base_link"
+                    msg.header.frame_id = "imu_link"
 
                     #self.get_logger().info(f"imuPublish : {self.rvecJsonPacket=}")
                     msg.orientation.x = float(self.rvecJsonPacket.get("i"))

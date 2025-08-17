@@ -48,10 +48,11 @@ Used for primary odometry
 ## IMU
 IMU to provide tilt compensation for sensors and maybe bearing to help GPS
 ## Camera
-Object detection and depth camera
+Object detection and depth camera OAK-D-Lite
 ## LIDAR
-Optional rotating LIDAR for far obsticle detection and avoidance
+Optional rotating LIDAR SLLIDAR S3 for far obsticle detection and avoidance
 ## TOF
+TBD
 Time Of Flight sensors on front, rear and optional sides with mm resolution for close obstical avoidance and close cone sensor
 
 # Computer 
@@ -61,7 +62,11 @@ Time Of Flight sensors on front, rear and optional sides with mm resolution for 
 # Software
 ## ROS2
 - ROS2 Humble or Iron versions requires Linux Ubuntu 20.04 OS
-- 
+## 3rd party ROS2 
+- Cone detection AI
+https://github.com/mw46d/ros_coneslayer.git
+- Lidar management
+https://github.com/Slamtec/sllidar_ros2.git
 
 # Electronic modules
 ## Servo switch
@@ -163,3 +168,8 @@ The plotted velocity Mps was calculated as (millisDiff/1000)/(odomDiff/5,615). T
 This is a detail view of the first 200 samples:
 <img src="support/Test scripts/test_plot_detail.png"></br>
 
+# ROS code
+The Lidar is managed using the https://github.com/Slamtec/sllidar_ros2.git library<br>
+The Camera cone detection AI uses the https://github.com/mw46d/ros_coneslayer.git library<br>
+The complete TF frame link map (pdftoppm -png rc25_08_17_25.pdf rc25_08_17_25):<br>
+<img src="support/rc25_08_17_25-1.png"><br>

@@ -49,9 +49,9 @@ def generate_launch_description():
 #     #     'efk_config.yaml'
 #     #     )
  
-#     # Get the text of the robot description URDF - robot_stat_publisher does not open a file
-#     with open('urdfs/roborama25.urdf','r') as infp:
-#     	robot_desc = infp.read()
+    # Get the text of the robot description URDF - robot_stat_publisher does not open a file
+    with open('urdfs/rc25.urdf','r') as infp:
+        robot_desc = infp.read()
 
     return launch.LaunchDescription([
 
@@ -111,16 +111,16 @@ def generate_launch_description():
 #             name='teleop'
 #         ),
 
-        ##### MY ROBOT
+        #### MY ROBOT
 
-        # launch_ros.actions.Node(
-        #     package='robot_state_publisher',
-        #     executable='robot_state_publisher',
-        #     name='robot_state_publisher',
-        #     parameters=[{
-        #         'robot_description':robot_desc,
-        #         }],
-        # ),
+        launch_ros.actions.Node(
+            package='robot_state_publisher',
+            executable='robot_state_publisher',
+            name='robot_state_publisher',
+            parameters=[{
+                'robot_description':robot_desc,
+                }],
+        ),
 
         # launch_ros.actions.LifecycleNode(
         #     package='roborama25_stuff',
@@ -203,7 +203,10 @@ def generate_launch_description():
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 os.path.join('src/sllidar_ros2/launch/sllidar_s3_launch.py')
-            )
+            ),
+            launch_arguments={
+                'frame_id': 'lidar_link'
+            }.items()
         ),
 
         IncludeLaunchDescription(
