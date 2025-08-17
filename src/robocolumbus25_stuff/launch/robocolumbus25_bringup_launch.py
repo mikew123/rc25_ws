@@ -202,7 +202,7 @@ def generate_launch_description():
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
-                os.path.join('src/sllidar_ros2/launch/sllidar_s3_launch.py')
+                os.path.join('../sllidar_ros2/launch/sllidar_s3_launch.py')
             ),
             launch_arguments={
                 'frame_id': 'lidar_link'
