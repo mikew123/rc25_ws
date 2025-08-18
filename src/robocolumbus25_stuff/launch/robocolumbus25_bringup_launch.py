@@ -23,9 +23,9 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 def generate_launch_description():
 
-#     # from nav2 bringup launch file
-#     nav2_bringup_dir = get_package_share_directory('nav2_bringup')
-#     nav2_launch_dir = os.path.join(nav2_bringup_dir, 'launch')
+    # from nav2 bringup launch file
+    nav2_bringup_dir = get_package_share_directory('nav2_bringup')
+    nav2_launch_dir = os.path.join(nav2_bringup_dir, 'launch')
 
 #     # # IMU 
 #     # efk_config = os.path.join(
@@ -56,7 +56,7 @@ def generate_launch_description():
         #         os.path.join(get_package_share_directory('nav2_bringup'), 'launch'),
         #         '/bringup_launch.py']),
         #     launch_arguments={
-        #         'params_file': 'param/roborama25_params.yaml',
+        #         'params_file': 'params/rc25_params.yaml',
         #         "map": "maps/6can_course_home_map.yaml",
         #     }.items()
         # ),
