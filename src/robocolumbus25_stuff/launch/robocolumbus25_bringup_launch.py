@@ -40,27 +40,18 @@ def generate_launch_description():
 
     return launch.LaunchDescription([
 
-        #### MY ROBOT
+        ### External launch files: NAV2, SLLIDAR, CONESLAYER
+        # !! Nav2 launched 1st otherwise Coneslayer TF frames do not publish !!
 
-        launch_ros.actions.Node(
-            package='robot_state_publisher',
-            executable='robot_state_publisher',
-            name='robot_state_publisher',
-            parameters=[{
-                'robot_description':robot_desc,
-                }],
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource([
+                os.path.join(get_package_share_directory('nav2_bringup'), 'launch'),
+                '/bringup_launch.py']),
+            launch_arguments={
+                'params_file': 'params/rc25_params.yaml',
+                "map": "maps/200x200_empty_map.yaml",
+            }.items()
         ),
-
-        # IncludeLaunchDescription(
-        #     PythonLaunchDescriptionSource([
-        #         os.path.join(get_package_share_directory('nav2_bringup'), 'launch'),
-        #         '/bringup_launch.py']),
-        #     launch_arguments={
-        #         'params_file': 'params/rc25_params.yaml',
-        #         "map": "maps/6can_course_home_map.yaml",
-        #     }.items()
-        # ),
-        
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
@@ -75,6 +66,18 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(
                 os.path.join('../ros_coneslayer/launch/coneslayer_publisher.launch.py')
             )
+        ),
+
+
+        #### MY ROBOT
+
+        launch_ros.actions.Node(
+            package='robot_state_publisher',
+            executable='robot_state_publisher',
+            name='robot_state_publisher',
+            parameters=[{
+                'robot_description':robot_desc,
+                }],
         ),
 
         launch_ros.actions.Node(
