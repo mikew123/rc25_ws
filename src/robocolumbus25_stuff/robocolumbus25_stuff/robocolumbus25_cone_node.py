@@ -21,7 +21,7 @@ class ConeNode(Node):
 
     # median 5 filter memory
     # list of tupples [5X(x,y,z)]
-    m5_filter:list = [(0,0,0)]*5
+    m5_filter:list = [(0.0,0.0,0.0)]*5
     
     def __init__(self):
         super().__init__('cone_node')
@@ -51,14 +51,16 @@ class ConeNode(Node):
                 # Use median-5 filter to remove points with distance spikes
                 m5 = self.m5_filter
                 # add new sample to filter list memory
-                m5 = m5[1:5]
-                m5.append((x,y,z))
-                # sort tupple[2] is distance (m5 is not modified)
-                m5s = sorted(m5, key=lambda dist: dist[2])
+                m5 = [(x,y,z),m5[0],m5[1],m5[2],m5[3]]
+                self.m5_filter = m5
+                # sort tupple[2] z is distance (m5 is not modified)
+                m5s = sorted(m5, key=lambda xyz: xyz[2])
                 # pick the median sample
                 (xm,ym,zm) = m5s[2]
-                #(xm,ym,zm) = m5[1] # DEBUG: unfiltered
-
+                #(xm,ym,zm) = m5[2] # DEBUG: unfiltered
+                #(xm,ym,zm) = (x,y,z)
+                #self.get_logger().info(f"{m5=} {m5s=}")
+                
                 # Publish the cone location point x,y,z
                 pmsg = PointStamped()
                 pmsg.header.frame_id="oak-d_frame"

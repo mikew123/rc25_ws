@@ -40,7 +40,7 @@ def generate_launch_description():
 
     return launch.LaunchDescription([
 
-        ### External launch files: NAV2, SLLIDAR, CONESLAYER
+        # ## External launch files: NAV2, SLLIDAR, CONESLAYER
         # !! Nav2 launched 1st otherwise Coneslayer TF frames do not publish !!
         # The order is not even reliable, sometimes oak frames not published
         # coneslayer robot_state_publisher fails
