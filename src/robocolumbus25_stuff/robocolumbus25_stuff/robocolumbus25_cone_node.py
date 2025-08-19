@@ -12,11 +12,16 @@ from geometry_msgs.msg import Pose, PointStamped
 from geometry_msgs.msg import Quaternion
 import tf_transformations
 from vision_msgs.msg import Detection3DArray
+import copy
 
 class ConeNode(Node):
     '''
-    Locates cones etc
+    Cone locations etc
     '''
+
+    # median 5 filter memory
+    # list of tupples [5X(x,y,z)]
+    m5_filter:list = [(0,0,0)]*5
     
     def __init__(self):
         super().__init__('cone_node')
@@ -43,11 +48,23 @@ class ConeNode(Node):
                 z = position.z
                 #self.get_logger().info(f"msg: {x=:.3f} {y=:.3f} {z=:.3f}")
 
+                # Use median-5 filter to remove points with distance spikes
+                m5 = self.m5_filter
+                # add new sample to filter list memory
+                m5 = m5[1:5]
+                m5.append((x,y,z))
+                # sort tupple[2] is distance (m5 is not modified)
+                m5s = sorted(m5, key=lambda dist: dist[2])
+                # pick the median sample
+                (xm,ym,zm) = m5s[2]
+                #(xm,ym,zm) = m5[1] # DEBUG: unfiltered
+
+                # Publish the cone location point x,y,z
                 pmsg = PointStamped()
                 pmsg.header.frame_id="oak-d_frame"
-                pmsg.point.x = z # Forward meters
-                pmsg.point.y = -x # Side meters (-x fixes rviz location mapping)
-                pmsg.point.z = y # 0.0 # No elevation
+                pmsg.point.x = zm # Forward meters
+                pmsg.point.y = -xm # Side meters (-x fixes rviz location mapping)
+                pmsg.point.z = ym # 0.0 # No elevation
                 self.cone_point_publisher.publish(pmsg)
 
 

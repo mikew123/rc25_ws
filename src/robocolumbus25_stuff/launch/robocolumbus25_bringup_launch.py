@@ -42,16 +42,18 @@ def generate_launch_description():
 
         ### External launch files: NAV2, SLLIDAR, CONESLAYER
         # !! Nav2 launched 1st otherwise Coneslayer TF frames do not publish !!
+        # The order is not even reliable, sometimes oak frames not published
+        # coneslayer robot_state_publisher fails
 
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource([
-                os.path.join(get_package_share_directory('nav2_bringup'), 'launch'),
-                '/bringup_launch.py']),
-            launch_arguments={
-                'params_file': 'params/rc25_params.yaml',
-                "map": "maps/200x200_empty_map.yaml",
-            }.items()
-        ),
+        # IncludeLaunchDescription(
+        #     PythonLaunchDescriptionSource([
+        #         os.path.join(get_package_share_directory('nav2_bringup'), 'launch'),
+        #         '/bringup_launch.py']),
+        #     launch_arguments={
+        #         'params_file': 'params/rc25_params.yaml',
+        #         "map": "maps/200x200_empty_map.yaml",
+        #     }.items()
+        # ),
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
@@ -68,17 +70,7 @@ def generate_launch_description():
             )
         ),
 
-
-        #### MY ROBOT
-
-        launch_ros.actions.Node(
-            package='robot_state_publisher',
-            executable='robot_state_publisher',
-            name='robot_state_publisher',
-            parameters=[{
-                'robot_description':robot_desc,
-                }],
-        ),
+        #### MY ROBOT RC25 packages
 
         launch_ros.actions.Node(
             package='robocolumbus25_stuff',
@@ -108,6 +100,18 @@ def generate_launch_description():
             namespace="",
         ),
 
+
+        #### ROS2 packages
+
+        launch_ros.actions.Node(
+            package='robot_state_publisher',
+            executable='robot_state_publisher',
+            name='robot_state_publisher',
+            parameters=[{
+                'robot_description':robot_desc,
+                }],
+        ),
+
         launch_ros.actions.Node(
             package='joy_linux',
             executable='joy_linux_node',
@@ -120,5 +124,7 @@ def generate_launch_description():
         #     name='efk_odom',
         #     parameters=[efk_config]
         # )
+
+
         
     ])
