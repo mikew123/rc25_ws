@@ -1,20 +1,19 @@
-
+# .bashrc has an alias "rc25" which builds launches this project
+# as well as the delphi_descriptins urdf launch file
+# The extra delayed urdf launch fixes the oak frame issues when nav2 is launched
+#
+# alias rc25=' \
+#  cd ~/rc25_ws ; colcon build ; source install/setup.bash ; \
+#  parallel --lb ::: \
+#  "ros2 launch robocolumbus25_stuff robocolumbus25_bringup_launch.py" \
+#  "sleep 5 ; ros2 launch depthai_descriptions urdf_launch.py" ; \
+#  wait ; echo "RC25 terminated" \
+# '
 
 import launch
 import launch_ros.actions
 import os
 from ament_index_python.packages import get_package_share_directory
-
-### copied from RPLIDAR C1 example
-
-# #from ament_index_python.packages import get_package_share_directory
-# from launch import LaunchDescription
-# from launch.actions import DeclareLaunchArgument
-# from launch.actions import LogInfo
-# from launch.substitutions import LaunchConfiguration
-# from launch_ros.actions import Node
-# #added for life cycle support
-# from launch_ros.actions import LifecycleNode
 
 #added to launch other launch files
 from launch.actions import IncludeLaunchDescription
@@ -45,19 +44,22 @@ def generate_launch_description():
         # The order is not even reliable, sometimes oak frames not published
         # coneslayer robot_state_publisher fails
 
-        # IncludeLaunchDescription(
-        #     PythonLaunchDescriptionSource([
-        #         os.path.join(get_package_share_directory('nav2_bringup'), 'launch'),
-        #         '/bringup_launch.py']),
-        #     launch_arguments={
-        #         'params_file': 'params/rc25_params.yaml',
-        #         "map": "maps/200x200_empty_map.yaml",
-        #     }.items()
-        # ),
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(
+                    nav2_launch_dir,
+                    'bringup_launch.py'
+                )
+            ),
+            launch_arguments={
+                'params_file': 'params/rc25_params.yaml',
+                "map": "maps/200x200_empty_map.yaml",
+            }.items()
+        ),
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
-                os.path.join('../sllidar_ros2/launch/sllidar_s3_launch.py')
+                '../sllidar_ros2/launch/sllidar_s3_launch.py'
             ),
             launch_arguments={
                 'frame_id': 'lidar_link'
@@ -66,8 +68,11 @@ def generate_launch_description():
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
-                os.path.join('../ros_coneslayer/launch/coneslayer_publisher.launch.py')
-            )
+                '../ros_coneslayer/launch/coneslayer_publisher.launch.py'
+            ),
+            launch_arguments={
+                'namespace': 'coneslayer'
+            }.items()
         ),
 
         #### MY ROBOT RC25 packages
@@ -125,6 +130,5 @@ def generate_launch_description():
         #     parameters=[efk_config]
         # )
 
-
-        
     ])
+
