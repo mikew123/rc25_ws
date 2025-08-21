@@ -45,7 +45,7 @@ class ImuGpsNode(Node):
             exit(1)
             
         self.imu_test_publisher = self.create_publisher(String, 'imu_test', 10)
-        self.imu_msg_publisher = self.create_publisher(Imu, 'imu_msg', 10)
+        self.imu_msg_publisher = self.create_publisher(Imu, 'imu', 10)
         self.gps_nav_publisher = self.create_publisher(NavSatFix, 'gps_nav', 10)
         self.gps_pose_publisher = self.create_publisher(Pose, 'gps_pose', 10)
         self.cmp_azi_publisher = self.create_publisher(Int32, 'cmp_azi', 10)

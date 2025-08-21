@@ -35,7 +35,7 @@ class WheelControllerNode(Node):
             self.cmd_vel_callback,
             10
         )
-        self.odom_publisher = self.create_publisher(Odometry, 'odom', 10)
+        self.wheel_odom_publisher = self.create_publisher(Odometry, 'wheel_odom', 10)
         self.battery_status_msg_publisher = self.create_publisher(BatteryState, 'battery_status', 10)
         self.serialTimer = self.create_timer(0.010, self.serialTimerCallback)
 
@@ -102,13 +102,14 @@ class WheelControllerNode(Node):
 
         if 'odom' in data:
             odom = data['odom']
-            self.proc_odom_msg(odom)
+            self.proc_wheel_odom_msg(odom)
 
         if 'vbat' in data:
             vbat = data['vbat']
             self.processBatteryInfo(vbat)
         
     def processBatteryInfo(self, vbat) -> None :
+        # TODO: add current and possibly cell voltages
         bmsg = BatteryState()
         bmsg.header.stamp = self.get_clock().now().to_msg()
         bmsg.header.frame_id = "base_link"
@@ -116,9 +117,9 @@ class WheelControllerNode(Node):
         bmsg.present = True
         self.battery_status_msg_publisher.publish(bmsg)
 
-    # Process /odom_msg to get /odom_pose
-    def proc_odom_msg(self, odom) :
-        #self.get_logger().info(f"proc_odom_msg {odom=}")
+    # Process odom info from wheels to get /wheel_odom with velocity and pose
+    def proc_wheel_odom_msg(self, odom) :
+        #self.get_logger().info(f"proc_wheel_odom_msg {odom=}")
 
         # TODO: how to cast stamp as unsigned 32 for roll over
         # But may not be needed since it is a very large number and long time
@@ -166,9 +167,9 @@ class WheelControllerNode(Node):
         odom_msg.twist.twist.linear.x = linX
         odom_msg.twist.twist.angular.z = angZ
 
-        # self.get_logger().info(f"proc_odom_msg {angZ=:.3f} {odom_msg=}")
+        # self.get_logger().info(f"proc_wheel_odom_msg {angZ=:.3f} {odom_msg=}")
 
-        self.odom_publisher.publish(odom_msg)
+        self.wheel_odom_publisher.publish(odom_msg)
 
     def cmd_vel_callback(self, msg):
         # self.get_logger().info(f"cmd_vel_callback {msg=}")

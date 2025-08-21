@@ -26,12 +26,12 @@ def generate_launch_description():
     nav2_bringup_dir = get_package_share_directory('nav2_bringup')
     nav2_launch_dir = os.path.join(nav2_bringup_dir, 'launch')
 
-#     # # IMU 
-#     # efk_config = os.path.join(
-#     #     get_package_share_directory('robo24_localization'),
-#     #     'config',
-#     #     'efk_config.yaml'
-#     #     )
+    # # IMU 
+    # efk_config = os.path.join(
+    #     get_package_share_directory('robo24_localization'),
+    #     'config',
+    #     'efk_config.yaml'
+    #     )
  
     # Get the text of the robot description URDF - robot_stat_publisher does not open a file
     with open('urdfs/rc25.urdf','r') as infp:
@@ -123,12 +123,14 @@ def generate_launch_description():
             name='joy_linux'
         ),
   
-        # launch_ros.actions.Node(
-        #     package='robot_localization',
-        #     executable='ekf_node',
-        #     name='efk_odom',
-        #     parameters=[efk_config]
-        # )
+        launch_ros.actions.Node(
+            package='robot_localization',
+            executable='ekf_node',
+            name='efk_odom',
+            parameters=[
+                'config/efk_config.yaml'
+            ]
+        )
 
     ])
 
