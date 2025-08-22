@@ -42,7 +42,7 @@ def generate_launch_description():
                 )
             ),
             launch_arguments={
-                'params_file': 'params/rc25_params.yaml',
+                'params_file': 'config/rc25_params.yaml',
                 "map": "maps/200x200_empty_map.yaml",
             }.items()
         ),
@@ -105,6 +105,7 @@ def generate_launch_description():
             parameters=[{
                 'robot_description':robot_desc,
                 }],
+            remappings=[('/robot_description', '/rc25/robot_description')],
         ),
 
         launch_ros.actions.Node(
