@@ -25,13 +25,6 @@ def generate_launch_description():
     # from nav2 bringup launch file
     nav2_bringup_dir = get_package_share_directory('nav2_bringup')
     nav2_launch_dir = os.path.join(nav2_bringup_dir, 'launch')
-
-    # # IMU 
-    # efk_config = os.path.join(
-    #     get_package_share_directory('robo24_localization'),
-    #     'config',
-    #     'efk_config.yaml'
-    #     )
  
     # Get the text of the robot description URDF - robot_stat_publisher does not open a file
     with open('urdfs/rc25.urdf','r') as infp:
@@ -40,9 +33,6 @@ def generate_launch_description():
     return launch.LaunchDescription([
 
         # ## External launch files: NAV2, SLLIDAR, CONESLAYER
-        # !! Nav2 launched 1st otherwise Coneslayer TF frames do not publish !!
-        # The order is not even reliable, sometimes oak frames not published
-        # coneslayer robot_state_publisher fails
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(

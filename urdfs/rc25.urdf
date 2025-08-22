@@ -68,12 +68,30 @@
   </joint>
  
   <link name="base_link">
-    <visual>
-      <origin xyz="0 0 0.015" rpy="0 0 0"/>
-      <geometry>
-        <cylinder length="0.005" radius="0.180"/>
-      </geometry>
+    <visual name="robot_body">
+      <origin xyz="0.220 0.0 0.150" rpy="0 0 0"/>
+      <geometry> <box size="0.650 0.380 0.250"/> </geometry>
       <material name="orange"/>
+    </visual>
+    <visual name="RL_wheel">
+      <origin xyz="0 0.170 0.090" rpy="1.57 0 0"/>
+      <geometry> <cylinder length="0.070" radius="0.090"/> </geometry>
+      <material name="black"/>
+    </visual>
+    <visual name="RR_wheel">
+      <origin xyz="0 -0.170 0.090" rpy="-1.57 0 0"/>
+      <geometry> <cylinder length="0.070" radius="0.090"/> </geometry>
+      <material name="black"/>
+    </visual>
+    <visual name="FL_wheel">
+      <origin xyz="0.450 0.170 0.090" rpy="1.57 0 0"/>
+      <geometry> <cylinder length="0.070" radius="0.090"/> </geometry>
+      <material name="black"/>
+    </visual>
+    <visual name="FR_wheel">
+      <origin xyz="0.450 -0.170 0.090" rpy="-1.57 0 0"/>
+      <geometry> <cylinder length="0.070" radius="0.090"/> </geometry>
+      <material name="black"/>
     </visual>
   </link>
 
