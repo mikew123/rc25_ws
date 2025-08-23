@@ -1,3 +1,17 @@
+/*
+
+* Gererated using copilot GPT-4.1:
+* "create arduino code to access the VL53l8cx TOF sensor from an 
+*  ESP32 controller using this lib https://github.com/stm32duino/VL53L3CX. 
+*  Send results over serial port in JSON: {"data":{"tof":[[row0],[row1]
+*  ,row2],[row3],[row4],[row5],[row6],[row7]]}} integer mm"
+*
+
+
+*/
+
+
+
 #include <Wire.h>
 #include <VL53L3CX.h>
 
