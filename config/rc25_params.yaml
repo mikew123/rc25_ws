@@ -227,7 +227,7 @@ local_costmap:
       width: 5
       height: 5
       resolution: 0.1
-      robot_radius: 0.400
+      robot_radius: 0.350
       plugins: ["voxel_layer", "inflation_layer"]
       # filters: ["keepout_filter"]
       # keepout_filter:
@@ -239,7 +239,7 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.5
+        inflation_radius: 0.400
       voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: True
@@ -279,7 +279,7 @@ global_costmap:
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: lidar_link
-      robot_radius: 0.400
+      robot_radius: 0.350
       resolution: 0.1
       track_unknown_space: true
       plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
@@ -321,7 +321,7 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.5
+        inflation_radius: 0.400
       always_send_full_costmap: True
       introspection_mode: "disabled"
 
