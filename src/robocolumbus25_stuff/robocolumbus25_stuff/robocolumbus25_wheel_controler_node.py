@@ -161,8 +161,8 @@ class WheelControllerNode(Node):
         odom_msg.pose.pose.position.z = 0.0
     
         # Convert yaw to quaternion
-        q = tf_transformations.quaternion_from_euler(0, 0, self.yaw)
-        odom_msg.pose.pose.orientation = Quaternion(x=q[0], y=q[1], z=q[2], w=q[3])
+        (x,y,z,w) = tf_transformations.quaternion_from_euler(0, 0, self.yaw)
+        odom_msg.pose.pose.orientation = Quaternion(x=x,y=y,z=z,w=w)
 
         odom_msg.twist.twist.linear.x = linX
         odom_msg.twist.twist.angular.z = angZ
@@ -183,7 +183,7 @@ class WheelControllerNode(Node):
         # Compute front wheel steering angle (Ackermann)
         if angular_z != 0 and linear_x != 0:
             turning_radius = linear_x / angular_z
-            steering_angle = math.atan(self.wheel_base / turning_radius)
+            steering_angle = -1* math.atan(self.wheel_base / turning_radius)
         else:
             steering_angle = 0.0
 

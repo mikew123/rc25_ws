@@ -32,7 +32,7 @@ class Robocolumbus25TeleopNode(Node):
 
         # get controller values
         axes1 = msg.axes[1] # throttle
-        axes3 = -msg.axes[3] # steer
+        axes3 = msg.axes[3] # steer
 
         linearX  = axes1 * self.maxLinearX
         steerAngleRad = axes3 * self.maxSteerAngleRad
