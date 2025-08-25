@@ -25,6 +25,7 @@ import serial
 import json
 import tf_transformations
 import time
+import numpy as np
 
 class WheelControllerNode(Node):
     #PID coefficients
@@ -45,13 +46,16 @@ class WheelControllerNode(Node):
     y = 0.0
     yaw = 0.0
     last_time = 0.0 # seconds
+    last_stampMs = np.uint32(0)
+    last_enc = np.int32(0)
+    last_angRad = 0.0
 
     # Serial port configuration (update as needed)
     serial_port = "/dev/serial/by-id/usb-Waveshare_RP2040_PiZero_E6625887D37C3E30-if00"
     baudrate = 1000000
 
     # Odometry from encoder or velocity
-    odom_encoder = False
+    odom_encoder = True
 
     def __init__(self):
         super().__init__('robocolumbus25_wheel_controler_node')
@@ -131,13 +135,33 @@ class WheelControllerNode(Node):
 
         # TODO: how to cast stamp as unsigned 32 for roll over
         # But may not be needed since it is a very large number and long time
-        stamp = int(odom['stamp'])
-        enc = int(odom['enc'])
+        stampMs = np.uint32(odom['stamp']) # Milliseconds
+        enc = np.int32(odom['enc'])
         linX = float(odom['linx'])
         angRad = -1* float(odom['steer'])
     
         if self.odom_encoder :
-            return
+            dt = (stampMs - self.last_stampMs) * 1e-3 # converted to seconds
+            self.last_stampMs = stampMs
+            dEnc = enc - self.last_enc
+            self.last_enc = enc
+
+            if dt>0.1 or dt<=0.0 :
+                return
+   
+            dx = (dEnc/self.encoderCountsPerMeter)
+            linX = dx / dt
+
+            # convert steering angle to steering angle velocity
+            if (linX==0 or angRad==0) :
+                angZ = 0.0
+            else :
+                angZ = math.tan(angRad)*linX/self.wheel_base
+
+            delta_x = dx * math.cos(self.yaw)
+            delta_y = dx * math.sin(self.yaw)
+            delta_yaw = angZ * dt
+
         else :
             # convert steering angle to steering angle velocity
             if (linX==0 or angRad==0) :
@@ -153,7 +177,6 @@ class WheelControllerNode(Node):
             if(dt>1.0) : return # delta time too large, probably just start up
 
             # Simple differential drive odometry update
-            # TODO: use encoder counts from engine controller
             delta_x = linX * math.cos(self.yaw) * dt
             delta_y = linX * math.sin(self.yaw) * dt
             delta_yaw = angZ * dt
