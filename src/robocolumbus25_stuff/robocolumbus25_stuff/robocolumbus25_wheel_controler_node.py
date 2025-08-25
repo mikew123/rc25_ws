@@ -27,8 +27,37 @@ import tf_transformations
 import time
 
 class WheelControllerNode(Node):
+    #PID coefficients
+    coeffA = 0.2
+    coeffB = 0.04
+    # Diff coefficients to help get ESC to speed faster
+    coeffDA = 0.15
+    coeffDB = 0.075
+
+    last_time = 0
+
+    # Example parameters (replace with actual values)
+    wheel_base = 0.490  # meters
+    encoderCountsPerMeter = 6000
+
+    # Robot pose state
+    x = 0.0
+    y = 0.0
+    yaw = 0.0
+    last_time = 0.0 # seconds
+
+    # Serial port configuration (update as needed)
+    serial_port = "/dev/serial/by-id/usb-Waveshare_RP2040_PiZero_E6625887D37C3E30-if00"
+    baudrate = 1000000
+
+    # Odometry from encoder or velocity
+    odom_encoder = False
+
     def __init__(self):
         super().__init__('robocolumbus25_wheel_controler_node')
+
+        self.last_time = self.get_clock().now()
+
         self.subscription = self.create_subscription(
             Twist,
             '/cmd_vel',
@@ -39,28 +68,6 @@ class WheelControllerNode(Node):
         self.battery_status_msg_publisher = self.create_publisher(BatteryState, 'battery_status', 10)
         self.serialTimer = self.create_timer(0.010, self.serialTimerCallback)
 
-        #PID coefficients
-        coeffA = 0.2
-        coeffB = 0.04
-        # Diff coefficients to help get ESC to speed faster
-        coeffDA = 0.15
-        coeffDB = 0.075
-
-        self.last_time = 0
-
-        # Example parameters (replace with actual values)
-        self.wheel_base = 0.490  # meters
-        self.encoderCountsPerMeter = 6000
-
-        # Robot pose state
-        self.x = 0.0
-        self.y = 0.0
-        self.yaw = 0.0
-        self.last_time = self.get_clock().now()
-
-        # Serial port configuration (update as needed)
-        self.serial_port = "/dev/serial/by-id/usb-Waveshare_RP2040_PiZero_E6625887D37C3E30-if00"
-        self.baudrate = 1000000
         try:
             self.ser = serial.Serial(self.serial_port, self.baudrate, timeout=1)
             self.get_logger().info(f"Serial port {self.serial_port} opened.")
@@ -68,7 +75,7 @@ class WheelControllerNode(Node):
             self.get_logger().error(f"Failed to open serial port: {e}")
             self.ser = None
 
-        cmd = {"pid":[coeffA,coeffB,coeffDA,coeffDB]}
+        cmd = {"pid":[self.coeffA,self.coeffB,self.coeffDA,self.coeffDB]}
         self.send_json_cmd(cmd)
         cmd = {"mode":"cv"}
         self.send_json_cmd(cmd)
@@ -120,6 +127,7 @@ class WheelControllerNode(Node):
     # Process odom info from wheels to get /wheel_odom with velocity and pose
     def proc_wheel_odom_msg(self, odom) :
         #self.get_logger().info(f"proc_wheel_odom_msg {odom=}")
+        current_time = self.get_clock().now()
 
         # TODO: how to cast stamp as unsigned 32 for roll over
         # But may not be needed since it is a very large number and long time
@@ -128,34 +136,43 @@ class WheelControllerNode(Node):
         linX = float(odom['linx'])
         angRad = -1* float(odom['steer'])
     
-        # convert steering angle to steering angle velocity
-        if (linX==0 or angRad==0) :
-            angZ = 0.0
+        if self.odom_encoder :
+            return
         else :
-            angZ = math.tan(angRad)*linX/self.wheel_base
+            # convert steering angle to steering angle velocity
+            if (linX==0 or angRad==0) :
+                angZ = 0.0
+            else :
+                angZ = math.tan(angRad)*linX/self.wheel_base
 
-        # Odometry calculation
-        # TODO: use time stamp from engine controller
-        current_time = self.get_clock().now()
-        dt = (current_time - self.last_time).nanoseconds * 1e-9 # converted to seconds
-        self.last_time = current_time
-        if(dt>1.0) : return # delta time too large, probably just start up
+            # Odometry calculation
+            # TODO: use time stamp from engine controller
+            # floats dont wrap but can lose accuracy
+            dt = (current_time - self.last_time).nanoseconds * 1e-9 # converted to seconds
+            self.last_time = current_time
+            if(dt>1.0) : return # delta time too large, probably just start up
 
-        # Simple differential drive odometry update
-        # TODO: use encoder counts from engine controller
-        delta_x = linX * math.cos(self.yaw) * dt
-        delta_y = linX * math.sin(self.yaw) * dt
-        delta_yaw = angZ * dt
+            # Simple differential drive odometry update
+            # TODO: use encoder counts from engine controller
+            delta_x = linX * math.cos(self.yaw) * dt
+            delta_y = linX * math.sin(self.yaw) * dt
+            delta_yaw = angZ * dt
 
+        # Update pose with delta values
         self.x += delta_x
         self.y += delta_y
         self.yaw += delta_yaw
+        # handle angle wrap
+        if self.yaw > math.pi : self.yaw -= 2 * math.pi
+        if self.yaw <-math.pi : self.yaw += 2 * math.pi
 
         # Prepare odometry message
         odom_msg = Odometry()
         odom_msg.header.stamp = current_time.to_msg()
         odom_msg.header.frame_id = "odom"
         odom_msg.child_frame_id = "base_link"
+        odom_msg.twist.twist.linear.x = linX
+        odom_msg.twist.twist.angular.z = angZ
         odom_msg.pose.pose.position.x = self.x
         odom_msg.pose.pose.position.y = self.y
         odom_msg.pose.pose.position.z = 0.0
