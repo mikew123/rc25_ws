@@ -17,6 +17,7 @@ class Robocolumbus25TeleopNode(Node):
     maxLinearX: float       = 1.0   # Meters per second
     maxSteerAngleRad: float = 0.7   # 0.7 ~40 degrees
     wheelBase:float         = 0.490 # meters
+    cmd_vel_zero:bool = False
 
     def __init__(self):
         super().__init__('robocolumbus25_teleop_node')
@@ -34,11 +35,22 @@ class Robocolumbus25TeleopNode(Node):
         axes1 = msg.axes[1] # throttle
         axes3 = msg.axes[3] # steer
 
+        if axes1==0.0 and axes3==0.0 :
+            if self.cmd_vel_zero == False :
+                return
+            self.cmd_vel_zero = True
+        else :
+            self.cmd_vel_zero = False
+
         linearX  = axes1 * self.maxLinearX
         steerAngleRad = axes3 * self.maxSteerAngleRad
 
         # Basic steering calculation wheel angle to angular velocity
-        angularZ = math.tan(steerAngleRad) * linearX / self.wheelBase
+        if math.fabs(linearX) < 0.001 :
+            linearX = 0.0
+            angularZ = 0.0
+        else :
+            angularZ = math.tan(steerAngleRad) * linearX / self.wheelBase
 
         # self.get_logger().info(f"{axes1=:.3f} {axes3=:.3f} : {linearX=:.3f} {angularZ=:.3f} {steerAngleRad=:.3f}")
 

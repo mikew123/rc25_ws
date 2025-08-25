@@ -126,7 +126,7 @@ class WheelControllerNode(Node):
         stamp = int(odom['stamp'])
         enc = int(odom['enc'])
         linX = float(odom['linx'])
-        angRad = float(odom['steer'])
+        angRad = -1* float(odom['steer'])
     
         # convert steering angle to steering angle velocity
         if (linX==0 or angRad==0) :
