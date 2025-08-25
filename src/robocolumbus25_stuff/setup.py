@@ -30,6 +30,7 @@ setup(
             'robocolumbus25_teleop_node = robocolumbus25_stuff.robocolumbus25_teleop_node:main',
             'robocolumbus25_imu_gps_node = robocolumbus25_stuff.robocolumbus25_imu_gps_node:main',
             'robocolumbus25_cone_node = robocolumbus25_stuff.robocolumbus25_cone_node:main',
+            'robocolumbus25_nav_node = robocolumbus25_stuff.robocolumbus25_nav_node:main',
         ],
     },
 )

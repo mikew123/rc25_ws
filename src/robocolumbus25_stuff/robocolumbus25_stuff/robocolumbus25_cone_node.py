@@ -1,18 +1,10 @@
 from ctypes.wintypes import PMSG
 import rclpy
-import json
-import serial
-import math
-import time
 from rclpy.node import Node
-from std_msgs.msg import String, Int32, Float32MultiArray
-from sensor_msgs.msg import Imu
-from sensor_msgs.msg import NavSatFix
 from geometry_msgs.msg import Pose, PointStamped
 from geometry_msgs.msg import Quaternion
 import tf_transformations
 from vision_msgs.msg import Detection3DArray
-import copy
 
 class ConeNode(Node):
     '''
@@ -68,7 +60,6 @@ class ConeNode(Node):
                 pmsg.point.y = -xm # Side meters (-x fixes rviz location mapping)
                 pmsg.point.z = ym # 0.0 # No elevation
                 self.cone_point_publisher.publish(pmsg)
-
 
 def main(args=None):
     rclpy.init(args=args)
