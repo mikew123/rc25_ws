@@ -37,7 +37,7 @@ class NavNode(Node):
         robotY = 0
         z = math.atan2(y,x)
 
-        self.get_logger().info(f"{x=:.3f} {y=:.3f} {z=:.3f}")
+        #self.get_logger().info(f"{x=:.3f} {y=:.3f} {z=:.3f}")
 
 
 def main(args=None):

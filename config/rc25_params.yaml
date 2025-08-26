@@ -108,7 +108,7 @@ controller_server:
       regenerate_noises: true
       
       AckermannConstraints:
-        min_turning_r: 0.2
+        min_turning_r: 0.5 #0.2
         
       TrajectoryVisualizer:
         trajectory_step: 5
@@ -281,7 +281,8 @@ planner_server:
       tolerance: 0.5
       use_astar: false
       allow_unknown: true
-    
+      use_final_approach_orientation: false
+      
     SmacPlannerHybrid:
       plugin: "nav2_smac_planner::SmacPlannerHybrid"
       downsample_costmap: false
@@ -303,9 +304,10 @@ planner_server:
       retrospective_penalty: 0.010  # 降低回溯惩罚
       lookup_table_size: 20.0
       cache_obstacle_heuristic: false
-      debug_visualizations: true  # 启用调试可视化
+      debug_visualizations: False #true  # 启用调试可视化
       use_quadratic_cost_penalty: False
       downsample_obstacle_heuristic: True
+      goal_heading_mode: "DEFAULT"        # DEFAULT, BIDIRECTIONAL, ALL_DIRECTION
 
 smoother_server:
   ros__parameters:
@@ -326,6 +328,7 @@ behavior_server:
     behavior_plugins: ["spin", "backup", "drive_on_heading", "assisted_teleop", "wait"]
     spin:
       plugin: "nav2_behaviors::Spin"
+      is_recovery: False
     backup:
       plugin: "nav2_behaviors::BackUp"
     drive_on_heading:
@@ -358,11 +361,16 @@ velocity_smoother:
   ros__parameters:
     smoothing_frequency: 10.0 #20.0
     scale_velocities: False
-    feedback: "OPEN_LOOP"
-    max_velocity: [0.5, 0.0, 1.9]  # 与MPPI配置匹配 (wz_max: 1.9)
-    min_velocity: [-0.35, 0.0, -1.9]  # 支持倒车
-    max_accel: [2.5, 0.0, 3.2]
-    max_decel: [-2.5, 0.0, -3.2]
+    feedback: "CLOSED_LOOP"
+#    feedback: "OPEN_LOOP"
+    # max_velocity: [0.5, 0.0, 1.9]  # 与MPPI配置匹配 (wz_max: 1.9)
+    # min_velocity: [-0.35, 0.0, -1.9]  # 支持倒车
+    # max_accel: [2.5, 0.0, 3.2]
+    # max_decel: [-2.5, 0.0, -3.2]
+    max_velocity: [1.0, 0.0, 2.0]  # 与MPPI配置匹配 (wz_max: 1.9)
+    min_velocity: [-1.0, 0.0, -2.0]  # 支持倒车
+    max_accel: [1.0, 0.0, 2.0]
+    max_decel: [-1.0, 0.0, -2.0]
     odom_topic: "wheel_odom"
     odom_duration: 0.1
     deadband_velocity: [0.0, 0.0, 0.0]

@@ -35,8 +35,6 @@ class WheelControllerNode(Node):
     coeffDA = 0.15
     coeffDB = 0.075
 
-    last_time = 0
-
     # Example parameters (replace with actual values)
     wheel_base = 0.490  # meters
     encoderCountsPerMeter = 6000
@@ -45,10 +43,12 @@ class WheelControllerNode(Node):
     x = 0.0
     y = 0.0
     yaw = 0.0
-    last_time = 0.0 # seconds
     last_stampMs = np.uint32(0)
     last_enc = np.int32(0)
     last_angRad = 0.0
+
+    last_cv_time_sec = 0.0 # seconds
+    last_cv_msg = Twist()
 
     # Serial port configuration (update as needed)
     serial_port = "/dev/serial/by-id/usb-Waveshare_RP2040_PiZero_E6625887D37C3E30-if00"
@@ -60,7 +60,7 @@ class WheelControllerNode(Node):
     def __init__(self):
         super().__init__('robocolumbus25_wheel_controler_node')
 
-        self.last_time = self.get_clock().now()
+        self.last_time_sec = self.get_clock().now().nanoseconds * 1e-9
 
         self.subscription = self.create_subscription(
             Twist,
@@ -132,6 +132,7 @@ class WheelControllerNode(Node):
     def proc_wheel_odom_msg(self, odom) :
         #self.get_logger().info(f"proc_wheel_odom_msg {odom=}")
         current_time = self.get_clock().now()
+        current_time_sec = current_time.nanoseconds * 1e-9
 
         # TODO: how to cast stamp as unsigned 32 for roll over
         # But may not be needed since it is a very large number and long time
@@ -140,7 +141,7 @@ class WheelControllerNode(Node):
         linX = float(odom['linx'])
         angRad = -1* float(odom['steer'])
     
-        if self.odom_encoder :
+        if self.odom_encoder == True :
             dt = (stampMs - self.last_stampMs) * 1e-3 # converted to seconds
             self.last_stampMs = stampMs
             dEnc = enc - self.last_enc
@@ -162,57 +163,62 @@ class WheelControllerNode(Node):
             delta_y = dx * math.sin(self.yaw)
             delta_yaw = angZ * dt
 
+            # Update pose with delta values
+            self.x += delta_x
+            self.y += delta_y
+            self.yaw += delta_yaw/math.pi
+            # handle angle wrap
+            if self.yaw > math.pi : self.yaw -= 2 * math.pi
+            if self.yaw <-math.pi : self.yaw += 2 * math.pi
+
+            # Prepare odometry message
+            odom_msg = Odometry()
+            odom_msg.header.stamp = current_time.to_msg()
+            odom_msg.header.frame_id = "odom"
+            odom_msg.child_frame_id = "base_link"
+            odom_msg.twist.twist.linear.x = linX
+            odom_msg.twist.twist.angular.z = angZ
+            odom_msg.pose.pose.position.x = self.x
+            odom_msg.pose.pose.position.y = self.y
+            odom_msg.pose.pose.position.z = 0.0
+        
+            # Convert yaw to quaternion
+            (x,y,z,w) = tf_transformations.quaternion_from_euler(0, 0, self.yaw)
+            odom_msg.pose.pose.orientation = Quaternion(x=x,y=y,z=z,w=w)
+
+            odom_msg.twist.twist.linear.x = linX
+            odom_msg.twist.twist.angular.z = angZ
+
+            # self.get_logger().info(f"proc_wheel_odom_msg {angZ=:.3f} {odom_msg=}")
+
+            self.wheel_odom_publisher.publish(odom_msg)
+
         else :
-            # convert steering angle to steering angle velocity
-            if (linX==0 or angRad==0) :
-                angZ = 0.0
-            else :
-                angZ = math.tan(angRad)*linX/self.wheel_base
+        
+            dt = current_time_sec - self.last_cv_time_sec
+            if dt<1.0 and dt>0.0 : return # cmd_vel publishes wheel_odom
 
-            # Odometry calculation
-            # TODO: use time stamp from engine controller
-            # floats dont wrap but can lose accuracy
-            dt = (current_time - self.last_time).nanoseconds * 1e-9 # converted to seconds
-            self.last_time = current_time
-            if(dt>1.0) : return # delta time too large, probably just start up
+            # No cmd_vel messages that would send odom_msg
+            # make sure velocity values are 0 but keep pose
+            odom_msg = Odometry()       
+            odom_msg.header.stamp = current_time.to_msg()
+            odom_msg.header.frame_id = "odom"
+            odom_msg.child_frame_id = "base_link"
+            odom_msg.pose.pose.position.x = self.x
+            odom_msg.pose.pose.position.y = self.y
+            odom_msg.pose.pose.position.z = 0.0
+            # Convert yaw to quaternion
+            (x,y,z,w) = tf_transformations.quaternion_from_euler(0, 0, self.yaw)
+            odom_msg.pose.pose.orientation = Quaternion(x=x,y=y,z=z,w=w)
 
-            # Simple differential drive odometry update
-            delta_x = linX * math.cos(self.yaw) * dt
-            delta_y = linX * math.sin(self.yaw) * dt
-            delta_yaw = angZ * dt
+            self.wheel_odom_publisher.publish(odom_msg)
 
-        # Update pose with delta values
-        self.x += delta_x
-        self.y += delta_y
-        self.yaw += delta_yaw
-        # handle angle wrap
-        if self.yaw > math.pi : self.yaw -= 2 * math.pi
-        if self.yaw <-math.pi : self.yaw += 2 * math.pi
 
-        # Prepare odometry message
-        odom_msg = Odometry()
-        odom_msg.header.stamp = current_time.to_msg()
-        odom_msg.header.frame_id = "odom"
-        odom_msg.child_frame_id = "base_link"
-        odom_msg.twist.twist.linear.x = linX
-        odom_msg.twist.twist.angular.z = angZ
-        odom_msg.pose.pose.position.x = self.x
-        odom_msg.pose.pose.position.y = self.y
-        odom_msg.pose.pose.position.z = 0.0
-    
-        # Convert yaw to quaternion
-        (x,y,z,w) = tf_transformations.quaternion_from_euler(0, 0, self.yaw)
-        odom_msg.pose.pose.orientation = Quaternion(x=x,y=y,z=z,w=w)
-
-        odom_msg.twist.twist.linear.x = linX
-        odom_msg.twist.twist.angular.z = angZ
-
-        # self.get_logger().info(f"proc_wheel_odom_msg {angZ=:.3f} {odom_msg=}")
-
-        self.wheel_odom_publisher.publish(odom_msg)
-
-    def cmd_vel_callback(self, msg):
+    def cmd_vel_callback(self, msg: Twist) -> None:
         # self.get_logger().info(f"cmd_vel_callback {msg=}")
+
+        current_time = self.get_clock().now()
+        current_time_sec = current_time.nanoseconds * 1e-9
 
         linear_x = msg.linear.x
         angular_z = msg.angular.z
@@ -239,6 +245,54 @@ class WheelControllerNode(Node):
         else :
             cmd = {"wd":1,"cv":[0, 0]}
         self.send_json_cmd(cmd)
+
+        if self.odom_encoder == False :
+            dt = current_time_sec - self.last_time_sec
+            lx = msg.linear.x
+            az = msg.angular.z
+
+            if(dt<0.0 or dt>1.0) : 
+                self.last_cmd_vel = msg
+                self.last_time_sec = current_time_sec
+                # init with no movement
+                self.wheel_odom_publisher.publish(Odometry())
+                return
+
+            # Simple differential drive odometry update calcs
+
+            delta_x = (lx*dt) * math.cos(self.yaw)
+            delta_y = (lx*dt) * math.sin(self.yaw)
+            self.x += delta_x
+            self.y += delta_y
+
+            delta_yaw = az * dt
+            self.yaw += delta_yaw
+            # handle angle wrap
+            if self.yaw > math.pi : self.yaw -= 2 * math.pi
+            if self.yaw <-math.pi : self.yaw += 2 * math.pi
+
+            # Prepare odometry message
+            odom_msg = Odometry()
+            odom_msg.header.stamp = current_time.to_msg()
+            odom_msg.header.frame_id = "odom"
+            odom_msg.child_frame_id = "base_link"
+            odom_msg.twist.twist.linear.x = lx
+            odom_msg.twist.twist.angular.z = az
+            odom_msg.pose.pose.position.x = self.x
+            odom_msg.pose.pose.position.y = self.y
+            odom_msg.pose.pose.position.z = 0.0
+        
+            # Convert yaw to quaternion
+            (x,y,z,w) = tf_transformations.quaternion_from_euler(0, 0, self.yaw)
+            odom_msg.pose.pose.orientation = Quaternion(x=x,y=y,z=z,w=w)
+
+            #self.get_logger().info(f"cmd_vel odom: {dt=:.3f} {lx=:.3f} {az=:.3f} {self.x=:.3f} {self.y=:.3f} {self.yaw=:.3f}")
+
+            self.wheel_odom_publisher.publish(odom_msg)
+
+        self.last_cv_msg = msg
+        self.last_cv_time_sec = current_time_sec
+            
 
     def destroy_node(self):
         self.get_logger().info("destroy_node")
