@@ -14,7 +14,7 @@ class ConeNode(Node):
     # median 5 filter memory
     # list of tupples [5X(x,y,z)]
     m5_filter:list = [(0.0,0.0,0.0)]*5
-    
+
     def __init__(self):
         super().__init__('cone_node')
             
