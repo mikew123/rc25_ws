@@ -304,7 +304,7 @@ float cmdVelAngRad = 0;
 
 // Add global variables for last commanded velocities
 float lastLinX = 0.0; // wheel velocity in Meter/Sec
-float lastSteerRad = 0.0; // steering angle in Radians
+float limSteerRad = 0.0; // steering angle in Radians
 float lastCmdVelLinX = 0;
 
 void resetPID(){
@@ -319,7 +319,7 @@ void resetPID(){
   cmdVelAngRad = 0;
   lastCmdVelLinX = 0;
   lastLinX = 0;
-  lastSteerRad = 0;
+  limSteerRad = 0;
   sThrottlePct = 0;
   sSteerPct = 0;
 }
@@ -474,7 +474,8 @@ void cvToPct(float linX, float angle) {
   float scale = (throttlePctVbatScaleA * escVin) + throttlePctVbatScaleB;
   float dz = throttlePctDeadZone;
   float ppm = throttlePctPerMps * throttlePctPerMpsScale; // scale percent to meters
-  
+  float cmdVelAngRad = angle;
+
   if(linX==0.0) sThrottlePct = 0;
   else if(linX>0.0) {
     sThrottlePct = (dz-0) + (linX * ppm);
@@ -496,18 +497,15 @@ void cvToPct(float linX, float angle) {
 
   // Convert steering angle to percent
   sSteerPct = (100.0 * (cmdVelAngRad / maxSteeringRad)) + steerCenterPctAdj;
-  if(sSteerPct > 100) {
-    sSteerPct = 100;
-    // calc limited steer angle
-  }
-  if(sSteerPct < -100) {
-    sSteerPct = -100;
-    // calc limited steer angle
-  }
+  if(sSteerPct > 100) sSteerPct = 100;
+  if(sSteerPct < -100) sSteerPct = -100;
+
+   // calc limited steer angle
+  cmdVelAngRad = (sSteerPct-steerCenterPctAdj)/100.0 * maxSteeringRad;
 
   
   lastLinX = linX;
-  lastSteerRad = cmdVelAngRad;
+  limSteerRad = cmdVelAngRad;
 }
 
 // /********************************************************
@@ -840,7 +838,7 @@ void sendOdomMsg() {
   data["enc"] = (int32_t)enc; // encoder values are + or -
 
   data["linx"] = (float)lastLinX;
-  data["steer"] = (float)lastSteerRad;
+  data["steer"] = (float)limSteerRad;
 
   odom["odom"] = data;
 
@@ -868,7 +866,7 @@ void sendStatusMsg() {
 
   // Add last commanded linear X and limited angular Z
   myObject["linx"] = lastLinX;
-  myObject["steer"] = lastSteerRad;
+  myObject["steer"] = limSteerRad;
 
   String jsonString = JSON.stringify(myObject);
   Serial.println(jsonString);

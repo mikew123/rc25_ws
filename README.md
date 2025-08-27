@@ -182,3 +182,8 @@ The 3rd party libraries are used by launching them within the rc25 launch file<b
 The oak-d TF frames are created in ros_coneslayer and connected to in the URDF file<br>
 The complete TF frame map (pdftoppm -png rc25_08_17_25.pdf rc25_08_17_25):<br>
 <img src="support/rc25_08_17_25-1.png"><br>
+
+## Using GPS
+https://docs.ros.org/en/melodic/api/robot_localization/html/integrating_gps.html<br>
+
+<img src="support/Gps_localization.jpg">

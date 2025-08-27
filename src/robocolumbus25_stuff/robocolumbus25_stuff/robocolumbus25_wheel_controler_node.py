@@ -45,7 +45,7 @@ class WheelControllerNode(Node):
     yaw = 0.0
     last_stampMs = np.uint32(0)
     last_enc = np.int32(0)
-    last_angRad = 0.0
+    last_steer = 0.0
 
     last_cv_time_sec = 0.0 # seconds
     last_cv_msg = Twist()
@@ -137,10 +137,15 @@ class WheelControllerNode(Node):
         # TODO: how to cast stamp as unsigned 32 for roll over
         # But may not be needed since it is a very large number and long time
         stampMs = np.uint32(odom['stamp']) # Milliseconds
-        enc = np.int32(odom['enc'])
-        linX = float(odom['linx'])
-        angRad = -1* float(odom['steer'])
+        enc = np.int32(odom['enc']) # counts
+        linX = float(odom['linx']) # meters/second
+        steer = -1* float(odom['steer']) # radians
     
+        # Rviz (and debug print) shows yaw 2X expected!!
+        # But measure wheel angle on bench 0.7 rad = 40 deg is OK
+        # Attempt to "fix" it - why is it 2X???
+        steer /= 2
+
         if self.odom_encoder == True :
             dt = (stampMs - self.last_stampMs) * 1e-3 # converted to seconds
             self.last_stampMs = stampMs
@@ -150,68 +155,65 @@ class WheelControllerNode(Node):
             if dt>0.1 or dt<=0.0 :
                 return
    
-            dx = (dEnc/self.encoderCountsPerMeter)
-            linX = dx / dt
+            dist = (dEnc/self.encoderCountsPerMeter)
+            # recompute forward velocity based on encoder counts
+            ddt = dist/dt # meters/second
 
-            # convert steering angle to steering angle velocity
-            if (linX==0 or angRad==0) :
-                angZ = 0.0
-            else :
-                angZ = math.tan(angRad)*linX/self.wheel_base
-
-            delta_x = dx * math.cos(self.yaw)
-            delta_y = dx * math.sin(self.yaw)
-            delta_yaw = angZ * dt
-
-            # Update pose with delta values
-            self.x += delta_x
-            self.y += delta_y
-            self.yaw += delta_yaw/math.pi
+            # convert steering angle to angle velocity at rear diff
+            # TODO: handle low resulution around zero velocities??
+            az = ddt*math.tan(steer)/self.wheel_base
+            # Update pose angle at rear diff
+            self.yaw += az * dt # angular rad/sec * dt
             # handle angle wrap
             if self.yaw > math.pi : self.yaw -= 2 * math.pi
             if self.yaw <-math.pi : self.yaw += 2 * math.pi
+
+            # compute change in x and y
+            # and update pose location at rear diff
+            self.x += dist * math.cos(self.yaw)
+            self.y += dist * math.sin(self.yaw)
+
+            self.get_logger().info(f"proc_wheel_odom_msg {dt=:.3f} {dEnc=} {steer=:.3f} {ddt=:.3f} {az=:.3f} {self.x=:.3f} {self.y=:.3f} {self.yaw=:.3f}")
 
             # Prepare odometry message
             odom_msg = Odometry()
             odom_msg.header.stamp = current_time.to_msg()
             odom_msg.header.frame_id = "odom"
-            odom_msg.child_frame_id = "base_link"
-            odom_msg.twist.twist.linear.x = linX
-            odom_msg.twist.twist.angular.z = angZ
+            odom_msg.child_frame_id = "base_footprint"
+            # Update pose 
             odom_msg.pose.pose.position.x = self.x
             odom_msg.pose.pose.position.y = self.y
-            odom_msg.pose.pose.position.z = 0.0
+            # Update velocities
+            odom_msg.twist.twist.linear.x = ddt
+            odom_msg.twist.twist.angular.z = az
         
             # Convert yaw to quaternion
             (x,y,z,w) = tf_transformations.quaternion_from_euler(0, 0, self.yaw)
             odom_msg.pose.pose.orientation = Quaternion(x=x,y=y,z=z,w=w)
 
-            odom_msg.twist.twist.linear.x = linX
-            odom_msg.twist.twist.angular.z = angZ
-
-            # self.get_logger().info(f"proc_wheel_odom_msg {angZ=:.3f} {odom_msg=}")
+            # self.get_logger().info(f"proc_wheel_odom_msg {az=:.3f} {odom_msg=}")
 
             self.wheel_odom_publisher.publish(odom_msg)
 
-        else :
+        # else :
         
-            dt = current_time_sec - self.last_cv_time_sec
-            if dt<1.0 and dt>0.0 : return # cmd_vel publishes wheel_odom
+        #     dt = current_time_sec - self.last_cv_time_sec
+        #     if dt<1.0 and dt>0.0 : return # cmd_vel publishes wheel_odom
 
-            # No cmd_vel messages that would send odom_msg
-            # make sure velocity values are 0 but keep pose
-            odom_msg = Odometry()       
-            odom_msg.header.stamp = current_time.to_msg()
-            odom_msg.header.frame_id = "odom"
-            odom_msg.child_frame_id = "base_link"
-            odom_msg.pose.pose.position.x = self.x
-            odom_msg.pose.pose.position.y = self.y
-            odom_msg.pose.pose.position.z = 0.0
-            # Convert yaw to quaternion
-            (x,y,z,w) = tf_transformations.quaternion_from_euler(0, 0, self.yaw)
-            odom_msg.pose.pose.orientation = Quaternion(x=x,y=y,z=z,w=w)
+        #     # No cmd_vel messages that would send odom_msg
+        #     # make sure velocity values are 0 but keep pose
+        #     odom_msg = Odometry()       
+        #     odom_msg.header.stamp = current_time.to_msg()
+        #     odom_msg.header.frame_id = "odom"
+        #     odom_msg.child_frame_id = "base_link"
+        #     odom_msg.pose.pose.position.x = self.x
+        #     odom_msg.pose.pose.position.y = self.y
+        #     odom_msg.pose.pose.position.z = 0.0
+        #     # Convert yaw to quaternion
+        #     (x,y,z,w) = tf_transformations.quaternion_from_euler(0, 0, self.yaw)
+        #     odom_msg.pose.pose.orientation = Quaternion(x=x,y=y,z=z,w=w)
 
-            self.wheel_odom_publisher.publish(odom_msg)
+        #     self.wheel_odom_publisher.publish(odom_msg)
 
 
     def cmd_vel_callback(self, msg: Twist) -> None:
@@ -233,62 +235,58 @@ class WheelControllerNode(Node):
         else:
             steering_angle = 0.0
 
-        # self.get_logger().info(
-        #     f"Rear wheel velocity: {wheel_velocity:.3f} m/s, "
-        #     f"Front steering angle: {math.degrees(steering_angle):.3f} deg"
-        # )
-
+        steering_angle *=2
+        
         # # Send commands over serial interface as JSON
-        # cmd = {"cv":[wheel_velocity, angular_z]}
         if(wheel_velocity!=0.0):
             cmd = {"wd":1000,"cv":[wheel_velocity, steering_angle]}
-        else :
+        else : # force stop (how it affects PID?)
             cmd = {"wd":1,"cv":[0, 0]}
         self.send_json_cmd(cmd)
 
-        if self.odom_encoder == False :
-            dt = current_time_sec - self.last_time_sec
-            lx = msg.linear.x
-            az = msg.angular.z
+        # if self.odom_encoder == False :
+        #     dt = current_time_sec - self.last_time_sec
+        #     lx = msg.linear.x
+        #     az = msg.angular.z
 
-            if(dt<0.0 or dt>1.0) : 
-                self.last_cmd_vel = msg
-                self.last_time_sec = current_time_sec
-                # init with no movement
-                self.wheel_odom_publisher.publish(Odometry())
-                return
+        #     if(dt<0.0 or dt>1.0) : 
+        #         self.last_cmd_vel = msg
+        #         self.last_time_sec = current_time_sec
+        #         # init with no movement
+        #         self.wheel_odom_publisher.publish(Odometry())
+        #         return
 
-            # Simple differential drive odometry update calcs
+        #     # Simple differential drive odometry update calcs
 
-            delta_x = (lx*dt) * math.cos(self.yaw)
-            delta_y = (lx*dt) * math.sin(self.yaw)
-            self.x += delta_x
-            self.y += delta_y
+        #     delta_x = (lx*dt) * math.cos(self.yaw)
+        #     delta_y = (lx*dt) * math.sin(self.yaw)
+        #     self.x += delta_x
+        #     self.y += delta_y
 
-            delta_yaw = az * dt
-            self.yaw += delta_yaw
-            # handle angle wrap
-            if self.yaw > math.pi : self.yaw -= 2 * math.pi
-            if self.yaw <-math.pi : self.yaw += 2 * math.pi
+        #     dz = az * dt
+        #     self.yaw += dz
+        #     # handle angle wrap
+        #     if self.yaw > math.pi : self.yaw -= 2 * math.pi
+        #     if self.yaw <-math.pi : self.yaw += 2 * math.pi
 
-            # Prepare odometry message
-            odom_msg = Odometry()
-            odom_msg.header.stamp = current_time.to_msg()
-            odom_msg.header.frame_id = "odom"
-            odom_msg.child_frame_id = "base_link"
-            odom_msg.twist.twist.linear.x = lx
-            odom_msg.twist.twist.angular.z = az
-            odom_msg.pose.pose.position.x = self.x
-            odom_msg.pose.pose.position.y = self.y
-            odom_msg.pose.pose.position.z = 0.0
+        #     # Prepare odometry message
+        #     odom_msg = Odometry()
+        #     odom_msg.header.stamp = current_time.to_msg()
+        #     odom_msg.header.frame_id = "odom"
+        #     odom_msg.child_frame_id = "base_link"
+        #     odom_msg.twist.twist.linear.x = lx
+        #     odom_msg.twist.twist.angular.z = az
+        #     odom_msg.pose.pose.position.x = self.x
+        #     odom_msg.pose.pose.position.y = self.y
+        #     odom_msg.pose.pose.position.z = 0.0
         
-            # Convert yaw to quaternion
-            (x,y,z,w) = tf_transformations.quaternion_from_euler(0, 0, self.yaw)
-            odom_msg.pose.pose.orientation = Quaternion(x=x,y=y,z=z,w=w)
+        #     # Convert yaw to quaternion
+        #     (x,y,z,w) = tf_transformations.quaternion_from_euler(0, 0, self.yaw)
+        #     odom_msg.pose.pose.orientation = Quaternion(x=x,y=y,z=z,w=w)
 
-            #self.get_logger().info(f"cmd_vel odom: {dt=:.3f} {lx=:.3f} {az=:.3f} {self.x=:.3f} {self.y=:.3f} {self.yaw=:.3f}")
+        #     #self.get_logger().info(f"cmd_vel odom: {dt=:.3f} {lx=:.3f} {az=:.3f} {self.x=:.3f} {self.y=:.3f} {self.yaw=:.3f}")
 
-            self.wheel_odom_publisher.publish(odom_msg)
+        #     self.wheel_odom_publisher.publish(odom_msg)
 
         self.last_cv_msg = msg
         self.last_cv_time_sec = current_time_sec

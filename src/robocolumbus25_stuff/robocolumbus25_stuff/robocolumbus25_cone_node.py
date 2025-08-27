@@ -1,4 +1,6 @@
 from ctypes.wintypes import PMSG
+
+from sympy import Point
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Pose, PointStamped
@@ -24,12 +26,17 @@ class ConeNode(Node):
                 
         self.get_logger().info(f"ConeNode Started")
 
+
     # Cone detection from camera AI
     # TODO: manage multiple detections!!!! like an orange shoe or shirt
     def cone_det_subscription_callback(self, msg: Detection3DArray) -> None:
         #self.get_logger().info(f"{msg=}")
+
         detections = msg.detections
+        num_detections = 0
+        # TODO: filter out for best cone detection
         for detection in detections :
+            num_detections +=1
             #header = detection.header
             results = detection.results
             for result in results :
@@ -58,8 +65,14 @@ class ConeNode(Node):
                 pmsg.header.frame_id="oak-d_frame"
                 pmsg.point.x = zm # Forward meters
                 pmsg.point.y = -xm # Side meters (-x fixes rviz location mapping)
-                pmsg.point.z = ym # 0.0 # No elevation
+                pmsg.point.z = ym # Elevation center of cone (on level ground)
                 self.cone_point_publisher.publish(pmsg)
+
+        if num_detections == 0 :
+            # publish invalid cone location at 0,0 
+            pmsg = PointStamped()
+            pmsg.header.frame_id="oak-d_frame"
+            self.cone_point_publisher.publish(pmsg)
 
 def main(args=None):
     rclpy.init(args=args)
