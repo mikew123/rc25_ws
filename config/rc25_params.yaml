@@ -297,7 +297,7 @@ planner_server:
       analytic_expansion_ratio: 3.5
       analytic_expansion_max_length: 3.0
       minimum_turning_radius: 1.5
-      reverse_penalty: 0.3  # 显著降低倒车惩罚，允许掉头时倒车
+      reverse_penalty: 2.0  # 显著降低倒车惩罚，允许掉头时倒车
       change_penalty: 0.1   # 降低方向改变惩罚
       non_straight_penalty: 1.0  # 降低非直线惩罚
       cost_penalty: 2.0
