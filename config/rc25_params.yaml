@@ -348,13 +348,13 @@ behavior_server:
 
 waypoint_follower:
   ros__parameters:
-    loop_rate: 20
+    loop_rate: 10 #20
     stop_on_failure: false
     action_server_result_timeout: 900.0
     waypoint_task_executor_plugin: "wait_at_waypoint"
     wait_at_waypoint:
       plugin: "nav2_waypoint_follower::WaitAtWaypoint"
-      enabled: True
+      enabled: False
       waypoint_pause_duration: 200
 
 velocity_smoother:
@@ -362,11 +362,6 @@ velocity_smoother:
     smoothing_frequency: 10.0 #20.0
     scale_velocities: False
     feedback: "CLOSED_LOOP"
-#    feedback: "OPEN_LOOP"
-    # max_velocity: [0.5, 0.0, 1.9]  # 与MPPI配置匹配 (wz_max: 1.9)
-    # min_velocity: [-0.35, 0.0, -1.9]  # 支持倒车
-    # max_accel: [2.5, 0.0, 3.2]
-    # max_decel: [-2.5, 0.0, -3.2]
     max_velocity: [1.0, 0.0, 2.0]  # 与MPPI配置匹配 (wz_max: 1.9)
     min_velocity: [-1.0, 0.0, -2.0]  # 支持倒车
     max_accel: [1.0, 0.0, 2.0]
