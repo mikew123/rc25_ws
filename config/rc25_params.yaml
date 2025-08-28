@@ -296,7 +296,7 @@ planner_server:
       angle_quantization_bins: 72
       analytic_expansion_ratio: 3.5
       analytic_expansion_max_length: 3.0
-      minimum_turning_radius: 1.0
+      minimum_turning_radius: 1.5
       reverse_penalty: 0.3  # 显著降低倒车惩罚，允许掉头时倒车
       change_penalty: 0.1   # 降低方向改变惩罚
       non_straight_penalty: 1.0  # 降低非直线惩罚
@@ -342,9 +342,9 @@ behavior_server:
     robot_base_frame: base_footprint
     transform_tolerance: 0.1
     simulate_ahead_time: 2.0
-    max_rotational_vel: 1.0
-    min_rotational_vel: 0.4
-    rotational_acc_lim: 3.2
+    max_rotational_vel: 2.0
+    min_rotational_vel: 0.0
+    rotational_acc_lim: 1.0
 
 waypoint_follower:
   ros__parameters:
@@ -373,7 +373,7 @@ velocity_smoother:
     max_decel: [-1.0, 0.0, -2.0]
     odom_topic: "wheel_odom"
     odom_duration: 0.1
-    deadband_velocity: [0.0, 0.0, 0.0]
+    deadband_velocity: [0.02, 0.0, 0.0]
     velocity_timeout: 1.0
 
 collision_monitor:
