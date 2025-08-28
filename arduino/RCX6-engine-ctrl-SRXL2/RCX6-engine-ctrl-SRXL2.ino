@@ -449,7 +449,8 @@ const float throttlePctVbatScaleB = 0.018182; // from test deltaEnc vs Vbat on b
 const float wheelBase = 0.490; // meters, front to back
 const float trackWidth = 0.310; // meters, left to right
 // const float maxSteeringRad = 0.523; // ~30 deg, adjust for your hardware
-const float maxSteeringRad = 0.611; // ~35 deg at steer percent=100
+//const float maxSteeringRad = 0.611; // ~35 deg at steer percent=100
+const float maxSteeringRad = 0.698; // ~40 deg at steer percent=100
 
 //float steeringAngleRad = 0.0;
 
