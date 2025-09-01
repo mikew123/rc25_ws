@@ -164,14 +164,14 @@
   </link>
 
 
-  <!-- 90 deg tof arrays are mounted at an angle -->
-<!--   <joint name="tofL5L_joint" type="fixed">
+  <!-- 45 deg tof arrays are mounted at an angle -->
+  <joint name="tof_fc_joint" type="fixed">
     <parent link="base_link"/>
-    <child link="tofL5L_link"/>
-    <origin xyz="0.140 0.060 0.030" rpy="0 0 0.41"/>
+    <child link="tof_fc_link"/>
+    <origin xyz="0.450 -0.080 0.300" rpy="0 0 0"/>
   </joint>
 
-  <link name="tofL5L_link">
+  <link name="tof_fc_link">
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
@@ -181,7 +181,7 @@
     </visual>
   </link>
 
-  <joint name="tofL5R_joint" type="fixed">
+<!--   <joint name="tofL5R_joint" type="fixed">
     <parent link="base_link"/>
     <child link="tofL5R_link"/>
     <origin xyz="0.140 -0.060 0.030" rpy="0 0 -0.41"/>

@@ -1,35 +1,26 @@
-from ctypes.wintypes import PMSG
+#from ctypes.wintypes import PMSG
 import rclpy
 import json
 import serial
 import math
-import time
+#import time
 from rclpy.node import Node
-from std_msgs.msg import String, Int32, Float32MultiArray
-from sensor_msgs.msg import PointCloud2
-from sensor_msgs.msg import NavSatFix
-from geometry_msgs.msg import Pose
-from geometry_msgs.msg import Quaternion
-import tf_transformations
+from sensor_msgs.msg import PointCloud2, PointField
+from std_msgs.msg import Header
+
+#import tf_transformations
+import numpy as np
 
 class TofNode(Node):
     '''
-    This processes the serial port from the RP2040 for the IMU and GPS sensors
-    in the cabin
+    This processes the serial port from the RP2040 for the fornt and rear
+    TOF sensors
     '''
 
     timerRateHz = 100.0; # Rate to check serial port for messages
-#    serial_port = "/dev/serial/by-id/usb-Waveshare_RP2040_Zero_E6635C469F25492A-if00"
+    serial_port = "/dev/serial/by-id/usb-Waveshare_RP2040_Zero_45533065790A3B5A-if00"
     baudrate = 1000000
 
-    laccJsonPacket = None
-    rvelJsonPacket = None
-    rvecJsonPacket = None
-
-    gpsCntr    = 0
-    gpsCnt     = 10
-    gpsLatYAcc = 0.0
-    gpsLonXAcc = 0.0
 
     
     def __init__(self):
@@ -45,7 +36,7 @@ class TofNode(Node):
             exit(1)
             
         # publish a topic for each TOF sensor fc=front_center etc
-        self.tof_fc_publisher = self.create_publisher(PointCloud2, 'tof_fc', 10)
+        self.tof_fc_pc_publisher = self.create_publisher(PointCloud2, 'tof_fc', 10)
       
         # timer to check serial port
         self.timer = self.create_timer((1.0/self.timerRateHz), self.timer_callback)
@@ -79,7 +70,7 @@ class TofNode(Node):
                 unknown = True
                 packet = json.loads(received_data)
                 if "tof_fc" in packet :
-                    self.tof_fc_Publish(packet.get("tof_fc"))
+                    self.tof_Publish("tof_fc", packet)
                     unknown = False
                 if unknown :
                     self.get_logger().info(f"TOF sensors serial json unknown : {received_data}")
@@ -90,9 +81,101 @@ class TofNode(Node):
 
     # 8x8 point cloud for each sensor FOV 45degx45deg
     # calculate x,y,z for each point
-    def tof_fc_Publish(self, tof) :
-        self.get_logger().info(f"tof_fc_Publish: {tof=}")
-        msg = PointCloud2()
+    def tof_Publish(self, tof_ab, packet) -> None:
+        # self.get_logger().info(f"tof_Publish: {tof_ab=} {packet=}")
+
+        tof = packet.get(tof_ab)
+        if "dist" in tof :
+            dist = tof.get("dist")
+        else :
+            self.get_logger().error(f"tof_Publish: no dist data")
+            return
+        
+        # self.get_logger().info(f"tof_Publish: {dist=}")
+        # return
+
+        fov = 45.0
+        fovPt = fov/8 # FOV for each 8x8 sensor point
+        fovPtRad = fovPt*(math.pi/180) #scaled to Radians
+
+        # There is a curvature in the distances of the sensors that needs to be corrected
+        # Remove the curve by scaling each sensor with a inverted sin() curve over FOV
+        # NOTE: This could be pre-computed outside the function since it is constant
+        tofCurveCor = []
+        for n in range(0,8) :
+            theta:float = (n-4+0.5)*fovPtRad + math.pi/2
+            s:float = math.sin(theta)
+            if n == 0 : s0 = s
+            tofCurveCor.append(s0/s)            
+
+        # pointcloud is a list of tupples(x,y,z)
+        xyz0:list = []
+        for m in range(0,8) : # Rows bottom to top
+            theta_m = (m-4+0.5)*fovPtRad
+            d_m = dist[m]
+            for n in range(0, 8) : # Collumns left to right
+                theta_n = (n-4+0.5)*fovPtRad
+                d = d_m[n]
+                if d==-1: 
+                    # Bad data - set as infinate number (use NaN instead?)
+                    xx0 = math.inf
+                    yy0 = math.inf
+                    zz0 = math.inf
+                else :
+                    Wx =  int(d*math.cos(theta_n)*tofCurveCor[n])
+                    Wy = -int(d*math.sin(theta_n)*tofCurveCor[n])
+                    Wz =  int(d*math.sin(theta_m)*tofCurveCor[n])
+                    # Convert mm to meters
+                    xx0 = np.float32(Wx/1000.0)
+                    yy0 = np.float32(Wy/1000.0)
+                    zz0 = np.float32(Wz/1000.0)
+                
+                xyz0.append((xx0,yy0,zz0))
+        
+        # self.get_logger().info(f"tof_Publish: {xyz0=}")
+
+        pcd = self.point_cloud(xyz0, 'tof_fc_link')
+        self.tof_fc_pc_publisher.publish(pcd)
+
+    def point_cloud(self, points_xy:list[tuple[np.float32]], parent_frame:str="map") -> PointCloud2:
+        """
+            Input list of tuples (x,y,z)
+            Returns a point cloud to publish - Rviz can display it
+        """
+        points = np.asarray(points_xy)
+
+        ros_dtype = PointField.FLOAT32
+        dtype = np.float32
+        itemsize = np.dtype(dtype).itemsize # A 32-bit float takes 4 bytes.
+
+        data = points.astype(dtype).tobytes() 
+
+        # The fields specify what the bytes represents. The first 4 bytes 
+        # represents the x-coordinate, the next 4 the y-coordinate
+        fields = [PointField(
+            name=n, offset=i*itemsize, datatype=ros_dtype, count=1)
+            for i, n in enumerate('xyz')]
+
+        #self.get_logger().info(f"{itemsize = } {fields = } {points = } {data = }")
+
+        # The PointCloud2 message also has a header which specifies which 
+        # coordinate frame it is represented in. 
+        header = Header(
+            frame_id=parent_frame,
+            stamp = self.get_clock().now().to_msg(),
+            )
+
+        return PointCloud2(
+            header=header,
+            height=1, 
+            width=points.shape[0],
+            is_dense=False,
+            is_bigendian=False, #Pi4
+            fields=fields,
+            point_step=(itemsize * 3), # Every point consists of two float32s.
+            row_step=(itemsize * 3 * points.shape[0]), 
+            data=data
+        )
 
 def main(args=None):
     rclpy.init(args=args)

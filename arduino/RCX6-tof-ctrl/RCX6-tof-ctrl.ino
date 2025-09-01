@@ -2,7 +2,7 @@
 * Mike Williamson 8/31/2025
 * Based on example VL53L8CX_HelloWorld_I2C.ino modified for RP2040
 *
-* Send results over serial port in JSON: {"data":{"tof":[[row0],[row1]
+* Send results over serial port in JSON: {"tof_ab":{"dist":[[row0],[row1]
 *  ,row2],[row3],[row4],[row5],[row6],[row7]]}} integer mm
 *
 */
