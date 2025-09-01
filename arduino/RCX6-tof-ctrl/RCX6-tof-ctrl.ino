@@ -96,7 +96,7 @@ void sendJson(int tofNum, VL53L8CX_ResultsData *results) {
   Serial.print(tofNum);
   Serial.print("\":{\"dist\":[");
   for (row = 0; row < 8; row++) {
-    rowIdx = (0-row)*1;
+    rowIdx = (7-row)*1;
     Serial.print("[");
     for (col = 0; col < 8; col++) {
       colIdx = (7-col)*8;
