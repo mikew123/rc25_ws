@@ -45,13 +45,13 @@ class WheelControllerNode(Node):
     yaw = 0.0
     last_stampMs = np.uint32(0)
     last_enc = np.int32(0)
-    last_steer = 0.0
+    last_steering_angle = 0.0
 
     last_cv_time_sec = 0.0 # seconds
     last_cv_msg = Twist()
 
     # Serial port configuration (update as needed)
-    serial_port = "/dev/serial/by-id/usb-Waveshare_RP2040_PiZero_E6625887D37C3E30-if00"
+    serial_port = "/dev/serial/by-id/usb-Waveshare_RP2040_Zero_E6625887D37C3E30-if00"
     baudrate = 1000000
 
     # Odometry from encoder or velocity
@@ -141,10 +141,6 @@ class WheelControllerNode(Node):
         linX = float(odom['linx']) # meters/second
         steer = -1* float(odom['steer']) # radians
     
-        # Rviz (and debug print) shows yaw 2X expected!!
-        # But measure wheel angle on bench 0.7 rad = 40 deg is OK
-        # Attempt to "fix" it - why is it 2X???
-        steer /= 2
 
         if self.odom_encoder == True :
             dt = (stampMs - self.last_stampMs) * 1e-3 # converted to seconds
@@ -162,6 +158,10 @@ class WheelControllerNode(Node):
             # convert steering angle to angle velocity at rear diff
             # TODO: handle low resulution around zero velocities??
             az = ddt*math.tan(steer)/self.wheel_base
+
+            # Why scale angular velocity Z for robot to match odom and nav2 to work?
+            az /= 2.4
+            
             # Update pose angle at rear diff
             self.yaw += az * dt # angular rad/sec * dt
             # handle angle wrap
@@ -173,7 +173,9 @@ class WheelControllerNode(Node):
             self.x += dist * math.cos(self.yaw)
             self.y += dist * math.sin(self.yaw)
 
-            self.get_logger().info(f"proc_wheel_odom_msg {dt=:.3f} {dEnc=} {steer=:.3f} {ddt=:.3f} {az=:.3f} {self.x=:.3f} {self.y=:.3f} {self.yaw=:.3f}")
+            if dEnc != 0 :
+                self.get_logger().info(f"proc_wheel_odom_msg {dt=:.3f} {dEnc=} {steer=:.3f}"\
+                    + f"{ddt=:.3f} {az=:.3f} {self.x=:.3f} {self.y=:.3f} {self.yaw=:.3f}")
 
             # Prepare odometry message
             odom_msg = Odometry()
@@ -225,23 +227,25 @@ class WheelControllerNode(Node):
         linear_x = msg.linear.x
         angular_z = msg.angular.z
 
+        # Why scale angular velocity Z for robot to match odom and nav2 to work?
+        angular_z *= 2.4
+
         # Compute rear wheel velocity (m/s)
         wheel_velocity = linear_x
 
         # Compute front wheel steering angle (Ackermann)
-        if angular_z != 0 and linear_x != 0:
-            turning_radius = linear_x / angular_z
-            steering_angle = -1* math.atan(self.wheel_base / turning_radius)
-        else:
-            steering_angle = 0.0
+        if math.fabs(linear_x) > 0.01:
+            steering_angle = -1* math.atan(self.wheel_base * angular_z / linear_x)
+        else :
+            steering_angle = self.last_steering_angle
 
-        steering_angle *=2
-        
+        self.last_steering_angle = steering_angle
+
         # # Send commands over serial interface as JSON
         if(wheel_velocity!=0.0):
             cmd = {"wd":1000,"cv":[wheel_velocity, steering_angle]}
         else : # force stop (how it affects PID?)
-            cmd = {"wd":1,"cv":[0, 0]}
+            cmd = {"wd":1000,"cv":[wheel_velocity, steering_angle]}
         self.send_json_cmd(cmd)
 
         # if self.odom_encoder == False :

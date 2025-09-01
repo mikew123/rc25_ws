@@ -15,7 +15,7 @@ from sensor_msgs.msg import Joy
 
 class Robocolumbus25TeleopNode(Node):
     maxLinearX: float       = 1.0   # Meters per second
-    maxSteerAngleRad: float = 0.7   # 0.7 ~40 degrees
+    maxSteerAngleRad: float = 0.698   # ~40 degrees
     wheelBase:float         = 0.490 # meters
     cmd_vel_zero:bool = False
 
@@ -46,7 +46,7 @@ class Robocolumbus25TeleopNode(Node):
         steerAngleRad = axes3 * self.maxSteerAngleRad
 
         # Basic steering calculation wheel angle to angular velocity
-        if math.fabs(linearX) < 0.001 :
+        if math.fabs(linearX) < 0.01 :
             linearX = 0.0
             angularZ = 0.0
         else :

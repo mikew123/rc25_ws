@@ -185,18 +185,46 @@ controller_server:
         max_angle_to_furthest: 1.0
         mode: 0
 
-# local_costmap:
-#   local_costmap:
-#     ros__parameters:
-#       update_frequency: 5.0
-#       publish_frequency: 2.0
-#       global_frame: odom
-#       robot_base_frame: base_footprint
-#       rolling_window: true
-#       width: 3
-#       height: 3
-#       resolution: 0.05
-#       robot_radius: 0.350
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_footprint
+      rolling_window: true
+      width: 10
+      height: 10
+      resolution: 0.05
+      robot_radius: 0.350
+      plugins: ["obstacle_layer", "inflation_layer"]
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: scan
+        footprint_clearing_enabled: true
+        max_obstacle_height: 2.0
+        combination_method: 1
+        scan:
+          topic: /scan
+          obstacle_max_range: 5.0
+          obstacle_min_range: 0.0
+          raytrace_max_range: 10.0
+          raytrace_min_range: 0.0
+          max_obstacle_height: 2.0
+          min_obstacle_height: 0.0
+          clearing: True
+          marking: True
+          data_type: "LaserScan"
+          inf_is_valid: false
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        enabled: true
+        inflation_radius: 0.400
+        cost_scaling_factor: 1.0
+        inflate_unknown: false
+        inflate_around_unknown: true
+
 #       plugins: ["voxel_layer", "inflation_layer"]
 #       inflation_layer:
 #         plugin: "nav2_costmap_2d::InflationLayer"
@@ -296,8 +324,8 @@ planner_server:
       angle_quantization_bins: 72
       analytic_expansion_ratio: 3.5
       analytic_expansion_max_length: 3.0
-      minimum_turning_radius: 1.0
-      reverse_penalty: 0.3  # 显著降低倒车惩罚，允许掉头时倒车
+      minimum_turning_radius: 1.5
+      reverse_penalty: 2.0  # 显著降低倒车惩罚，允许掉头时倒车
       change_penalty: 0.1   # 降低方向改变惩罚
       non_straight_penalty: 1.0  # 降低非直线惩罚
       cost_penalty: 2.0
@@ -342,19 +370,19 @@ behavior_server:
     robot_base_frame: base_footprint
     transform_tolerance: 0.1
     simulate_ahead_time: 2.0
-    max_rotational_vel: 1.0
-    min_rotational_vel: 0.4
-    rotational_acc_lim: 3.2
+    max_rotational_vel: 2.0
+    min_rotational_vel: 0.0
+    rotational_acc_lim: 1.0
 
 waypoint_follower:
   ros__parameters:
-    loop_rate: 20
+    loop_rate: 10 #20
     stop_on_failure: false
     action_server_result_timeout: 900.0
     waypoint_task_executor_plugin: "wait_at_waypoint"
     wait_at_waypoint:
       plugin: "nav2_waypoint_follower::WaitAtWaypoint"
-      enabled: True
+      enabled: False
       waypoint_pause_duration: 200
 
 velocity_smoother:
@@ -362,18 +390,13 @@ velocity_smoother:
     smoothing_frequency: 10.0 #20.0
     scale_velocities: False
     feedback: "CLOSED_LOOP"
-#    feedback: "OPEN_LOOP"
-    # max_velocity: [0.5, 0.0, 1.9]  # 与MPPI配置匹配 (wz_max: 1.9)
-    # min_velocity: [-0.35, 0.0, -1.9]  # 支持倒车
-    # max_accel: [2.5, 0.0, 3.2]
-    # max_decel: [-2.5, 0.0, -3.2]
     max_velocity: [1.0, 0.0, 2.0]  # 与MPPI配置匹配 (wz_max: 1.9)
     min_velocity: [-1.0, 0.0, -2.0]  # 支持倒车
     max_accel: [1.0, 0.0, 2.0]
     max_decel: [-1.0, 0.0, -2.0]
     odom_topic: "wheel_odom"
     odom_duration: 0.1
-    deadband_velocity: [0.0, 0.0, 0.0]
+    deadband_velocity: [0.02, 0.0, 0.0]
     velocity_timeout: 1.0
 
 collision_monitor:
@@ -382,28 +405,30 @@ collision_monitor:
     odom_frame_id: "odom"
     cmd_vel_in_topic: "cmd_vel_smoothed"
     cmd_vel_out_topic: "cmd_vel"
-    state_topic: "collision_monitor_state"
-    transform_tolerance: 0.2
-    source_timeout: 1.0
-    base_shift_correction: True
+    transform_tolerance: 0.5
+    source_timeout: 5.0
     stop_pub_timeout: 2.0
-    polygons: ["FootprintApproach"]
-    FootprintApproach:
+    enable_stamped_cmd_vel: False # False for Jazzy or older by default
+    polygons: ["PolygonStop", "PolygonSlow"]
+    PolygonStop:
       type: "polygon"
-      action_type: "approach"
-      footprint_topic: "/local_costmap/published_footprint"
-      time_before_collision: 1.2
-      simulation_time_step: 0.1
-      min_points: 6
-      visualize: False
-      enabled: True
+      points: "[[0.4, 0.3], [0.4, -0.3], [0.0, -0.3], [0.0, 0.3]]"
+      action_type: "stop"
+      min_points: 4  # max_points: 3 for Humble
+      visualize: True
+      polygon_pub_topic: "polygon_stop"
+    PolygonSlow:
+      type: "polygon"
+      points: "[[0.6, 0.4], [0.6, -0.4], [0.0, -0.4], [0.0, 0.4]]"
+      action_type: "slowdown"
+      min_points: 4  # max_points: 3 for Humble
+      slowdown_ratio: 0.3
+      visualize: True
+      polygon_pub_topic: "polygon_slowdown"
     observation_sources: ["scan"]
     scan:
       type: "scan"
       topic: "scan"
-      min_height: 0.15
-      max_height: 2.0
-      enabled: True
 
 docking_server:
   ros__parameters:
