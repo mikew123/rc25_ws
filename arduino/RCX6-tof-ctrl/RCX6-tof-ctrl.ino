@@ -10,6 +10,7 @@
 
 
 #include <Wire.h>
+#include <String.h>
 #include <vl53l8cx.h>
 
 #define DEV_I2C Wire
@@ -28,7 +29,7 @@
 
 VL53L8CX sensor_vl53l8cx_top(&DEV_I2C, LPN_PIN);
 
-void sendJson(int tofNum, VL53L8CX_ResultsData *results);
+void sendJson(String tof, VL53L8CX_ResultsData *results);
 
 VL53L8CX_ResultsData results;
 uint8_t newDataReady = 0;
@@ -78,11 +79,11 @@ void loop(void) {
 
   if ((!status) && (newDataReady != 0)) {
     status = sensor_vl53l8cx_top.get_ranging_data(&results);
-    sendJson(1, &results);
+    sendJson("tof_fc", &results);
   }
 }
 
-void sendJson(int tofNum, VL53L8CX_ResultsData *results) {
+void sendJson(String tof, VL53L8CX_ResultsData *results) {
   int row;
   int col;
   int rowIdx;
@@ -92,8 +93,8 @@ void sendJson(int tofNum, VL53L8CX_ResultsData *results) {
 
   // TODO: pre-process for valid data
   // Output JSON
-  Serial.print("{\"tof");
-  Serial.print(tofNum);
+  Serial.print("{\"");
+  Serial.print(tof);
   Serial.print("\":{\"dist\":[");
   for (row = 0; row < 8; row++) {
     rowIdx = (7-row)*1;
