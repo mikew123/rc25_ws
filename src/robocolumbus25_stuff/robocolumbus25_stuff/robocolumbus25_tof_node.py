@@ -36,7 +36,9 @@ class TofNode(Node):
             exit(1)
             
         # publish a topic for each TOF sensor fc=front_center etc
-        self.tof_fc_pc_publisher = self.create_publisher(PointCloud2, 'tof_fc', 10)
+        self.tof_fc_pcd_publisher = self.create_publisher(PointCloud2, 'tof_fc', 10)
+        self.tof_fl_pcd_publisher = self.create_publisher(PointCloud2, 'tof_fl', 10)
+        self.tof_fr_pcd_publisher = self.create_publisher(PointCloud2, 'tof_fr', 10)
       
         # timer to check serial port
         self.timer = self.create_timer((1.0/self.timerRateHz), self.timer_callback)
@@ -72,6 +74,13 @@ class TofNode(Node):
                 if "tof_fc" in packet :
                     self.tof_Publish("tof_fc", packet)
                     unknown = False
+                if "tof_fl" in packet :
+                    self.tof_Publish("tof_fl", packet)
+                    unknown = False
+                if "tof_fr" in packet :
+                    self.tof_Publish("tof_fr", packet)
+                    unknown = False
+
                 if unknown :
                     self.get_logger().info(f"TOF sensors serial json unknown : {received_data}")
                     return  
@@ -81,6 +90,7 @@ class TofNode(Node):
 
     # 8x8 point cloud for each sensor FOV 45degx45deg
     # calculate x,y,z for each point
+    # TODO: Optimize math with numpy
     def tof_Publish(self, tof_ab, packet) -> None:
         # self.get_logger().info(f"tof_Publish: {tof_ab=} {packet=}")
 
@@ -134,8 +144,15 @@ class TofNode(Node):
         
         # self.get_logger().info(f"tof_Publish: {xyz0=}")
 
-        pcd = self.point_cloud(xyz0, 'tof_fc_link')
-        self.tof_fc_pc_publisher.publish(pcd)
+        if tof_ab == "tof_fc" :
+            pcd = self.point_cloud(xyz0, 'tof_fc_link')
+            self.tof_fc_pcd_publisher.publish(pcd)
+        if tof_ab == "tof_fl" :
+            pcd = self.point_cloud(xyz0, 'tof_fl_link')
+            self.tof_fl_pcd_publisher.publish(pcd)
+        if tof_ab == "tof_fr" :
+            pcd = self.point_cloud(xyz0, 'tof_fr_link')
+            self.tof_fr_pcd_publisher.publish(pcd)
 
     def point_cloud(self, points_xy:list[tuple[np.float32]], parent_frame:str="map") -> PointCloud2:
         """

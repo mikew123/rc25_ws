@@ -170,8 +170,37 @@
     <child link="tof_fc_link"/>
     <origin xyz="0.600 0 0.130" rpy="0 0 0"/>
   </joint>
-
   <link name="tof_fc_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.030" radius="0.020"/>
+      </geometry>
+      <material name="red"/>
+    </visual>
+  </link>
+
+  <joint name="tof_fl_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="tof_fl_link"/>
+    <origin xyz="0.600 0 0.130" rpy="0 0 0.785"/>
+  </joint>
+  <link name="tof_fl_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.030" radius="0.020"/>
+      </geometry>
+      <material name="red"/>
+    </visual>
+  </link>
+
+  <joint name="tof_fr_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="tof_fr_link"/>
+    <origin xyz="0.600 0 0.130" rpy="0 0 -0.785"/>
+  </joint>
+  <link name="tof_fr_link">
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
