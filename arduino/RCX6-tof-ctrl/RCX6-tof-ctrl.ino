@@ -10,7 +10,7 @@
 
 
 #include <Wire.h>
-#include <String.h>
+//#include <String.h>
 #include <vl53l8cx.h>
 
 #define DEV_I2C Wire
@@ -43,7 +43,7 @@ VL53L8CX tof_fc(&DEV_I2C, -1, -1);
 VL53L8CX tof_fl(&DEV_I2C, -1, -1);
 VL53L8CX tof_fr(&DEV_I2C, -1, -1);
 
-void sendJson(String tof, VL53L8CX_ResultsData *results);
+void sendJson(String tof, uint32_t stamp, VL53L8CX_ResultsData *results);
 void getData(String tof);
 void setI2CAddresses();
 void configTofDevices();
@@ -166,26 +166,29 @@ void getData(String tof) {
     status = tof_fc.check_data_ready(&newDataReady);
     if ((!status) && (newDataReady != 0)) {
       status = tof_fc.get_ranging_data(&results);
-      sendJson(tof, &results);
+      uint32_t stamp = millis();
+      sendJson(tof, stamp, &results);
     }
   }
   if(tof=="tof_fl") {
     status = tof_fl.check_data_ready(&newDataReady);
     if ((!status) && (newDataReady != 0)) {
       status = tof_fl.get_ranging_data(&results);
-      sendJson(tof, &results);
+      uint32_t stamp = millis();
+      sendJson(tof, stamp, &results);
     }
   }
   if(tof=="tof_fr") {
     status = tof_fr.check_data_ready(&newDataReady);
     if ((!status) && (newDataReady != 0)) {
       status = tof_fr.get_ranging_data(&results);
-      sendJson(tof, &results);
+      uint32_t stamp = millis();
+      sendJson(tof, stamp, &results);
     }
   }
 }
 
-void sendJson(String tof, VL53L8CX_ResultsData *results) {
+void sendJson(String tof, uint32_t stamp, VL53L8CX_ResultsData *results) {
   int row;
   int col;
   int rowIdx;
@@ -197,7 +200,9 @@ void sendJson(String tof, VL53L8CX_ResultsData *results) {
   // Output JSON
   Serial.print("{\"");
   Serial.print(tof);
-  Serial.print("\":{\"dist\":[");
+  Serial.print("\":{\"stamp\":");
+  Serial.print(stamp);
+  Serial.print(",\"dist\":[");
   for (row = 0; row < 8; row++) {
     rowIdx = (7-row)*1;
     Serial.print("[");
