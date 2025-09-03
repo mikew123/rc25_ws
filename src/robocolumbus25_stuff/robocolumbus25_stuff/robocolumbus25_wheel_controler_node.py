@@ -173,9 +173,9 @@ class WheelControllerNode(Node):
             self.x += dist * math.cos(self.yaw)
             self.y += dist * math.sin(self.yaw)
 
-            if dEnc != 0 :
-                self.get_logger().info(f"proc_wheel_odom_msg {dt=:.3f} {dEnc=} {steer=:.3f}"\
-                    + f"{ddt=:.3f} {az=:.3f} {self.x=:.3f} {self.y=:.3f} {self.yaw=:.3f}")
+            # if dEnc != 0 :
+            #     self.get_logger().info(f"proc_wheel_odom_msg {dt=:.3f} {dEnc=} {steer=:.3f}"\
+            #         + f"{ddt=:.3f} {az=:.3f} {self.x=:.3f} {self.y=:.3f} {self.yaw=:.3f}")
 
             # Prepare odometry message
             odom_msg = Odometry()

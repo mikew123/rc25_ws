@@ -108,7 +108,7 @@ controller_server:
       regenerate_noises: true
       
       AckermannConstraints:
-        min_turning_r: 0.5 #0.2
+        min_turning_r: 1.0 #0.2
         
       TrajectoryVisualizer:
         trajectory_step: 5
@@ -366,7 +366,8 @@ planner_server:
       debug_visualizations: False #true  # 启用调试可视化
       use_quadratic_cost_penalty: False
       downsample_obstacle_heuristic: True
-      goal_heading_mode: "DEFAULT"        # DEFAULT, BIDIRECTIONAL, ALL_DIRECTION
+      goal_heading_mode: "ALL_DIRECTION"        # DEFAULT, BIDIRECTIONAL, ALL_DIRECTION
+      smooth_path: True
 
 smoother_server:
   ros__parameters:
