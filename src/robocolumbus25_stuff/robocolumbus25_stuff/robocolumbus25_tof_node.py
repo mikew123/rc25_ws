@@ -18,7 +18,7 @@ class TofNode(Node):
     '''
 
     timerRateHz = 100.0; # Rate to check serial port for messages
-    serial_port = "/dev/serial/by-id/usb-Waveshare_RP2040_Zero_45533065790A3B5A-if00"
+    serial_port = "/dev/serial/by-id/usb-Waveshare_RP2040_PiZero_45533065790A3B5A-if00"
     baudrate = 1000000
 
 

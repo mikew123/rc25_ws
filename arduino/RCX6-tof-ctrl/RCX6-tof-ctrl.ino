@@ -188,6 +188,14 @@ void getData(String tof) {
   }
 }
 
+int getDist(int idx, VL53L8CX_ResultsData *results) {
+  int dist = results->distance_mm[idx];
+  int status = results->target_status[idx];
+  if(dist<0 || status!=5) dist = -1;
+  
+  return(dist);
+}
+
 void sendJson(String tof, uint32_t stamp, VL53L8CX_ResultsData *results) {
   int row;
   int col;
@@ -209,8 +217,7 @@ void sendJson(String tof, uint32_t stamp, VL53L8CX_ResultsData *results) {
     for (col = 0; col < 8; col++) {
       colIdx = (7-col)*8;
       idx = rowIdx + colIdx;
-      dist = results->distance_mm[idx];
-      if(dist<0) dist = -1;
+      dist = getDist(idx, results);
       Serial.print(dist);
       if (col < 7) Serial.print(",");
     }

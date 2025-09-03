@@ -69,27 +69,27 @@
  
   <link name="base_link">
     <visual name="robot_body">
-      <origin xyz="0.220 0.0 0.150" rpy="0 0 0"/>
+      <origin xyz="0.220 0.0 0.070" rpy="0 0 0"/>
       <geometry> <box size="0.650 0.380 0.250"/> </geometry>
       <material name="orange"/>
     </visual>
     <visual name="RL_wheel">
-      <origin xyz="0 0.170 0.090" rpy="1.57 0 0"/>
+      <origin xyz="0 0.170 0" rpy="1.57 0 0"/>
       <geometry> <cylinder length="0.070" radius="0.090"/> </geometry>
       <material name="black"/>
     </visual>
     <visual name="RR_wheel">
-      <origin xyz="0 -0.170 0.090" rpy="-1.57 0 0"/>
+      <origin xyz="0 -0.170 0" rpy="-1.57 0 0"/>
       <geometry> <cylinder length="0.070" radius="0.090"/> </geometry>
       <material name="black"/>
     </visual>
     <visual name="FL_wheel">
-      <origin xyz="0.450 0.170 0.090" rpy="1.57 0 0"/>
+      <origin xyz="0.450 0.170 0" rpy="1.57 0 0"/>
       <geometry> <cylinder length="0.070" radius="0.090"/> </geometry>
       <material name="black"/>
     </visual>
     <visual name="FR_wheel">
-      <origin xyz="0.450 -0.170 0.090" rpy="-1.57 0 0"/>
+      <origin xyz="0.450 -0.170 0" rpy="-1.57 0 0"/>
       <geometry> <cylinder length="0.070" radius="0.090"/> </geometry>
       <material name="black"/>
     </visual>
@@ -168,7 +168,7 @@
   <joint name="tof_fc_joint" type="fixed">
     <parent link="base_link"/>
     <child link="tof_fc_link"/>
-    <origin xyz="0.600 0 0.130" rpy="0 0 0"/>
+    <origin xyz="0.600 0 0.110" rpy="0 0 0"/>
   </joint>
   <link name="tof_fc_link">
     <visual>
@@ -183,7 +183,7 @@
   <joint name="tof_fl_joint" type="fixed">
     <parent link="base_link"/>
     <child link="tof_fl_link"/>
-    <origin xyz="0.600 0 0.130" rpy="0 0 0.785"/>
+    <origin xyz="0.600 0 0.110" rpy="0 0 0.785"/>
   </joint>
   <link name="tof_fl_link">
     <visual>
@@ -198,7 +198,7 @@
   <joint name="tof_fr_joint" type="fixed">
     <parent link="base_link"/>
     <child link="tof_fr_link"/>
-    <origin xyz="0.600 0 0.130" rpy="0 0 -0.785"/>
+    <origin xyz="0.600 0 0.110" rpy="0 0.08 -0.785"/>
   </joint>
   <link name="tof_fr_link">
     <visual>
