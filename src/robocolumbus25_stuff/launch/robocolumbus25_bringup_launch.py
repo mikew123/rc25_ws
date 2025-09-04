@@ -43,7 +43,7 @@ def generate_launch_description():
             ),
             launch_arguments={
                 'params_file': 'config/rc25_params.yaml',
-                "map": "maps/200x200_empty_map.yaml",
+                "map": "maps/2000x2000_empty_map.yaml",
             }.items()
         ),
 
