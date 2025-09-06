@@ -7,6 +7,7 @@ import math
 from rclpy.node import Node
 from sensor_msgs.msg import PointCloud2, PointField
 from std_msgs.msg import Header
+from rc25_interfaces.msg import Float32X8
 
 #import tf_transformations
 import numpy as np
@@ -39,6 +40,7 @@ class TofNode(Node):
         self.tof_fc_pcd_publisher = self.create_publisher(PointCloud2, 'tof_fc', 10)
         self.tof_fl_pcd_publisher = self.create_publisher(PointCloud2, 'tof_fl', 10)
         self.tof_fr_pcd_publisher = self.create_publisher(PointCloud2, 'tof_fr', 10)
+        self.tof_fc_mid_publisher = self.create_publisher(Float32X8, 'tof_fc_mid', 10)
       
         # timer to check serial port
         self.timer = self.create_timer((1.0/self.timerRateHz), self.timer_callback)
@@ -153,6 +155,17 @@ class TofNode(Node):
         if tof_ab == "tof_fr" :
             pcd = self.point_cloud(xyz0, 'tof_fr_link')
             self.tof_fr_pcd_publisher.publish(pcd)
+
+        if tof_ab == "tof_fc" :
+            # Publish the mid row distances as Float32X8 message for nav node
+            msg = Float32X8()
+            df = []
+            for d in dist[3] :
+                if d==-1 : d = math.inf
+                else : d /= 1000.0 # convert mm to meters
+                df.append(float(d))
+            msg.data = df
+            self.tof_fc_mid_publisher.publish(msg)
 
     def point_cloud(self, points_xy:list[tuple[np.float32]], parent_frame:str="map") -> PointCloud2:
         """

@@ -10,11 +10,14 @@ from vision_msgs.msg import Detection3DArray
 
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
 from geometry_msgs.msg import Pose, PoseStamped, PoseWithCovarianceStamped
+from geometry_msgs.msg import Twist
 
 from tf2_ros import LookupException, ConnectivityException, ExtrapolationException
 from tf2_ros import Duration
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
+
+from rc25_interfaces.msg import Float32X8
 
 class NavNode(Node):
     '''
@@ -30,15 +33,19 @@ class NavNode(Node):
 
     cd_state = 0
 
-    cone_at_x = 0
-    cone_at_y = 0
-    cone_det_time = 0
-
+    cone_at_x:float = 0.0
+    cone_at_y:float = 0.0
+    cone_det_time:int = 0
+    cone_fc_dist:float = 0.0
     def  __init__(self, nav: BasicNavigator):
         super().__init__('nav_node')
         self.nav = nav
 
+        self.cmd_vel_publisher = self.create_publisher(Twist, '/cmd_vel', 10)
+
         self.cone_point_subscription = self.create_subscription(PointStamped, 'cone_point', self.cone_point_subscription_callback, 10)
+        self.tof_fc_mid_subscription = self.create_subscription(Float32X8, 'tof_fc_mid', self.tof_fc_mid_subscription_callback, 10)
+        
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
@@ -53,10 +60,23 @@ class NavNode(Node):
         self.cone_at_y = msg.point.y
         self.cone_det_time = time.time_ns() * 1e-9 # seconds
 
+    # Cone distance when close
+    def tof_fc_mid_subscription_callback(self, msg: Float32X8) -> None:
+        #self.get_logger().info(f"{msg=}")
+        davg:float = 0.0
+        dcnt:int = 0
+        for d in msg.data :
+            if not math.isinf(d) :
+                davg += d
+                dcnt += 1
+        if dcnt!=0 : davg /= dcnt
+        else : davg = math.inf
+        self.cone_fc_dist = davg
+
     # Timer based state machine for cone navigation
     def timer_callback(self):
 
-        stop_dist = 0.5
+        stop_dist = 1.0
         drive_t = 5.0
 
         # self.get_logger().info(f"timer_callback: waitUntilNav2Active")
@@ -72,33 +92,47 @@ class NavNode(Node):
             y = 0
         
         state = self.cd_state
+        next_state = state
         if state == 0 :
             # wait for cone detection
             if x!=0 and y!=0 :
                 self.get_logger().info(f"timer_callback: cone detected at {x=:.3f} {y=:.3f}")
-                self.cd_state = 1
+                next_state = 1
 
         elif state == 1 :
-            # navigate close to cone
+            # navigate with BasicNavigator close to cone
             if x!=0 and y!=0 :
-                d = self.gotoConeXY(x,y,stop_dist,drive_t)
-                if d != -1 :
+                d = float(self.gotoConeXY(x,y,stop_dist,drive_t))
+                if d != -1.0 :
                     self.get_logger().info(f"timer_callback: at cone {d=:.3f}")
                     if d <= stop_dist :
                         self.get_logger().info(f"timer_callback: close to cone, stopping")
-                        self.cd_state = 2
+                        next_state = 2
                 else :
                     self.get_logger().info(f"timer_callback: gotoConeXY failed")
-                    self.cd_state = 0
+                    next_state = 0
             else :
                 self.get_logger().info(f"timer_callback: lost cone")
-                self.cd_state = 0
+                next_state = 0
 
+        # drive closer to cone (0.5M) using cmd_vel and cone_point
         elif state == 2 :
+            msg = Twist()
+            if (x > 0.5) :
+                msg.linear.x = x/5.0 + 0.05
+                msg.angular.z = y/2.0
+            else : next_state = 3
+            self.cmd_vel_publisher.publish(msg)
+
+        # drive slowly to "touch" cone using cmd_vel andtof sensors
+        elif state == 3 :
             pass
 
+        self.cd_state = next_state
 
-    def gotoConeXY(self, cx:int, cy:int, stop_dist:float, t:float = 5) -> int:
+
+    # Returns distance to the cone, -1 if it did not succeed
+    def gotoConeXY(self, cx:int, cy:int, stop_dist:float, t:float = 5) -> float:
         """
         Go to the cone location, but stop 0.2m short
         Rotates to point to the can before moving to it
@@ -106,13 +140,13 @@ class NavNode(Node):
         Returns distance to the can, -1 if it did not succeed
         """
 
-        d=-1
+        d=-1.0
 
         if cx!=0 and cy!=0 :
             self.get_logger().info(f"gotoConeXY:b cone at {cx=:.3f} {cy=:.3f}")
             # get current pose to determine the angle offset
             (tf_OK, current_pose) = self.getCurrentPose()
-            if not tf_OK : return -1
+            if not tf_OK : return -1.0
             rx = current_pose.pose.position.x
             ry = current_pose.pose.position.y
             (_,_,ra) =  tf_transformations.euler_from_quaternion([
@@ -128,7 +162,7 @@ class NavNode(Node):
             a = math.atan2(dy,dx)
             d = math.sqrt(dx*dx + dy*dy)
             
-            if d < stop_dist : return
+            if d < stop_dist : return d
 
             # adjust the distance stop at the cost map boundary
             sd = d - stop_dist
@@ -144,9 +178,9 @@ class NavNode(Node):
 
         else :
             self.get_logger().info(f"gotoXY: No cone detected")
-            d=-1
+            d=-1.0
 
-        return d
+        return float(d)
 
 
     def gotoPose(self, pose, t):

@@ -19,12 +19,17 @@ from ament_index_python.packages import get_package_share_directory
 from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 
+from launch_xml.launch_description_sources import XMLLaunchDescriptionSource
 
 def generate_launch_description():
 
     # from nav2 bringup launch file
     nav2_bringup_dir = get_package_share_directory('nav2_bringup')
     nav2_launch_dir = os.path.join(nav2_bringup_dir, 'launch')
+
+    # ros2 launch rosbridge_server rosbridge_websocket_launch.xml
+    bridge_bringup_dir = get_package_share_directory('rosbridge_server')
+    bridge_launch_dir = os.path.join(bridge_bringup_dir, 'launch')
  
     # Get the text of the robot description URDF - robot_stat_publisher does not open a file
     with open('urdfs/rc25.urdf','r') as infp:
@@ -64,6 +69,7 @@ def generate_launch_description():
                 'namespace': 'coneslayer'
             }.items()
         ),
+
 
         #### MY ROBOT RC25 packages
 
@@ -135,7 +141,26 @@ def generate_launch_description():
             parameters=[
                 'config/efk_config.yaml'
             ]
-        )
+        ),
+
+        ### This did not function well, the cmd line launch was added to .bashrc -> works
+        # # Bring up rosapi and rosbridge to allow access from visual code and foxglove
+        # launch_ros.actions.Node(
+        #     package='rosapi',
+        #     executable='rosapi_node',
+        #     name='rosapi_node',
+        # ),
+
+        # # ros2 launch rosbridge_server rosbridge_websocket_launch.xml    
+        # IncludeLaunchDescription(
+        #     XMLLaunchDescriptionSource(
+        #         os.path.join(
+        #             bridge_launch_dir,
+        #             "rosbridge_websocket_launch.xml",
+        #         )
+        #     )
+        # ),
+
 
     ])
 
