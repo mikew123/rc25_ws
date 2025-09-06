@@ -83,7 +83,7 @@ def generate_launch_description():
         launch_ros.actions.Node(
             package='robocolumbus25_stuff',
             executable='robocolumbus25_nav_node',
-            name='nav_node',
+            name='cone_nav_node',
             namespace="",
         ),
 

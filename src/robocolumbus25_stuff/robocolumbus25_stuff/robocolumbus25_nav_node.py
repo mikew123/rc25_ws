@@ -24,21 +24,54 @@ class NavNode(Node):
     Navigate to cones
     '''
 
+    # parameters
+
+    # Timer for state machine
+    timerRateHz:float = 10.0
+
+    cd_timer:float = 0.0
+    cd_state:int = 0
+    cd_last_state = -1
+
+    # use /cone_point to get location for navigator to drive to
+    cd_stop_dist = 1.0
+    cd_drive_t = 5.0
+
+    # use /cone_point to get closer to cone using /cmd_vel
+    cd_closer_dist = 0.5
+    cd_closer_lvel = 0.25
+    cd_closer_avel = 0.05
+
+    # use /tof_fc_mid to "touch" cone using /cmd_vel
+    cd_touch_dist = 0.035
+    cd_touch_vel = 0.05
+
+    # wait while touching cone for observation
+    cd_touch_wait = 2.0
+
+    # backup after touching cone using /cmd_vel
+    cd_backup_dist = 1.5
+    cd_backup_vel = 0.25
+
+
+    # global variables 
+
+    # for cone navigation
+    # using /cone_point 
+    cone_at_x:float = 0.0
+    cone_at_y:float = 0.0
+    cone_det_time:int = 0
+    # using /tof_fc_mid (NOTE: distance from front center TOF sensor)
+    tof_fc_dist:float = 0.0
+
     # median 5 filter memory
     # list of tupples [5X(x,y,z)]
     m5_filter:list = [(0.0,0.0,0.0)]*5
     
-    # Timer for state machine
-    timerRateHz = 10
 
-    cd_state = 0
 
-    cone_at_x:float = 0.0
-    cone_at_y:float = 0.0
-    cone_det_time:int = 0
-    cone_fc_dist:float = 0.0
     def  __init__(self, nav: BasicNavigator):
-        super().__init__('nav_node')
+        super().__init__('robocolumbus25_nav_node')
         self.nav = nav
 
         self.cmd_vel_publisher = self.create_publisher(Twist, '/cmd_vel', 10)
@@ -60,7 +93,7 @@ class NavNode(Node):
         self.cone_at_y = msg.point.y
         self.cone_det_time = time.time_ns() * 1e-9 # seconds
 
-    # Cone distance when close
+    # Cone distance when close using TOF sensors
     def tof_fc_mid_subscription_callback(self, msg: Float32X8) -> None:
         #self.get_logger().info(f"{msg=}")
         davg:float = 0.0
@@ -71,13 +104,15 @@ class NavNode(Node):
                 dcnt += 1
         if dcnt!=0 : davg /= dcnt
         else : davg = math.inf
-        self.cone_fc_dist = davg
+        self.tof_fc_dist = davg
 
     # Timer based state machine for cone navigation
     def timer_callback(self):
+        self.cone_sm()
 
-        stop_dist = 1.0
-        drive_t = 5.0
+
+    def cone_sm(self) :
+        func = "cone_sm:"
 
         # self.get_logger().info(f"timer_callback: waitUntilNav2Active")
         # self.nav.waitUntilNav2Active()
@@ -91,46 +126,101 @@ class NavNode(Node):
             x = 0
             y = 0
         
-        state = self.cd_state
-        next_state = state
+        state_change:bool = False
+        if self.cd_state != self.cd_last_state : state_change = True
+
+        state:int = self.cd_state
+        next_state:int = state
+
+        if state_change :
+            self.cd_timer = time.time_ns()*1e-9
+
         if state == 0 :
-            # wait for cone detection
+            if state_change :
+                self.get_logger().info(f"{func} wait for cone detection {state=}")
+            
             if x!=0 and y!=0 :
-                self.get_logger().info(f"timer_callback: cone detected at {x=:.3f} {y=:.3f}")
+                self.get_logger().info(f"{func} cone detected at {x=:.3f} {y=:.3f}  {state=}")
                 next_state = 1
 
         elif state == 1 :
-            # navigate with BasicNavigator close to cone
+            if state_change :
+                self.get_logger().info(f"{func} navigate with BasicNavigator close to cone {state=}")
+                
             if x!=0 and y!=0 :
-                d = float(self.gotoConeXY(x,y,stop_dist,drive_t))
+                dist = self.cd_stop_dist
+                t = self.cd_drive_t
+                d = float(self.gotoConeXY(x,y,dist,t))
                 if d != -1.0 :
-                    self.get_logger().info(f"timer_callback: at cone {d=:.3f}")
-                    if d <= stop_dist :
-                        self.get_logger().info(f"timer_callback: close to cone, stopping")
+                    self.get_logger().info(f"{func} at cone {d=:.3f}  {state=}")
+                    if d <= dist + 0.1 :
+                        self.get_logger().info(f"{func} close to cone  {state=}")
                         next_state = 2
                 else :
-                    self.get_logger().info(f"timer_callback: gotoConeXY failed")
+                    self.get_logger().info(f"{func} gotoConeXY failed  {state=}")
                     next_state = 0
             else :
-                self.get_logger().info(f"timer_callback: lost cone")
+                self.get_logger().info(f"{func} lost cone {state=}")
                 next_state = 0
 
-        # drive closer to cone (0.5M) using cmd_vel and cone_point
         elif state == 2 :
+            if state_change :
+                self.get_logger().info(f"{func} drive closer to cone using cmd_vel and cone_point {state=}")
+            
             msg = Twist()
-            if (x > 0.5) :
-                msg.linear.x = x/5.0 + 0.05
-                msg.angular.z = y/2.0
-            else : next_state = 3
+            if x==0 and y==0 :
+                self.get_logger().info(f"{func} lost cone {state=}")
+                next_state = 0
+            elif x > self.cd_closer_dist :
+                msg.linear.x =  self.cd_closer_lvel
+                # Y is used to drive to cone head on
+                if y > 0.02 :    msg.angular.z =  self.cd_closer_avel
+                elif y < -0.02 : msg.angular.z = -self.cd_closer_avel
+                else : msg.angular.z = 0.0
+            else : 
+                self.get_logger().info(f"{func} closer {x=:.3f} {y=:.3f}")
+                next_state = 3
             self.cmd_vel_publisher.publish(msg)
 
-        # drive slowly to "touch" cone using cmd_vel andtof sensors
         elif state == 3 :
+            if state_change :
+                self.get_logger().info(f"{func} drive slowly to \"touch\" cone using cmd_vel and tof sensors {state=}")
+            
+            msg = Twist()
+            d = self.tof_fc_dist
+            if((not math.isinf(d)) and (d > self.cd_touch_dist)) :
+                msg.linear.x = self.cd_touch_vel
+            else : next_state = 4
+            self.cmd_vel_publisher.publish(msg)
+
+        elif state == 4 :
+            if state_change :
+                self.get_logger().info(f"{func} wait a short time {state=}")
+            
+            if (time.time_ns()*1e-9 - self.cd_timer) > self.cd_touch_wait :
+                next_state = 5
+
+        elif state == 5 :
+            if state_change :
+                self.get_logger().info(f"{func} backup {state=}")
+            
+            msg = Twist()
+            t = self.cd_backup_dist/self.cd_backup_vel
+            if (time.time_ns()*1e-9 - self.cd_timer) < t :
+                msg.linear.x = -self.cd_backup_vel
+            else : next_state = 6
+            self.cmd_vel_publisher.publish(msg)
+
+        elif state == 6 :
+            if state_change :
+                self.get_logger().info(f"{func} STOP {state=}")
             pass
 
+
+        self.cd_last_state = state
         self.cd_state = next_state
 
-
+        
     # Returns distance to the cone, -1 if it did not succeed
     def gotoConeXY(self, cx:int, cy:int, stop_dist:float, t:float = 5) -> float:
         """

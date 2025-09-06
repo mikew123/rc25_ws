@@ -120,6 +120,8 @@ class WheelControllerNode(Node):
             self.processBatteryInfo(vbat)
         
     def processBatteryInfo(self, vbat) -> None :
+        if vbat <= 11.1 :
+            self.get_logger().warning(f"Battery low {vbat=:.3f}")
         # TODO: add current and possibly cell voltages
         bmsg = BatteryState()
         bmsg.header.stamp = self.get_clock().now().to_msg()
