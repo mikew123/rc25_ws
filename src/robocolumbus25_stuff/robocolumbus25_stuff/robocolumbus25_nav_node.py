@@ -43,7 +43,7 @@ class NavNode(Node):
     cd_closer_avel = 0.05
 
     # use /tof_fc_mid to "touch" cone using /cmd_vel
-    cd_touch_dist = 0.035
+    cd_touch_dist = 0.040
     cd_touch_vel = 0.05
 
     # wait while touching cone for observation
@@ -63,6 +63,7 @@ class NavNode(Node):
     cone_det_time:int = 0
     # using /tof_fc_mid (NOTE: distance from front center TOF sensor)
     tof_fc_dist:float = 0.0
+    tof_fc_min_idx:int = -1
 
     # median 5 filter memory
     # list of tupples [5X(x,y,z)]
@@ -93,18 +94,28 @@ class NavNode(Node):
         self.cone_at_y = msg.point.y
         self.cone_det_time = time.time_ns() * 1e-9 # seconds
 
-    # Cone distance when close using TOF sensors
+    # Cone distance and angle using TOF sensors
     def tof_fc_mid_subscription_callback(self, msg: Float32X8) -> None:
         #self.get_logger().info(f"{msg=}")
-        davg:float = 0.0
-        dcnt:int = 0
+        # davg:float = 0.0
+        # dcnt:int = 0
+        dmin:float = 100.0
+        dmin_idx:int = -1
+        idx:int = 0
         for d in msg.data :
             if not math.isinf(d) :
-                davg += d
-                dcnt += 1
-        if dcnt!=0 : davg /= dcnt
-        else : davg = math.inf
-        self.tof_fc_dist = davg
+                if d < dmin : 
+                    dmin = d
+                    dmin_idx = idx
+                # davg += d
+                # dcnt += 1
+            idx += 1
+        # if dcnt!=0 : davg /= dcnt
+        # else : davg = math.inf
+        if dmin >= 100 : dmin = math.inf
+        # self.tof_fc_dist = davg
+        self.tof_fc_dist = dmin
+        self.tof_fc_min_idx = dmin_idx
 
     # Timer based state machine for cone navigation
     def timer_callback(self):
@@ -188,9 +199,16 @@ class NavNode(Node):
             
             msg = Twist()
             d = self.tof_fc_dist
+            i = self.tof_fc_min_idx
             if((not math.isinf(d)) and (d > self.cd_touch_dist)) :
                 msg.linear.x = self.cd_touch_vel
-            else : next_state = 4
+                # turn towards cone center
+                if i <= 2 :   msg.angular.z =  0.1
+                elif i >= 5 : msg.angular.z = -0.1
+
+            else : 
+                self.get_logger().info(f"{func} touched {d=:.3f} {state=}")
+                next_state = 4
             self.cmd_vel_publisher.publish(msg)
 
         elif state == 4 :

@@ -57,6 +57,10 @@ class WheelControllerNode(Node):
     # Odometry from encoder or velocity
     odom_encoder = True
 
+    # timer for battery report when not LOW
+    bat_timer = 0
+    bat_per = 10.0
+    
     def __init__(self):
         super().__init__('robocolumbus25_wheel_controler_node')
 
@@ -122,6 +126,10 @@ class WheelControllerNode(Node):
     def processBatteryInfo(self, vbat) -> None :
         if vbat <= 11.1 :
             self.get_logger().warning(f"Battery low {vbat=:.3f}")
+        elif (time.time_ns()*1e-9 - self.bat_timer) > self.bat_per :
+            self.get_logger().info(f"Battery {vbat=:.3f}")
+            self.bat_timer = time.time_ns()*1e-9
+
         # TODO: add current and possibly cell voltages
         bmsg = BatteryState()
         bmsg.header.stamp = self.get_clock().now().to_msg()
