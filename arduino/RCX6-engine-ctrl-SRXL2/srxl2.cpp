@@ -40,6 +40,17 @@ void SRXL2::timerTick(){
     txEscNow = true;
   }
 
+  // Transmitter active detect
+  if(timerTickCount >= rxRcvActiveRateCnt) {
+    rxRcvActiveRateCnt = timerTickCount+rxRcvActiveUsec/timerTickIntervalUsec; // 30/sec
+    if(rxRcvActive) rcTransmitterActive = true;
+    else rcTransmitterActive = false;
+    rxRcvActive = false;
+  }
+}
+
+bool SRXL2::getRcTransmitterActive() {
+  return rcTransmitterActive;
 }
 
 uint32_t SRXL2::getTimerTickCount() {
@@ -141,6 +152,18 @@ void SRXL2::configSerialRCV(){
 
   float SRXL2::getEscVin(void) {
     return escVin;
+  }
+
+  uint16_t SRXL2::getRcvThrottle(void){
+    return rcvThrottle;
+  }
+
+  uint16_t SRXL2::getRcvSteer(void){
+    return rcvSteer;
+  }
+
+  uint16_t SRXL2::getRcvShift(void){
+    return rcvShift;
   }
 
 // get a packet from the ESC RX pin
@@ -278,9 +301,11 @@ void SRXL2::decodePacketDataRxRcv() {
     uint8_t rssi = packetDataRxRcv.cPacket.payload.channelData.rssi;
     if((cmd != 0x00) | (rssi==0)) {
       // no data from transmitter - ignore all
-      //TODO: Set flag for transmitter not active
       return;
     }
+
+    // Set flag for Rcvr RX active
+    rxRcvActive = true;
 
     // Process control data, channel data PWM mid-scale is 32,768
     // NOTE: bytes are not reversed like data from ESC!!

@@ -192,9 +192,14 @@ void attachInterrupts() {
  * GLOBAL VARIABLES
  **************************************************************************************/
 
-// These values are not being decoded yet
-bool failsafeActive = false;
-bool receiverSignalsValid = true;
+
+int lastShift_g = 50000; // down
+bool rcvrActive_g = false;
+bool failsafeActive_g = false;
+bool killSwLatch_g = false;
+bool stopMotor_g = false;
+
+bool odomOn = true;
 
 float sThrottlePct = 0.0;
 float sSteerPct = 0.0; 
@@ -328,6 +333,7 @@ void pidLoopCode(){
   if(runPID!=true) return;
   runPID = false;
   if(mode_g!="cv") return;
+  if(stopMotor_g) return;
 
   // PID code
   float linX = 0;
@@ -431,7 +437,7 @@ void pidLoopCode(){
   cvToPct(linX, cmdVelAngRad);
 
   
-  if (wdTimedOut!=true) {
+  if (!wdTimedOut) {
     srx.setThrottlePct(sThrottlePct);
     pwm.setSteerPct(sSteerPct);
   }
@@ -508,110 +514,6 @@ void cvToPct(float linX, float angle) {
   lastLinX = linX;
   limSteerRad = cmdVelAngRad;
 }
-
-// /********************************************************
-// * Ackerman conversion
-// * Convert linear and angular velocity to steering and throttle percent
-// *********************************************************/
-// const float wheelCircumference = 750.0; // mm
-// const float odomCountPerWheelRotation = 3201.6;
-
-// // conversion  of linear x to throttle percent, + and - are different
-// // const float throttleFwdPctPerMps = 53.18*22/25; // 47.04*(1/0.87)*(3/3.05);
-// // const float throttleRvsPctPerMps = 53.0*22/25; // was not tweaked
-// const float throttlePctPerMps = 46.80; // use for both fwd and rvs
-// const float throttlePctDeadZoneAdj = 10.0; // this is +- dead zone around 0 percent
-
-// // M/S to Percent vs Vbat correction scale factor equation = A*Vbat + B
-// const float throttlePctVbatScaleA = 0.078545; // from test deltaEnc vs Vbat on bench 
-// const float throttlePctVbatScaleB = 0.018182; // from test deltaEnc vs Vbat on bench
-
-// // Ackermann steering parameters
-// const float wheelBase = 0.490; // meters, front to back
-// const float trackWidth = 0.310; // meters, left to right
-// // const float maxSteeringRad = 0.523; // ~30 deg, adjust for your hardware
-// const float maxSteeringRad = 0.611; // ~35 deg at steer percent=100
-
-// float throttlePctPerMpsScale = 1.0;  // mpy 1.0 = no scale
-// float throttlePctDeadZoneAdj = 0.0;  // add Adj
-// float steerCenterPctAdj = 0.0;       // add Adj
-// float wheelBaseAdj = 0.0;            // add Adj
-
-// // TODO: read values in PID loop and calculate using scale in PID loop?
-// // currently these are read in the command process loop
-// float escVin = 12.0; // default value
-// int motorRpm = 0; // default value
-
-// // Ackerman conversion called when serial command is decoded
-// void AckermanConvert(float linX, float angZ) {
-//   // Ackerman steering conversion
-//   // linear X is in m/s, angular Z is in rad/s  
-
-//   // Throttle calculation
-//   // TODO: adjust for high and low gear, current is for low gear only
-//   float scale = (throttlePctVbatScaleA * escVin) + throttlePctVbatScaleB;
-//   float dz = throttlePctDeadZone + throttlePctDeadZoneAdj; // adjust dead zone
-//   float ppm = throttlePctPerMps * throttlePctPerMpsScale; // scale percent to meters
-//   if(linX==0.0) sThrottlePct = 0;
-//   else if(linX>0.0) {
-//     sThrottlePct = (dz-1) + (linX * ppm);
-//     sThrottlePct /= scale; // apply Vbat correction
-//     if(sThrottlePct > 100) sThrottlePct = 100;
-//     if(sThrottlePct < dz) sThrottlePct = 0;
-//     // // convert back to linear velocity x m/s
-//     // linX = (sThrottlePct - (dz-1)) / ppm;
-//     // linX *= scale; // apply reverse Vbat correction
-//   } else {
-//     sThrottlePct = -(dz-1) + (linX * ppm);
-//     sThrottlePct /= scale; // apply Vbat correction
-//     if(sThrottlePct < -100) sThrottlePct = -100;
-//     if(sThrottlePct > -dz) sThrottlePct = 0;
-//     // // convert back to linear velocity x m/s
-//     // linX = (sThrottlePct + (dz-1)) / ppm;
-//     // linX *= scale; // apply reverse Vbat correction
-//   }
-
-//   // Serial.print("throttle pct = ");
-//   // Serial.print(sThrottlePct);
-//   // Serial.print(" M/s = ");
-//   // Serial.println(linX);
-
-//   // Ackermann steering calculation
-//   float wb = wheelBase + wheelBaseAdj; // Adjust the wheel base length
-//   float steeringAngleRad = atan2(wb * angZ, linX);
-//   // manage negative linear velocity using atan2
-//   if (linX < 0) {
-//     if(angZ>=0) steeringAngleRad -= 3.14159;
-//     else steeringAngleRad += 3.14159;
-//   }
-
-//   // Convert steering angle to percent
-//   sSteerPct = (100.0 * (steeringAngleRad / maxSteeringRad)) + steerCenterPctAdj;
-//   if(sSteerPct > 100) sSteerPct = 100;
-//   if(sSteerPct < -100) sSteerPct = -100;
-//   // convert back to angular z radians/sec
-//   angZ = (sSteerPct / 100.0) * maxSteeringRad * linX / wheelBase;
-
-//   // Reverse conversion
-//   steeringAngleRad = ((sSteerPct - steerCenterPctAdj) / 100.0) * maxSteeringRad;
-//   angZ = tan(steeringAngleRad) * linX / wheelBase;
-
-//   // Serial.print("steer");
-//   // Serial.print(" angZ = ");
-//   // Serial.print(angZ);
-//   // Serial.print(" linX = ");
-//   // Serial.print(linX);
-//   // Serial.print(" Rad = ");
-//   // Serial.print(steeringAngleRad);
-//   // Serial.print(" pct = ");
-//   // Serial.print(sSteerPct);
-//   // Serial.print(" Rad/s = ");
-//   // Serial.println(angZ);
-
-//   // Save last velocities to ESC
-//   lastLinX = linX;
-//   lastAngZ = angZ;
-// }
 
 
 /********************************************************
@@ -701,11 +603,19 @@ bool jsonParse(const char *jsonStr) {
       Serial.print(coeffDB);
       Serial.println("]");
     }
+
   } else {
     cmdVelLinX = 0;
     cmdVelAngRad = 0;
   }
 
+  if (myObject.hasOwnProperty("odom")) {
+    odomOn = (bool)myObject["odom"];
+    if (odomOn)
+      Serial.println("odom messages are ON");
+    else
+      Serial.println("odom messages are OFF");
+  }
 
   if (mode_g == "pct") {
     // Steering percent
@@ -797,29 +707,6 @@ void configSerial(){
 }
 
 
-// Impliment failsafe
-// When computer is selected the transmitter trigger must be pulled to operate
-// If the trigger is not pulled then the failsafe is activated and the signals
-// to the servos and motor become the default values
-
-// Monitor failsafe mechanism
-// DEBUG: disabled for now
-// void checkFailsafe() {
-  // if (muxSelRcvr == true) {
-    // failsafeActive = false;
-  // } else  {
-    // computer is selected for control
-    // if (mThrottle_wid < failsafeThrottleThresh) {
-    //   // Failsafe active when throttle on transmitter is released
-    //   failsafeActive = true;
-    // } else {
-    //   failsafeActive = false;
-    // }
-  // }
-
-  // pwm.setFailsafeActive(failsafeActive);
-//}
-
 // This is an interrupt handler
 // send the odometry message to serial port
 // this is used by ROS2 for its odom message
@@ -850,26 +737,19 @@ void sendOdomMsg() {
 // Send status message to host computer
 void sendStatusMsg() {
 
-  JSONVar myObject;
+  JSONVar statuses;
 
-  myObject["mode"] = mode_g;
+  statuses["mode"] = mode_g;
+  statuses["vbat"] = escVin;
+  statuses["rca"] = rcvrActive_g;
+  statuses["fsa"] = failsafeActive_g;
+  statuses["ksl"] = killSwLatch_g;
+  statuses["kill"] = stopMotor_g;
 
-  myObject["gear"] = pwm.getShiftGear();
+  JSONVar status;
+  status["status"] = statuses;
 
-  // myObject["fsa"] = failsafeActive;
-
-  // myObject["rca"] = receiverSignalsValid;
-
-  // add ESC Vin and RPM
-  myObject["vbat"] = escVin;
-
-  myObject["rpm"] = motorRpm; 
-
-  // Add last commanded linear X and limited angular Z
-  myObject["linx"] = lastLinX;
-  myObject["steer"] = limSteerRad;
-
-  String jsonString = JSON.stringify(myObject);
+  String jsonString = JSON.stringify(status);
   Serial.println(jsonString);
 
 }
@@ -894,26 +774,116 @@ void sendStatusMsg() {
 //}
 
 
-// Select receiver or computer using steering and shift and throttle
-// The throttle must me center +- 5% to change selection
-// Use shift high >1500+10%, low <1500-10%
-// Select computer when steering > center+10% and shift high to low
-// Select receiver when steering < center-10% and shift high to low
-//  void muxSelectDecode() {
-  //  if(fabs(mThrottle_wid-throttleZero) < (throttleZero*0.1)) {
-  //   if(mShift_wid < 1500*0.9) {
-  //     if(shiftState==1) {
-  //       if(mSteer_wid > steerCenter*1.05) muxSelRcvr = true;
-  //       else muxSelRcvr = false;
-  //     }
-  //     shiftState = 0;
-  //   }
-  //   if(mShift_wid > 1500*1.1) {
-  //     shiftState = 1;
-  //   }
-  //}
+// Decode receiever steering and shift and throttle
+// Center = 32,768 (2^16)
+// The shift action <20,000(up) the >40,000(dn = low)
 
-//  }
+uint32_t rcvDecodeMillis_last_g = 0;
+int rcvDecodePeriod_g = 20; // 50/sec
+int killCnt_g = 0;
+
+void rcvDecode(uint32_t loopMillis) {  
+  if ((loopMillis - rcvDecodeMillis_last_g) < rcvDecodePeriod_g) return;
+  rcvDecodeMillis_last_g = loopMillis;
+
+  int throttle = srx.getRcvThrottle();
+  int steer = srx.getRcvSteer();
+  int shift = srx.getRcvShift();
+  bool txActive = srx.getRcTransmitterActive();
+//Serial.printf("thr %d, str %d, sft %d txActive %d\n", throttle, steer, shift, txActive);
+
+  bool throttleFWD = throttle>40000;
+  bool throttleREV = throttle<20000;
+  // bool throttleZERO = !(throttleFwd || throttleRev);
+  bool steerCW = steer>40000;
+  bool steerCCW = steer<20000;
+
+  // Detect if the receiver is detecting signals from transmitter
+  if(txActive) {
+    if(!rcvrActive_g) Serial.println("Receiver is now active");
+    rcvrActive_g = true;
+  }
+  else {
+    if(rcvrActive_g) Serial.println("Receiver is now NOT active");
+    rcvrActive_g = false;
+  }
+
+  // // do not process signals from receiver if not active
+  // if(!rcvrActive_g) return;
+
+
+  // Detect shift sw action up then down only occurs once per shift sequence
+  bool shiftAction = false;
+  if(lastShift_g < 20000) { // last shift sw position was UP (high gear)
+    if(shift > 40000) { // current shift sw position is DOWN (low gear)
+      shiftAction = true;
+    }
+  }
+  lastShift_g = shift;
+
+  if(shiftAction) {
+    if(throttleFWD) { // throttle forward motion
+      // enable kill sw, if already enabled latch kill sw
+      if(failsafeActive_g) {
+        killSwLatch_g = !killSwLatch_g; // toggle kill switch latching
+      }
+      failsafeActive_g = true;
+    }
+    else if(throttleREV) { // throttle reverse motion
+    }
+    else { // throttle OFF
+      if(steerCW) { // steering CW direction
+        mode_g = "cv";
+        failsafeActive_g = false;
+        killSwLatch_g = false;
+      }
+      else if(steerCCW) { // steering CCW direction
+        mode_g = "bypass";
+        failsafeActive_g = false;
+        killSwLatch_g = false;
+      }
+      configureMode(); //TODO: move to srx.setMode
+      srx.setMode(mode_g);
+      pwm.setMode(mode_g);
+    }
+
+    Serial.printf("thr=%d str=%d sft=%d mode=%s fsa=%d ksl=%d stop=%d\n", 
+        throttle, steer, shift, mode_g.c_str(), failsafeActive_g, killSwLatch_g, stopMotor_g);
+  }
+  // motor control, no shift action
+  // The throttle signal is not stable and needs to be filtered
+  if(failsafeActive_g) {
+    if(throttleFWD) {
+      if(killCnt_g<10) killCnt_g++;
+    }
+    else {
+      if(killCnt_g>0) killCnt_g--;
+    }
+    
+    if(killCnt_g == 10) {
+      if(stopMotor_g) sendKillStatus(false);
+      stopMotor_g = false;
+    }
+    else if(killCnt_g==0 && !killSwLatch_g) {
+      if(!stopMotor_g)  sendKillStatus(true);
+      stopMotor_g = true;
+      resetPID();
+      sThrottlePct = 0;
+      sSteerPct = 0;
+      srx.setThrottlePct(sThrottlePct);
+      pwm.setSteerPct(sSteerPct);
+    }
+  }
+}
+
+void sendKillStatus(bool kill) {
+  JSONVar killStatus;
+  killStatus["kill"] = kill;
+  JSONVar status;
+  status["status"] = killStatus;
+  String jsonString = JSON.stringify(status);
+  Serial.println(jsonString);
+}
 
 void pwmLoopCode() {
   pwm.loopCode();
@@ -933,7 +903,7 @@ void sendMsgs(unsigned long loopMillis) {
   }
 
   // send Odom wheel encoder data
-  if (sendOdom) {
+  if (odomOn && sendOdom) {
     sendOdom = false;
     sendOdomMsg();
   }
@@ -951,7 +921,6 @@ void setup() {
   attachInterrupts();
   InitEncoders();
 
-
 }
 
 /****************************************************/
@@ -961,8 +930,8 @@ void loop() {
   // impliment failsafe mechanism
   // checkFailsafe();
 
-  // Decode mux selection from receiver signals
-  // muxSelectDecode();
+  // Decode selections from receiver signals
+  rcvDecode(loopMillis);
 
   getJsonMsgs();
 

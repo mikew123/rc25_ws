@@ -36,6 +36,12 @@ public:
   int getEscRpm(void);
   float getEscVin(void);
 
+  uint16_t getRcvThrottle(void);
+  uint16_t getRcvSteer(void);
+  uint16_t getRcvShift(void);
+  
+  bool getRcTransmitterActive(void);
+  
   // Create timers for clearing the serial transmit enable pins
   void timerTick();
   void setTimerTickIntervalUsec(uint32_t usec);
@@ -106,7 +112,13 @@ private:
   uint32_t TxRcvCnt = 0;
   uint32_t TxRcvRateCnt = 0;
   bool txRcvNow = false;
-  
+
+  uint32_t rxRcvActiveUsec = 100000; // 10/sec
+  uint32_t rxRcvActiveCnt = 0;
+  uint32_t rxRcvActiveRateCnt = 0;
+  bool rxRcvActive = false;
+  bool rcTransmitterActive = false;
+
   void startTxEscEnable(uint32_t tus);
   void startTxRcvEnable(uint32_t tus);
 
