@@ -2,15 +2,18 @@ from ctypes.wintypes import PMSG
 import rclpy
 import math
 import time
+import tf_transformations
+import json
+
 from rclpy.node import Node
+from std_msgs.msg import String
 from geometry_msgs.msg import PointStamped
 from geometry_msgs.msg import Quaternion
-import tf_transformations
+from geometry_msgs.msg import Pose, PoseStamped, PoseWithCovarianceStamped
+from geometry_msgs.msg import Twist
 from vision_msgs.msg import Detection3DArray
 
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
-from geometry_msgs.msg import Pose, PoseStamped, PoseWithCovarianceStamped
-from geometry_msgs.msg import Twist
 
 from tf2_ros import LookupException, ConnectivityException, ExtrapolationException
 from tf2_ros import Duration
@@ -81,6 +84,10 @@ class NavNode(Node):
 
         self.cone_point_subscription = self.create_subscription(PointStamped, 'cone_point', self.cone_point_subscription_callback, 10)
         self.tof_fc_mid_subscription = self.create_subscription(Float32X8, 'tof_fc_mid', self.tof_fc_mid_subscription_callback, 10)
+
+        # Message topic to/from all nodes for general messaging Json formated string
+        self.json_msg_publisher = self.create_publisher(String, "json_msg", 10)
+        self.subscription = self.create_subscription(String, "json_msg", self.json_msg_callback, 10)
         
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -93,7 +100,18 @@ class NavNode(Node):
 
         self.get_logger().info(f"NavNode Started")
 
+    def json_msg_callback(self, msg:String) -> None :
+        #self.get_logger().info(f"json_msg_callback: {msg=}")
+        data = json.loads(msg.data)
 
+        if 'kill' in data:
+            kill = data['kill']
+            self.get_logger().info(f"json_msg_callback: {kill=}")
+
+    def sendJsonMsg(self, json_msg) -> None :
+        str = json.dumps(json_msg)
+        msg = String(data=str)
+        self.json_msg_publisher.publish(msg)
 
     # Timer based state machine for cone navigation
     def timer_callback(self):

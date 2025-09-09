@@ -17,8 +17,8 @@ from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Quaternion
-
 from sensor_msgs.msg import BatteryState
+from std_msgs.msg import String
 
 import math
 import serial
@@ -76,6 +76,10 @@ class WheelControllerNode(Node):
         self.battery_status_msg_publisher = self.create_publisher(BatteryState, 'battery_status', 10)
         self.serialTimer = self.create_timer(0.010, self.serialTimerCallback)
 
+        # Message topic to/from all nodes for general messaging Json formated string
+        self.json_msg_publisher = self.create_publisher(String, "json_msg", 10)
+        self.subscription = self.create_subscription(String, "json_msg", self.json_msg_callback, 10)
+
         try:
             self.ser = serial.Serial(self.serial_port, self.baudrate, timeout=1)
             self.get_logger().info(f"Serial port {self.serial_port} opened.")
@@ -84,17 +88,26 @@ class WheelControllerNode(Node):
             self.ser = None
 
         cmd = {"pid":[self.coeffA,self.coeffB,self.coeffDA,self.coeffDB]}
-        self.send_json_cmd(cmd)
+        self.sendJsonCmd(cmd)
         cmd = {"mode":"cv"}
-        self.send_json_cmd(cmd)
+        self.sendJsonCmd(cmd)
 
         self.ser.flush()
         time.sleep(5)  # engine controller seems to act weird if no delay
 
         self.get_logger().info(f"WheelControllerNode: Started node")
 
-    def send_json_cmd(self,cmd) :
-        # self.get_logger().info(f"send_json_cmd: {cmd=}")
+    def json_msg_callback(self, msg:String) -> None :
+        #self.get_logger().info(f"json_msg_callback: {msg=}")
+        pass
+
+    def sendJsonMsg(self, json_msg) -> None :
+        str = json.dumps(json_msg)
+        msg = String(data=str)
+        self.json_msg_publisher.publish(msg)
+
+    def sendJsonCmd(self,cmd) :
+        # self.get_logger().info(f"sendJsonCmd: {cmd=}")
         if self.ser and self.ser.is_open:
             try:
                 json_cmd = json.dumps(cmd) + '\n'
@@ -108,7 +121,7 @@ class WheelControllerNode(Node):
         data = {}
         while self.ser.in_waiting :
             line = self.ser.readline().decode('utf-8').strip()
-            #self.get_logger().info(f"Received: {line=}")
+            #self.get_logger().info(f"serialTimerCallback: {line=}")
             try:
                 data = json.loads(line)
                 break
@@ -119,10 +132,24 @@ class WheelControllerNode(Node):
             odom = data['odom']
             self.proc_wheel_odom_msg(odom)
 
-        if 'vbat' in data:
-            vbat = data['vbat']
-            self.processBatteryInfo(vbat)
+        if 'status' in data:
+            status = data['status']
+            self.processStatusMsg(status)
         
+    def processStatusMsg(self, status) -> None :
+        if 'vbat' in status:
+            vbat = status['vbat']
+            self.processBatteryInfo(vbat)
+
+        if 'kill' in status:
+            kill = status['kill']
+            self.processKillStatus(kill)
+
+    def processKillStatus(self, kill) -> None :
+        #self.get_logger().info(f"processKillStatus: {kill=}")
+        json_msg =  {"kill":kill}
+        self.sendJsonMsg(json_msg)
+
     def processBatteryInfo(self, vbat) -> None :
         if vbat <= 11.1 :
             self.get_logger().warning(f"Battery low {vbat=:.3f}")
@@ -256,7 +283,7 @@ class WheelControllerNode(Node):
             cmd = {"wd":1000,"cv":[wheel_velocity, steering_angle]}
         else : # force stop (how it affects PID?)
             cmd = {"wd":1000,"cv":[wheel_velocity, steering_angle]}
-        self.send_json_cmd(cmd)
+        self.sendJsonCmd(cmd)
 
         # if self.odom_encoder == False :
         #     dt = current_time_sec - self.last_time_sec
@@ -311,10 +338,10 @@ class WheelControllerNode(Node):
         if hasattr(self, 'ser') and self.ser and self.ser.is_open:
             # stop the motor
             cmd = {"wd":100,"cv":[0, 0]}
-            self.send_json_cmd(cmd)
+            self.sendJsonCmd(cmd)
             # change mode to bypass
             cmd = {"mode":"bypass"}
-            self.send_json_cmd(cmd)
+            self.sendJsonCmd(cmd)
             # wait for message to be sent before closing
             self.ser.flush()
             self.ser.close()
