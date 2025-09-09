@@ -66,6 +66,8 @@ class NavNode(Node):
     cone_at_x:float = 0.0
     cone_at_y:float = 0.0
     cone_det_time:int = 0
+    cone_det_time_out:int = 2.5
+
     # using /tof_fc_mid (NOTE: distance from front center TOF sensor)
     tof_fc_dist:float = 0.0
     tof_fc_min_idx:int = -1
@@ -143,9 +145,11 @@ class NavNode(Node):
         x:float = self.cone_at_x
         y:float = self.cone_at_y
         t:int = self.cone_det_time
+        to:int = self.cone_det_time_out
 
-        if (time.time_ns() * 1e-9) - t > 1.0 :
-            # cone detection is stale
+        dt:int = (time.time_ns() * 1e-9) - t
+        if dt>to and t>0:
+            self.get_logger().info(f"{func} cone detection is stale {x=} {y=} {dt=}")
             x = 0
             y = 0
         
@@ -190,7 +194,7 @@ class NavNode(Node):
         self.cd_state = next_state
 
     # state 0
-    def wait_for_cone_det(self, x:int , y:int, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
+    def wait_for_cone_det(self, x:float , y:float, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} wait for cone detection {state=}")
 
@@ -205,7 +209,7 @@ class NavNode(Node):
 
     #state 1
     cd_sub_timer = 0
-    def nav_to_cone(self, x:int , y:int, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
+    def nav_to_cone(self, x:float , y:float, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         cur_time = time.time_ns()*1e-9
         if state_change :
             self.get_logger().info(f"{func} navigate with BasicNavigator close to cone {state=}")
@@ -255,7 +259,7 @@ class NavNode(Node):
         return next_state
 
     #state 2
-    def get_closer_to_cone(self, x:int , y:int, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
+    def get_closer_to_cone(self, x:float , y:float, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} drive closer to cone using cmd_vel and cone_point {state=}")
 
@@ -285,7 +289,7 @@ class NavNode(Node):
         return next_state
 
     #state 3
-    def touch_cone(self, x:int , y:int, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
+    def touch_cone(self, x:float , y:float, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} drive slowly to \"touch\" cone using cmd_vel and tof sensors {state=}")
         
@@ -314,7 +318,7 @@ class NavNode(Node):
         return next_state
 
     #state 4
-    def wait_after_touch(self, x:int , y:int, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
+    def wait_after_touch(self, x:float , y:float, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} wait a short time {state=}")
         
@@ -330,7 +334,7 @@ class NavNode(Node):
         return next_state
 
     #state 5
-    def backup_after_touch(self, x:int , y:int, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
+    def backup_after_touch(self, x:float , y:float, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} backup {state=}")
             
@@ -353,7 +357,7 @@ class NavNode(Node):
         return next_state
 
     #state 6
-    def stop_after_touch(self, x:int , y:int, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
+    def stop_after_touch(self, x:float , y:float, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} STOP {state=}")
         
@@ -362,7 +366,7 @@ class NavNode(Node):
         return next_state
     
     # return (cone_dist, cone_angle, robot_x, robot_y, robot_angle)
-    def get_cone_dist_from_robot(self, cx:int, cy:int) -> tuple:
+    def get_cone_dist_from_robot(self, cx:float, cy:float) -> tuple:
         # get current pose to determine the angle offset
         (tf_OK, current_pose) = self.getCurrentPose()
         if not tf_OK : return -1.0
@@ -383,7 +387,7 @@ class NavNode(Node):
         return (d, a, rx, ry, ra)
 
     # Returns distance to the cone, -1 if it did not succeed
-    def gotoConeXY(self, cx:int, cy:int, stop_dist:float, t:float = 5, blocking:bool=True) -> float:
+    def gotoConeXY(self, cx:float, cy:float, stop_dist:float, t:float = 5, blocking:bool=True) -> float:
         """
         Go to the cone location, but stop 0.2m short
         Rotates to point to the can before moving to it
@@ -425,11 +429,11 @@ class NavNode(Node):
 
     # Cone detection from camera AI
     def cone_point_subscription_callback(self, msg: PointStamped) -> None:
-        #self.get_logger().info(f"{msg=}")
+        if msg.point.x == 0 : self.get_logger().info(f"{msg=}")
         self.cone_at_x = msg.point.x
         self.cone_at_y = msg.point.y
         self.cone_det_time = time.time_ns() * 1e-9 # seconds
-
+   
     # Cone distance and angle using TOF sensors
     def tof_fc_mid_subscription_callback(self, msg: Float32X8) -> None:
         #self.get_logger().info(f"{msg=}")
