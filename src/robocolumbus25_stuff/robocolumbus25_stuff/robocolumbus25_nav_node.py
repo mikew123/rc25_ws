@@ -74,7 +74,9 @@ class NavNode(Node):
     # list of tupples [5X(x,y,z)]
     m5_filter:list = [(0.0,0.0,0.0)]*5
     
-
+    # True when killSw is released to stop the robot motion
+    killSw:bool = False
+    cd_killSwChange:bool = False
 
     def  __init__(self, nav: BasicNavigator):
         super().__init__('robocolumbus25_nav_node')
@@ -105,8 +107,14 @@ class NavNode(Node):
         data = json.loads(msg.data)
 
         if 'kill' in data:
-            kill = data['kill']
-            self.get_logger().info(f"json_msg_callback: {kill=}")
+            kill:bool = data['kill']
+            self.processKillSwStatus(kill)
+
+    def processKillSwStatus(self, kill:bool) -> None :
+        if(kill != self.killSw) :
+            self.cd_killSwChange = True
+            self.get_logger().info(f"json_msg_callback: kill switch is {kill}")
+        self.killSw = kill
 
     def sendJsonMsg(self, json_msg) -> None :
         str = json.dumps(json_msg)
@@ -121,20 +129,20 @@ class NavNode(Node):
         # goto GPS coordinate
 
         # find cone and "touch" it
-        self.cone_sm()
+        self.cd_sm()
 
         # set next GPS coordinate 
 
 
-    def cone_sm(self) :
+    def cd_sm(self) :
         func = "cone_sm:"
 
         # self.get_logger().info(f"timer_callback: waitUntilNav2Active")
         # self.nav.waitUntilNav2Active()
 
-        x = self.cone_at_x
-        y = self.cone_at_y
-        t = self.cone_det_time
+        x:float = self.cone_at_x
+        y:float = self.cone_at_y
+        t:int = self.cone_det_time
 
         if (time.time_ns() * 1e-9) - t > 1.0 :
             # cone detection is stale
@@ -145,6 +153,10 @@ class NavNode(Node):
         if self.cd_state != self.cd_last_state : 
             state_change = True
 
+        ks = self.killSw
+        ksc = self.cd_killSwChange
+        if ksc : self.cd_killSwChange = False
+
         state:int = self.cd_state
         next_state:int = state
 
@@ -152,86 +164,90 @@ class NavNode(Node):
             self.cd_timer = time.time_ns()*1e-9
 
         if state == 0 :
-            next_state = self.wait_for_cone_det(x,y,func,state,state_change)
+            next_state = self.wait_for_cone_det(x,y,func,state,state_change,ks,ksc)
 
         elif state == 1 :
-            next_state = self.nav_to_cone(x,y,func,state,state_change)
+            next_state = self.nav_to_cone(x,y,func,state,state_change,ks,ksc)
                 
 
         elif state == 2 :
-            next_state = self.get_closer_to_cone(x,y,func,state,state_change)
+            next_state = self.get_closer_to_cone(x,y,func,state,state_change,ks,ksc)
 
 
         elif state == 3 :
-            next_state = self.touch_cone(x,y,func,state,state_change)
+            next_state = self.touch_cone(x,y,func,state,state_change,ks,ksc)
 
         elif state == 4 :
-            next_state = self.wait_after_touch(x,y,func,state,state_change)
+            next_state = self.wait_after_touch(x,y,func,state,state_change,ks,ksc)
 
         elif state == 5 :
-            next_state = self.backup_after_touch(x,y,func,state,state_change)
+            next_state = self.backup_after_touch(x,y,func,state,state_change,ks,ksc)
 
         elif state == 6 :
-            next_state = self.stop_after_touch(x,y,func,state,state_change)
+            next_state = self.stop_after_touch(x,y,func,state,state_change,ks,ksc)
 
         self.cd_last_state = state
         self.cd_state = next_state
 
     # state 0
-    def wait_for_cone_det(self, x:int , y:int, func:str, state:int, state_change:bool) -> int :
+    def wait_for_cone_det(self, x:int , y:int, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} wait for cone detection {state=}")
 
-        next_state = state
-        if x!=0 and y!=0 :
-            self.get_logger().info(f"{func} cone detected at {x=:.3f} {y=:.3f}  {state=}")
-            next_state = 1
+        killSwitchActive:bool  = ks
+        next_state:int = state
+
+        if x!=0 and y!=0:
+            self.get_logger().info(f"{func} cone detected at {x=:.3f} {y=:.3f}  {state=} {killSwitchActive=}")
+            if not killSwitchActive : 
+                next_state = 1
         return next_state
 
     #state 1
     cd_sub_timer = 0
-    def nav_to_cone(self, x:int , y:int, func:str, state:int, state_change:bool) -> int :
+    def nav_to_cone(self, x:int , y:int, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         cur_time = time.time_ns()*1e-9
         if state_change :
             self.get_logger().info(f"{func} navigate with BasicNavigator close to cone {state=}")
             self.cd_sub_state = 0
             self.cd_sub_timer = cur_time
 
+        killSwitchActive:bool = ks
+        killSwitchChange = ksc
         next_state = state
+
         if x!=0 and y!=0 :
             dist = self.cd_stop_dist
             t = self.cd_nav_time
 
             # non-blocking navigation
             if self.cd_sub_state == 0 :
-                # issue a navigation command
-                self.gotoConeXY(x,y,dist,t,False) # non-blocking
-                self.cd_sub_state = 1
+                if not killSwitchActive :
+                    # issue a navigation command
+                    self.gotoConeXY(x,y,dist,t,False) # non-blocking
+                    self.cd_sub_state = 1
 
             elif self.cd_sub_state == 1 :
-                # check for nav complete or navigate time finished and try again
-                if (cur_time - self.cd_sub_timer) < t :
-                    if self.nav.isTaskComplete() :
-                        (d, a, rx, ry, ra) = self.get_cone_dist_from_robot(x, y)
-                        if d <= dist + 0.1 :
-                            self.get_logger().info(f"{func} nav done - close to cone {d=:.3f} {state=}")
-                            next_state = 2
-                        else :
-                            self.get_logger().info(f"{func} nav again closer to cone {d=:.3f} {state=}")
-                            self.cd_sub_state = 0
-                else :
-                    self.get_logger().info(f"{func} Get new cone placement and navigate some more {state=}")
-                    self.cd_sub_state = 0
+                if killSwitchActive :
+                    # Cancel goal and wait when kill switch status changes to active
+                    if killSwitchChange :
+                        self.nav.cancelTask()
+                        self.cd_sub_state = 0
+                else : # Execute when kill switch is not active
+                    # check for nav complete or navigate time finished and try again
+                    if (cur_time - self.cd_sub_timer) < t :
+                        if self.nav.isTaskComplete() :
+                            (d, a, rx, ry, ra) = self.get_cone_dist_from_robot(x, y)
+                            if d <= dist + 0.1 :
+                                self.get_logger().info(f"{func} nav done - close to cone {d=:.3f} {state=}")
+                                next_state = 2
+                            else :
+                                self.get_logger().info(f"{func} nav again closer to cone {d=:.3f} {state=}")
+                                self.cd_sub_state = 0
+                    else :
+                        self.get_logger().info(f"{func} Get new cone placement and navigate some more {state=}")
+                        self.cd_sub_state = 0
 
-                # d = float(self.gotoConeXY(x,y,dist,t,True)) # blocking
-                # if d != -1.0 :
-                #     self.get_logger().info(f"{func} at cone {d=:.3f}  {state=}")
-                #     if d <= dist + 0.1 :
-                #         self.get_logger().info(f"{func} close to cone  {state=}")
-                #         next_state = 2
-                # else :
-                #     self.get_logger().info(f"{func} gotoConeXY failed  {state=}")
-                #     next_state = 0
         else :
             self.get_logger().info(f"{func} lost cone {state=}")
             next_state = 0
@@ -239,13 +255,19 @@ class NavNode(Node):
         return next_state
 
     #state 2
-    def get_closer_to_cone(self, x:int , y:int, func:str, state:int, state_change:bool) -> int :
+    def get_closer_to_cone(self, x:int , y:int, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} drive closer to cone using cmd_vel and cone_point {state=}")
 
+        killSwitchActive:bool = ks
         next_state = state
         msg = Twist()
-        if x==0 and y==0 :
+
+        if killSwitchActive :
+            # Stop motors and wait for kill switch not active
+            # Motors are stopped by leaving velocities to msg default as 0
+            pass
+        elif x==0 and y==0 :
             self.get_logger().info(f"{func} lost cone {state=}")
             next_state = 0
         elif x > self.cd_closer_dist :
@@ -257,20 +279,27 @@ class NavNode(Node):
         else : 
             self.get_logger().info(f"{func} closer {x=:.3f} {y=:.3f}")
             next_state = 3
+
         self.cmd_vel_publisher.publish(msg)
 
         return next_state
 
     #state 3
-    def touch_cone(self, x:int , y:int, func:str, state:int, state_change:bool) -> int :
+    def touch_cone(self, x:int , y:int, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} drive slowly to \"touch\" cone using cmd_vel and tof sensors {state=}")
         
+        killSwitchActive:bool = ks
         next_state = state
         msg = Twist()
         d = self.tof_fc_dist
         i = self.tof_fc_min_idx
-        if((not math.isinf(d)) and (d > self.cd_touch_dist)) :
+
+        if killSwitchActive :
+            # Stop motors and wait for kill switch not active
+            # Motors are stopped by leaving velocities to msg default as 0
+            pass
+        elif((not math.isinf(d)) and (d > self.cd_touch_dist)) :
             msg.linear.x = self.cd_touch_vel
             # turn towards cone center
             if i <= 2 :   msg.angular.z =  0.1
@@ -279,44 +308,58 @@ class NavNode(Node):
         else : 
             self.get_logger().info(f"{func} touched {d=:.3f} {state=}")
             next_state = 4
+
         self.cmd_vel_publisher.publish(msg)
 
         return next_state
 
     #state 4
-    def wait_after_touch(self, x:int , y:int, func:str, state:int, state_change:bool) -> int :
+    def wait_after_touch(self, x:int , y:int, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} wait a short time {state=}")
         
+        killSwitchActive:bool = ks
         next_state = state
-        if (time.time_ns()*1e-9 - self.cd_timer) > self.cd_touch_wait :
+
+        if killSwitchActive :
+            # wait until kill switch is not active
+            pass
+        elif (time.time_ns()*1e-9 - self.cd_timer) > self.cd_touch_wait :
             next_state = 5
         
         return next_state
 
     #state 5
-    def backup_after_touch(self, x:int , y:int, func:str, state:int, state_change:bool) -> int :
-            if state_change :
-                self.get_logger().info(f"{func} backup {state=}")
+    def backup_after_touch(self, x:int , y:int, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
+        if state_change :
+            self.get_logger().info(f"{func} backup {state=}")
             
-            next_state = state
-            msg = Twist()
-            t = self.cd_backup_dist/self.cd_backup_vel
-            if (time.time_ns()*1e-9 - self.cd_timer) < t :
-                msg.linear.x = -self.cd_backup_vel
-            else : next_state = 6
-            self.cmd_vel_publisher.publish(msg)
+        killSwitchActive:bool = ks
+        next_state = state
+        t = self.cd_backup_dist/self.cd_backup_vel
+        msg = Twist()
 
-            return next_state
+        if killSwitchActive :
+            # Stop motors and wait for kill switch not active
+            # Motors are stopped by leaving velocities to msg default as 0
+            pass
+        elif (time.time_ns()*1e-9 - self.cd_timer) < t :
+            msg.linear.x = -self.cd_backup_vel
+        else : 
+            next_state = 6
+
+        self.cmd_vel_publisher.publish(msg)
+
+        return next_state
 
     #state 6
-    def stop_after_touch(self, x:int , y:int, func:str, state:int, state_change:bool) -> int :
-            if state_change :
-                self.get_logger().info(f"{func} STOP {state=}")
-            
-            next_state = state
+    def stop_after_touch(self, x:int , y:int, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
+        if state_change :
+            self.get_logger().info(f"{func} STOP {state=}")
+        
+        next_state = state
 
-            return next_state
+        return next_state
     
     # return (cone_dist, cone_angle, robot_x, robot_y, robot_angle)
     def get_cone_dist_from_robot(self, cx:int, cy:int) -> tuple:
