@@ -66,7 +66,7 @@ class NavNode(Node):
     cone_at_x:float = 0.0
     cone_at_y:float = 0.0
     cone_det_time:int = 0
-    cone_det_time_out:int = 2.5
+    cone_det_time_out:int = 5.0
 
     # using /tof_fc_mid (NOTE: distance from front center TOF sensor)
     tof_fc_dist:float = 0.0
@@ -214,7 +214,6 @@ class NavNode(Node):
         if state_change :
             self.get_logger().info(f"{func} navigate with BasicNavigator close to cone {state=}")
             self.cd_sub_state = 0
-            self.cd_sub_timer = cur_time
 
         killSwitchActive:bool = ks
         killSwitchChange = ksc
@@ -229,6 +228,7 @@ class NavNode(Node):
                 if not killSwitchActive :
                     # issue a navigation command
                     self.gotoConeXY(x,y,dist,t,False) # non-blocking
+                    self.cd_sub_timer = cur_time
                     self.cd_sub_state = 1
 
             elif self.cd_sub_state == 1 :
@@ -398,10 +398,10 @@ class NavNode(Node):
         d=-1.0
 
         if cx!=0 and cy!=0 :
-            self.get_logger().info(f"gotoConeXY:b cone at {cx=:.3f} {cy=:.3f}")
+            self.get_logger().info(f"gotoConeXY: cone at {cx=:.3f} {cy=:.3f}")
             
             (d, a, rx, ry, ra) = self.get_cone_dist_from_robot(cx, cy)
-            self.get_logger().info(f"gotoConeXY:b robot at {rx=:.3f} {ry=:.3f}, {ra=:.3f}")
+            self.get_logger().info(f"gotoConeXY: robot at {rx=:.3f} {ry=:.3f}, {ra=:.3f}")
             if d < stop_dist : return d
 
             # adjust the distance stop at the cost map boundary
