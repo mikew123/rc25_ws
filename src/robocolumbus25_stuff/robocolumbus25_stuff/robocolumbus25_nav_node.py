@@ -4,6 +4,7 @@ import math
 import time
 import tf_transformations
 import json
+import numpy as np
 
 from rclpy.node import Node
 from std_msgs.msg import String
@@ -12,6 +13,7 @@ from geometry_msgs.msg import Quaternion
 from geometry_msgs.msg import Pose, PoseStamped, PoseWithCovarianceStamped
 from geometry_msgs.msg import Twist
 from vision_msgs.msg import Detection3DArray
+from sensor_msgs.msg import LaserScan
 
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
 
@@ -36,7 +38,8 @@ class NavNode(Node):
     # Timer for state machine
     timerRateHz:float = 10.0
 
-    tc_state = 0
+    tc_state = -1
+    tc_next_state = 0
 
     cd_timer:float = 0.0
     cd_state:int = 0
@@ -65,6 +68,9 @@ class NavNode(Node):
     cd_backup_dist = 1.5
     cd_backup_vel = 0.25
 
+    # Field of view pointing forward from Lidar 36 degree scan data 
+    fovRad = 0.758 # 45 deg, +-22.5 degrees
+
 
     # global variables 
 
@@ -73,7 +79,14 @@ class NavNode(Node):
     cone_at_x_cam:float = 0.0
     cone_at_y_cam:float = 0.0
     cone_det_time_cam:int = 0
-    cone_det_time_cam_out:int = 2.0
+    cone_det_time_out_cam:int = 2.0
+
+    # using Lidar
+    cone_at_x_lidar:float = 0.0
+    cone_at_y_lidar:float = 0.0
+    cone_angle_lidar:float = 0.0
+    cone_det_time_lidar:int = 0
+    cone_det_time_out_lidar:int = 2.0
 
     # using /tof_fc_mid (NOTE: distance from front center TOF sensor)
     cone_dist_tof_fc:float = 0.0
@@ -99,6 +112,8 @@ class NavNode(Node):
                                             , self.cone_point_subscription_callback, 10)
         self.tof_fc_mid_subscription = self.create_subscription(Float32X8, 'tof_fc_mid'
                                             , self.tof_fc_mid_subscription_callback, 10)
+        self.cone_det_lidar_subscription = self.create_subscription(LaserScan,"scan" 
+                                            , self.cone_det_lidar_subscription_callback, 10)
 
         # Message topic to/from all nodes for general messaging Json formated string
         self.json_msg_publisher = self.create_publisher(String, "json_msg", 10)
@@ -142,10 +157,13 @@ class NavNode(Node):
     def timer_callback(self):
 
         # need a main state machine
-        state = self.tc_state
-        next_state = state
+        next_state = self.tc_next_state
+        if self.tc_state!= next_state :
+            self.get_logger().info(f"timer_callback: state change to {next_state}")
+        state = next_state
+        self.tc_state = state
+
         if state == 0 :
-            self.get_logger().info(f"timer_callback: {state=}")
             # wait for navigator
             # This does not work, it waits forever and send out messages lke setting inital pose
             # self.nav.waitUntilNav2Active()
@@ -162,16 +180,21 @@ class NavNode(Node):
 
         # set next GPS coordinate 
 
-        self.tc_state = next_state
+        self.tc_next_state = next_state
 
-
+    # Executes in timer callback group, sensor callbacks are in parallel
     def cd_sm(self) :
         func = "cone_sm:"
 
         x:float = self.cone_at_x_cam
         y:float = self.cone_at_y_cam
         t:int = self.cone_det_time_cam
-        to:int = self.cone_det_time_cam_out
+        to:int = self.cone_det_time_out_cam
+
+        x2:float = self.cone_at_x_lidar
+        y2:float = self.cone_at_y_lidar
+        t2:int = self.cone_det_time_lidar
+        to2:int = self.cone_det_time_out_lidar
 
         dt:int = (time.time_ns()*1e-9) - t
         # self.get_logger().info(f"{func} {dt=} {t=} {x=} {y=} ")
@@ -201,7 +224,7 @@ class NavNode(Node):
             next_state = self.nav_to_cone(x,y,func,state,state_change,ks,ksc)
                 
         elif state == 2 :
-            next_state = self.get_closer_to_cone(x,y,func,state,state_change,ks,ksc)
+            next_state = self.get_closer_to_cone(x2,y2,func,state,state_change,ks,ksc)
 
         elif state == 3 :
             next_state = self.touch_cone(x,y,func,state,state_change,ks,ksc)
@@ -477,7 +500,8 @@ class NavNode(Node):
         x = msg.point.x
         y = msg.point.y
         t = time.time_ns() * 1e-9 # seconds
-        self.cone_at_x_cam = x
+        # transform cone xy to "/tof_fc_link" which is considered the front of the robot
+        self.cone_at_x_cam = x - 0.200 # Crude transformation, camera is 0.200 behind tof sensor
         self.cone_at_y_cam = y
         self.cone_det_time_cam = t
         # self.get_logger().info(f"cone_point_subscription_callback: {t=} {x=} {y=} ")
@@ -499,6 +523,46 @@ class NavNode(Node):
         if dmin >= 100 : dmin = math.inf
         self.cone_dist_tof_fc = dmin
         self.cone_dist_idx_min_tof_fc = dmin_idx
+
+    # Cone detection from Lidar LaserScan data
+    def cone_det_lidar_subscription_callback(self, msg: LaserScan) -> None:
+        #self.get_logger().info(f"cone_det_cam_subscription_callback: {msg=}")
+
+        angle_min       = np.float32(msg.angle_min)
+        angle_max       = np.float32(msg.angle_max)
+        angle_increment = np.float32(msg.angle_increment)       
+        # self.get_logger().info(f"cone_det_cam_subscription_callback: {angle_min=:.3f} {angle_max:.3f} {angle_increment=:.3f}")
+
+        stamp = self.get_clock().now().to_msg()
+        pmsg = PointStamped()
+        pmsg.header.frame_id="lidar_link"
+        pmsg.header.stamp = stamp
+
+        # find minimum detected distance in a range of +-22.5 in front of robot where cone should be
+        len = np.int32((angle_max-angle_min)/angle_increment)
+        pfov = np.int32(self.fovRad/angle_increment)
+        dmin = np.int32(len/2 - pfov/2)
+        dmax = np.int32(len/2 + pfov/2)
+        ranges =  np.float32(msg.ranges[dmin:dmax])
+        rangeMin = np.min(ranges)
+        minAngle = angle_increment*(np.argmin(ranges)-(pfov/2))
+        # convert to x,y coordinates relative to lidar "/oak-d_frame"
+        x = rangeMin*np.cos(minAngle)
+        y = rangeMin*np.sin(minAngle)
+        
+        np.set_printoptions(precision=3, suppress=True)
+        #self.get_logger().info(f"cone_det_cam_subscription_callback: {x=} {y=} {pfov=} {rangeMin=} {minAngle=}")
+
+        # # Publish the cone location point x,y,z relative to lidar
+        # pmsg.point.x = x # Forward meters
+        # pmsg.point.y = y # Side meters
+        # pmsg.point.z = 0.0 # height relative to lidar beam
+        # self.cone_point_publisher.publish(pmsg)
+
+        # transform coordinates to "/tof_fc_link" which is considered front of robot
+        self.cone_at_x_lidar = x - 0.400 # crude transformation, Lidar is 0.400 behind tof sensor
+        self.cone_at_y_lidar = y
+        self.cone_angle_lidar = minAngle
 
     def gotoPoseBlocking(self, pose, t):
         """

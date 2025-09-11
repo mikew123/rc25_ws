@@ -1,20 +1,16 @@
-from ctypes.wintypes import PMSG
-
-from sympy import Point
 import rclpy
+
 from rclpy.node import Node
-from geometry_msgs.msg import Pose, PointStamped
-from geometry_msgs.msg import Quaternion
-import rclpy.time
-import tf_transformations
+from geometry_msgs.msg import PointStamped
 from vision_msgs.msg import Detection3DArray
+
 
 class ConeNode(Node):
     '''
     Cone locations etc
     '''
 
-    # median 5 filter memory
+    # median 5 filter memory for tof_foc data
     # list of tupples [5X(x,y,z)]
     m5_filter:list = [(0.0,0.0,0.0)]*5
 
@@ -23,14 +19,15 @@ class ConeNode(Node):
             
         self.cone_point_publisher = self.create_publisher(PointStamped, 'cone_point', 10)
 
-        self.cone_det_subscription = self.create_subscription(Detection3DArray,"color/spatial_detections", self.cone_det_subscription_callback, 10)
+        self.cone_det_cam_subscription = self.create_subscription(Detection3DArray,"color/spatial_detections", 
+                                                                self.cone_det_cam_subscription_callback, 10)
                 
         self.get_logger().info(f"ConeNode Started")
 
 
     # Cone detection from camera AI
     # TODO: manage multiple detections!!!! like an orange shoe or shirt
-    def cone_det_subscription_callback(self, msg: Detection3DArray) -> None:
+    def cone_det_cam_subscription_callback(self, msg: Detection3DArray) -> None:
         #self.get_logger().info(f"{msg=}")
 
         stamp = self.get_clock().now().to_msg()
@@ -75,6 +72,9 @@ class ConeNode(Node):
         if num_detections == 0 :
             # publish invalid cone location at 0,0 
             self.cone_point_publisher.publish(pmsg)
+            pass
+
+
 
 def main(args=None):
     rclpy.init(args=args)

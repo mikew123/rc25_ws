@@ -1,15 +1,12 @@
-#from ctypes.wintypes import PMSG
 import rclpy
 import json
 import serial
 import math
-#import time
 from rclpy.node import Node
 from sensor_msgs.msg import PointCloud2, PointField
 from std_msgs.msg import Header
 from rc25_interfaces.msg import Float32X8
 
-#import tf_transformations
 import numpy as np
 
 class TofNode(Node):
