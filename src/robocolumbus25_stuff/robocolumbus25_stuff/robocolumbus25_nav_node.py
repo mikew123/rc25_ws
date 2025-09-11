@@ -160,9 +160,25 @@ class NavNode(Node):
 
         if state == 0 :
             # wait for navigator
-            # This does not work, it waits forever and send out messages lke setting inital pose
+            # This does not work, it waits forever and send out messages like setting inital pose
             # self.nav.waitUntilNav2Active()
-            next_state = 1
+
+            # Rviz 2DGoalPose can be used to move robot until a cone is detected
+            # get cone xy from camera detect
+            x:float = self.cone_at_x_cam
+            y:float = self.cone_at_y_cam
+            t:int = self.cone_det_time_cam
+            to:int = self.cone_det_time_out_cam
+            dt:int = (time.time_ns()*1e-9) - t
+            # self.get_logger().info(f"{func} {dt=} {t=} {x=} {y=} ")
+            if dt>to and t>0:
+                self.get_logger().info(f"sm_timer: cone detection is stale {x=} {y=} {dt=}")
+                x = 0
+                y = 0
+            if x!=0 :
+                # cancel navigation initiated by rviz
+                self.nav.cancelTask()
+                next_state = 1
 
         # initialize at start point and wait for start command
 
