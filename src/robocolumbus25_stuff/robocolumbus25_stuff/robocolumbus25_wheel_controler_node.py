@@ -66,7 +66,7 @@ class WheelControllerNode(Node):
 
         self.last_time_sec = self.get_clock().now().nanoseconds * 1e-9
 
-        self.subscription = self.create_subscription(
+        self.cmd_vel_subscription = self.create_subscription(
             Twist,
             '/cmd_vel',
             self.cmd_vel_callback,
@@ -78,7 +78,7 @@ class WheelControllerNode(Node):
 
         # Message topic to/from all nodes for general messaging Json formated string
         self.json_msg_publisher = self.create_publisher(String, "json_msg", 10)
-        self.subscription = self.create_subscription(String, "json_msg", self.json_msg_callback, 10)
+        self.json_msg_subscription = self.create_subscription(String, "json_msg", self.json_msg_callback, 10)
 
         try:
             self.ser = serial.Serial(self.serial_port, self.baudrate, timeout=1)

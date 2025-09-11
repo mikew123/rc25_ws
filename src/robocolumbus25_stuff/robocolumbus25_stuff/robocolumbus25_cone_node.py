@@ -5,6 +5,7 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Pose, PointStamped
 from geometry_msgs.msg import Quaternion
+import rclpy.time
 import tf_transformations
 from vision_msgs.msg import Detection3DArray
 
@@ -32,9 +33,14 @@ class ConeNode(Node):
     def cone_det_subscription_callback(self, msg: Detection3DArray) -> None:
         #self.get_logger().info(f"{msg=}")
 
+        stamp = self.get_clock().now().to_msg()
+        pmsg = PointStamped()
+        pmsg.header.frame_id="oak-d_frame"
+        pmsg.header.stamp = stamp
         detections = msg.detections
         num_detections = 0
-        # TODO: filter out for best cone detection
+
+        # TODO: filter out for best cone detection when multiple occur
         for detection in detections :
             num_detections +=1
             #header = detection.header
@@ -45,7 +51,7 @@ class ConeNode(Node):
                 x = position.x
                 y = position.y
                 z = position.z
-                #self.get_logger().info(f"msg: {x=:.3f} {y=:.3f} {z=:.3f}")
+                # self.get_logger().info(f"cone_det_subscription_callback: {stamp=} {x=:.3f} {y=:.3f} {z=:.3f}")
 
                 # Use median-5 filter to remove points with distance spikes
                 m5 = self.m5_filter
@@ -60,9 +66,7 @@ class ConeNode(Node):
                 #(xm,ym,zm) = (x,y,z)
                 #self.get_logger().info(f"{m5=} {m5s=}")
                 
-                # Publish the cone location point x,y,z
-                pmsg = PointStamped()
-                pmsg.header.frame_id="oak-d_frame"
+                # Publish the cone location point x,y,z relative to camera
                 pmsg.point.x = zm # Forward meters
                 pmsg.point.y = -xm # Side meters (-x fixes rviz location mapping)
                 pmsg.point.z = ym # Elevation center of cone (on level ground)
@@ -70,8 +74,6 @@ class ConeNode(Node):
 
         if num_detections == 0 :
             # publish invalid cone location at 0,0 
-            pmsg = PointStamped()
-            pmsg.header.frame_id="oak-d_frame"
             self.cone_point_publisher.publish(pmsg)
 
 def main(args=None):
