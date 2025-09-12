@@ -190,14 +190,15 @@ void attachInterrupts() {
 
 /**************************************************************************************
  * GLOBAL VARIABLES
+ * Should have suffix "_g"
  **************************************************************************************/
 
-
-int lastShift_g = 50000; // down
+// Kill switch global variables
+int killSwLastShift_g = 50000; // down, used for shift action
 bool rcvrActive_g = false;
-bool failsafeActive_g = false;
+bool killSwEnable_g = false;
 bool killSwLatch_g = false;
-bool stopMotor_g = false;
+bool killSwActive_g = false;
 
 bool odomOn = true;
 
@@ -333,7 +334,7 @@ void pidLoopCode(){
   if(runPID!=true) return;
   runPID = false;
   if(mode_g!="cv") return;
-  if(stopMotor_g) return;
+  if(killSwActive_g) return;
 
   // PID code
   float linX = 0;
@@ -742,9 +743,9 @@ void sendStatusMsg() {
   statuses["mode"] = mode_g;
   statuses["vbat"] = escVin;
   statuses["rca"] = rcvrActive_g;
-  statuses["fsa"] = failsafeActive_g;
+  statuses["kse"] = killSwEnable_g;
   statuses["ksl"] = killSwLatch_g;
-  statuses["kill"] = stopMotor_g;
+  statuses["ksa"] = killSwActive_g;
 
   JSONVar status;
   status["status"] = statuses;
@@ -754,131 +755,157 @@ void sendStatusMsg() {
 
 }
 
-//void checkTransmitterActive() {
-  // TODO: Use throttle serial activity???
 
-  // TODO: This does not work after transmitter 1st powered on
-  //       Maybe monitor period variation which seems small when transmitter
-  //       is powered on. But probably track an average nominal instead of
-  //       fixed nominal to compensate for temp and age etc
-  //       Also check receiver signal timeout 
-  // check for active valid receiver signals
-  // verify that PWM period is within 10%
-  // float mSteerPctOffset = 100.0*(mSteer_per-pwmPerNominal)/pwmPerNominal;
-  //Serial.println(mSteerPctOffset);
-  // if (   (fabs(mSteerPctOffset) < 10)) {
-  //  receiverSignalsValid = true;
-  // } else {
-  //   receiverSignalsValid = false;
-  // }
-//}
-
-
-// Decode receiever steering and shift and throttle
-// Center = 32,768 (2^16)
-// The shift action <20,000(up) the >40,000(dn = low)
-
+// Decode receiver signal for transmitter active
 uint32_t rcvDecodeMillis_last_g = 0;
 int rcvDecodePeriod_g = 20; // 50/sec
-int killCnt_g = 0;
+
+void killSwDecode(void);
+void killSwReset(void);
 
 void rcvDecode(uint32_t loopMillis) {  
   if ((loopMillis - rcvDecodeMillis_last_g) < rcvDecodePeriod_g) return;
   rcvDecodeMillis_last_g = loopMillis;
 
-  int throttle = srx.getRcvThrottle();
-  int steer = srx.getRcvSteer();
-  int shift = srx.getRcvShift();
-  bool txActive = srx.getRcTransmitterActive();
-//Serial.printf("thr %d, str %d, sft %d txActive %d\n", throttle, steer, shift, txActive);
+  bool rcTxActive = srx.getRcTransmitterActive();
+//Serial.printf("thr %d, str %d, sft %d rcTxActive %d\n", throttle, steer, shift, rcTxActive);
 
-  bool throttleFWD = throttle>40000;
-  bool throttleREV = throttle<20000;
-  // bool throttleZERO = !(throttleFwd || throttleRev);
-  bool steerCW = steer>40000;
-  bool steerCCW = steer<20000;
 
   // Detect if the receiver is detecting signals from transmitter
-  if(txActive) {
-    if(!rcvrActive_g) Serial.println("Receiver is now active");
-    rcvrActive_g = true;
+  if(rcTxActive) {
+    if(!rcvrActive_g) { // execute once
+      rcvrActive_g = true;
+      Serial.println("Receiver is now active");
+    }
+    killSwDecode(); // execute continuously not once
   }
   else {
-    if(rcvrActive_g) Serial.println("Receiver is now NOT active");
-    rcvrActive_g = false;
+    if(rcvrActive_g) { // execute once
+      rcvrActive_g = false;
+      Serial.println("Receiver is now NOT active");
+      killSwReset();
+    }
   }
+}
 
-  // // do not process signals from receiver if not active
-  // if(!rcvrActive_g) return;
+String killSwLastMode_g = "bypass";
+int killCnt_g = 0;
 
+void killSwReset(void) {
+  killSwLastShift_g = 50000; // down
+  killSwEnable_g = false;
+  killSwActive_g = false;
+  killSwLatch_g = false;
+  killSwLastMode_g = mode_g;
+}
 
-  // Detect shift sw action up then down only occurs once per shift sequence
+// Decode receiever steering and shift and throttle
+// Center = 32,768 (2^16)
+// The shift action <20,000(up) the >40,000(dn = low)
+
+#define killSwHiLvl 40000
+#define killSwLoLvl 20000
+
+void killSwDecode(void) {
+
+  int throttle = srx.getRcvThrottle();
+  int steer    = srx.getRcvSteer();
+  int shift    = srx.getRcvShift();
+
+  bool throttleFWD = throttle>killSwHiLvl;
+  bool throttleREV = throttle<killSwLoLvl;
+  bool throttleZER = !throttleFWD && !throttleREV;
+  bool steerCW     = steer>killSwHiLvl;
+  bool steerCCW    = steer<killSwLoLvl;
   bool shiftAction = false;
-  if(lastShift_g < 20000) { // last shift sw position was UP (high gear)
-    if(shift > 40000) { // current shift sw position is DOWN (low gear)
+  bool modeChange  = false;
+
+  // Detect shift action switch is up then down, only occurs once per shift sequence
+  // TODO: does this need a filter?
+  if(killSwLastShift_g < killSwLoLvl) { // last shift sw position was UP (high gear)
+    if(shift > killSwHiLvl) { // current shift sw position is DOWN (low gear)
       shiftAction = true;
     }
   }
-  lastShift_g = shift;
+  killSwLastShift_g = shift;
 
-  if(shiftAction) {
-    if(throttleFWD) { // throttle forward motion
-      // enable kill sw, if already enabled latch kill sw
-      if(failsafeActive_g) {
-        killSwLatch_g = !killSwLatch_g; // toggle kill switch latching
-      }
-      failsafeActive_g = true;
-    }
-    else if(throttleREV) { // throttle reverse motion
-    }
-    else { // throttle OFF
-      if(steerCW) { // steering CW direction
-        mode_g = "cv";
-        failsafeActive_g = false;
-        killSwLatch_g = false;
-      }
-      else if(steerCCW) { // steering CCW direction
-        mode_g = "bypass";
-        failsafeActive_g = false;
-        killSwLatch_g = false;
-      }
-      configureMode(); //TODO: move to srx.setMode
-      srx.setMode(mode_g);
-      pwm.setMode(mode_g);
-    }
-
-    Serial.printf("thr=%d str=%d sft=%d mode=%s fsa=%d ksl=%d stop=%d\n", 
-        throttle, steer, shift, mode_g.c_str(), failsafeActive_g, killSwLatch_g, stopMotor_g);
+  // Detect mode change using receiver signals
+  if (shiftAction && throttleZER && steerCW) {
+    mode_g = "cv";
   }
-  // motor control, no shift action
+  else if(shiftAction && throttleZER && steerCCW) {
+    mode_g = "bypass";
+  }
+  if(mode_g != killSwLastMode_g) { // execute once
+    modeChange = true;
+    killSwReset();
+    configureMode();
+    srx.setMode(mode_g);
+    pwm.setMode(mode_g);
+  }
+  killSwLastMode_g = mode_g;
+
+  // Only run the the kill switch code when in "cv" mode
+  if(mode_g != "cv") {
+    return;
+  }
+
+  // decode kill switch enable, inactive if rcvr tx inactive or reset
+  if(modeChange) {
+    killSwEnable_g = false;
+  }
+  else if(shiftAction && throttleFWD) {
+    killSwEnable_g = true;
+  }
+
+  // decode kill switch active, no shift action
   // The throttle signal is not stable and needs to be filtered
-  if(failsafeActive_g) {
-    if(throttleFWD) {
-      if(killCnt_g<10) killCnt_g++;
+  if (!killSwEnable_g) {
+    killCnt_g = 0;
+    if(killSwActive_g) { // one shot
+      killSwActive_g = false;
+      sendKillSwActiveStatus(false);
+    }    
+  } 
+  else {
+    // filter throttle since no shift action
+    if(throttleFWD && (killCnt_g<10)) killCnt_g++;
+    if(throttleZER && (killCnt_g>0))  killCnt_g--;
+
+    if(killSwActive_g && (killCnt_g>=10)) { // one shot
+      killSwActive_g = false;
+      sendKillSwActiveStatus(false);
     }
-    else {
-      if(killCnt_g>0) killCnt_g--;
-    }
-    
-    if(killCnt_g == 10) {
-      if(stopMotor_g) sendKillStatus(false);
-      stopMotor_g = false;
-    }
-    else if(killCnt_g==0 && !killSwLatch_g) {
-      if(!stopMotor_g)  sendKillStatus(true);
-      stopMotor_g = true;
+    if(!killSwActive_g && (killCnt_g<=0) && !killSwLatch_g) { // one shot
+      killSwActive_g = true;
       resetPID();
       sThrottlePct = 0;
       sSteerPct = 0;
       srx.setThrottlePct(sThrottlePct);
       pwm.setSteerPct(sSteerPct);
+      sendKillSwActiveStatus(true);
     }
   }
+
+  // decode kill switch latch, shift action toggle
+  if (killSwActive_g || (killSwLatch_g && shiftAction && throttleFWD)) {
+    killSwLatch_g = false;
+  }
+  else if((killCnt_g>=10) && (!killSwLatch_g && shiftAction && throttleFWD)) {
+    killSwLatch_g = true;
+  }
+
+  // Debug print
+  if(shiftAction) {
+    Serial.printf("shiftAction: thr=%d str=%d sft=%d mode=%s kse=%d ksl=%d ksa=%d\n", 
+        throttle, steer, shift, mode_g.c_str(), killSwEnable_g, killSwLatch_g, killSwActive_g);
+  }
+
 }
 
-void sendKillStatus(bool kill) {
+void sendKillSwActiveStatus(bool ksa) {
   JSONVar killStatus;
-  killStatus["kill"] = kill;
+  killStatus["ksa"] = ksa;
   JSONVar status;
   status["status"] = killStatus;
   String jsonString = JSON.stringify(status);
