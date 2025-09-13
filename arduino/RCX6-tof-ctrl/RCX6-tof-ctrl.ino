@@ -10,7 +10,8 @@
 
 
 #include <Wire.h>
-//#include <String.h>
+#include <Arduino_JSON.h>
+#include <strings.h>
 #include <vl53l8cx.h>
 
 #define DEV_I2C Wire
@@ -143,6 +144,9 @@ void setup() {
   SerialPort.begin(SERIAL_HZ);
   delay(1000);
 
+  // enable the RP2040 watchdog timer for startup issues
+  rp2040.wdt_begin(83000); // 8.3 max second timer
+
   // Initialize I2C bus.
   DEV_I2C.setSDA(SDA_PIN);
   DEV_I2C.setSCL(SCL_PIN);
@@ -152,14 +156,58 @@ void setup() {
   setI2CAddresses();
   configTofDevices();
   startMeasurements();
+
+  // enable the RP2040 watchdog timer that is reset when TOF data is received
+  rp2040.wdt_begin(1000); // 1 second timer
 }
 
 void loop(void) {
+  getJsonMsgs();
   getData(String("tof_fc"));
   getData(String("tof_fl"));
   getData(String("tof_fr"));
 }
 
+
+/********************************************************
+* USB serial JSON code
+*********************************************************/
+void jsonParse(const char *jsonStr) ;
+
+// retrieve JSON messages from USB serial port
+void getJsonMsgs() {
+  if (Serial.available()== 0) return;
+
+  // read the incoming string and parse it
+  String incomingString = Serial.readStringUntil('\n');
+  jsonParse(incomingString.c_str());
+
+}
+
+void jsonParse(const char *jsonStr) {
+  Serial.println(jsonStr);
+
+  JSONVar myObject = JSON.parse(jsonStr);
+
+  if (JSON.typeof(myObject) != "object") {
+    Serial.println("Parsing JSON string input failed! Not a valid object");
+  }
+
+  if (myObject.hasOwnProperty("reset")) {
+    bool reset = (String) myObject["reset"];
+    Serial.print("reset = ");
+    Serial.println(reset);
+    if(reset) {
+      // reset the RP2040, the print line after it should not occur
+      rp2040.reboot();
+      Serial.println("This is after the RP2040 hard reset, it should NOT occur");
+    }
+  }
+}
+
+/********************************************************
+* I2C TOF code
+*********************************************************/
 
 void getData(String tof) {
   if(tof=="tof_fc") {
@@ -203,6 +251,9 @@ void sendJson(String tof, uint32_t stamp, VL53L8CX_ResultsData *results) {
   int colIdx;
   int idx;
   int dist;
+
+  // reset watchdog for hung I2C bus
+  rp2040.wdt_reset();
 
   // TODO: pre-process for valid data
   // Output JSON
