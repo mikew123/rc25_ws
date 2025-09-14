@@ -24,7 +24,10 @@ class ImuGpsNode(Node):
     '''
 
     timerRateHz = 100.0; # Rate to check serial port for messages
-    serial_port = "/dev/serial/by-id/usb-Waveshare_RP2040_Zero_E6635C469F25492A-if00"
+    serial_port = ["/dev/serial/by-id/usb-Waveshare_RP2040_Zero_E6635C469F25492A-if00"
+                   ,"/dev/serial/by-id/usb-Waveshare_RP2040_PiZero_E6635C469F25492A-if00"]
+    serial_port_idx:int = 0
+
     baudrate = 1000000
 
     laccJsonPacket = None
@@ -77,13 +80,15 @@ class ImuGpsNode(Node):
         serialOpen = False
         while not serialOpen :
             try :
-                self.ser = serial.Serial(self.serial_port, self.baudrate, timeout=1)
-                self.get_logger().info(f"openSerialPort: Serial port {self.serial_port} opened.")
+                self.ser = serial.Serial(self.serial_port[self.serial_port_idx], self.baudrate, timeout=1)
+                self.get_logger().info(f"openSerialPort: Serial port {self.serial_port[self.serial_port_idx]} opened.")
                 serialOpen = True
 
             except serial.SerialException as e :
                 self.get_logger().info(f"openSerialPort: Failed to open serial port: {e}")
-                self.get_logger().info("openSerialPort: Try opening serial port again")
+                self.get_logger().info("openSerialPort: Try opening serial port again using other port name")
+                self.serial_port_idx +=1
+                if self.serial_port_idx>1 : self.serial_port_idx=0
 
     # get data from serial port, returns a line of text
     def getSerialData(self) -> str :
@@ -104,7 +109,9 @@ class ImuGpsNode(Node):
         if err :
             try :
                 self.ser.close()    
-                self.ser = serial.Serial(self.serial_port, self.baudrate, timeout=1)
+                # self.ser = serial.Serial(self.serial_port, self.baudrate, timeout=1)
+                self.openSerialPort()
+
             except serial.SerialException as e:
                 self.get_logger().info(f"getSerialData: Failed to open serial port: {e}")
 

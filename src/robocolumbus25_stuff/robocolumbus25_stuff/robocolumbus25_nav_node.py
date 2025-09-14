@@ -236,7 +236,7 @@ class NavNode(Node):
         self.cd_last_state = state
         self.cd_state = next_state
 
-    # state 0
+    # state 0 - wait for camera cone detection
     def wait_for_cone_det(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} wait for cone detection {state=}")
@@ -262,7 +262,7 @@ class NavNode(Node):
                 next_state = 1
         return next_state
 
-    #state 1
+    #state 1 - use camera to locate cone and get close
     cd_sub_timer = 0
     def nav_to_cone(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         cur_time = time.time_ns()*1e-9
@@ -328,7 +328,7 @@ class NavNode(Node):
 
         return next_state
 
-    #state 2
+    #state 2 - use Lidar to get closer to cone
     def get_closer_to_cone(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} drive closer to cone using cmd_vel and cone_point {state=}")
@@ -344,11 +344,14 @@ class NavNode(Node):
 
         if killSwitchActive :
             # Stop motors and wait for kill switch not active
-            # Motors are stopped by leaving velocities to msg default as 0
+            # Motors are stopped by leaving velocities to msg defaults as 0
             pass
-        elif x==0 and y==0 :
+        elif x == 0 :
             self.get_logger().info(f"{func} lost cone {state=}")
             next_state = 0
+        elif x > 2*self.cd_closer_dist :
+            self.get_logger().info(f"{func} cone is too far {x=} {state=}")
+            next_state = 5 # back up
         elif x > self.cd_closer_dist :
             msg.linear.x =  self.cd_closer_lvel
             # Y is used to drive to cone head on
@@ -363,7 +366,7 @@ class NavNode(Node):
 
         return next_state
 
-    #state 3
+    #state 3 - use TOF sensors to "touch" cone
     def touch_cone(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} drive slowly to \"touch\" cone using cmd_vel and tof sensors {state=}")
@@ -376,14 +379,19 @@ class NavNode(Node):
 
         if killSwitchActive :
             # Stop motors and wait for kill switch not active
-            # Motors are stopped by leaving velocities to msg default as 0
+            # Motors are stopped by leaving velocities as msg default = 0
             pass
-        elif((not math.isinf(d)) and (d > self.cd_touch_dist)) :
+        elif math.isinf(d) :
+            self.get_logger().info(f"{func} lost cone {state=}")
+            next_state = 0
+        elif d > 1.5*self.cd_closer_dist :
+            self.get_logger().info(f"{func} cone is too far {d=} {state=}")
+            next_state = 5 # back up
+        elif d > self.cd_touch_dist :
             msg.linear.x = self.cd_touch_lin_vel
             # turn towards cone center
             if   i <= 2 : msg.angular.z =  self.cd_touch_ang_vel
             elif i >= 5 : msg.angular.z = -self.cd_touch_ang_vel
-
         else : 
             self.get_logger().info(f"{func} touched {d=:.3f} {state=}")
             next_state = 4
@@ -392,7 +400,7 @@ class NavNode(Node):
 
         return next_state
 
-    #state 4
+    #state 4 - wait a short time for judge to see the "touch"
     def wait_after_touch(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} wait a short time {state=}")
@@ -408,7 +416,7 @@ class NavNode(Node):
         
         return next_state
 
-    #state 5
+    #state 5 - backup after "touch"
     def backup_after_touch(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} backup {state=}")
@@ -431,7 +439,7 @@ class NavNode(Node):
 
         return next_state
 
-    #state 6
+    #state 6 - STOP
     def stop_after_touch(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} STOP {state=}")

@@ -100,8 +100,9 @@ void configTofDevice(String tof) {
     if(status == 0) {
       Serial.printf("VL53L8CX %s intialized OK\n", tof.c_str());
     } else {
-      Serial.printf("VL53L8CX %s failed to initialize: status=0x%02X\n", tof.c_str(), status);
+      Serial.printf("VL53L8CX %s failed to initialize - reboot: status=0x%02X\n", tof.c_str(), status);
       Serial.println(status,HEX);
+      rp2040.reboot();
     }
   }while(status!=0);
 }
@@ -131,6 +132,10 @@ void startMeasurement(String tof){
     status |= tof_fr.start_ranging();
   }
   Serial.printf("VL53L8CX %s range started status = 0x%02X\n", tof.c_str(), status);
+  if(status != 0) {
+    Serial.flush();
+    rp2040.reboot();
+  }
 }
 
 void startMeasurements(){
