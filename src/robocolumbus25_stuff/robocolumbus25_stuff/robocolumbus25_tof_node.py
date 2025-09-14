@@ -2,12 +2,16 @@ import rclpy
 import json
 import serial
 import math
+import numpy as np
+
 from rclpy.node import Node
 from sensor_msgs.msg import PointCloud2, PointField
 from std_msgs.msg import Header
 from rc25_interfaces.msg import Float32X8
 
-import numpy as np
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 
 class TofNode(Node):
     '''
@@ -22,14 +26,8 @@ class TofNode(Node):
     def __init__(self):
         super().__init__('tof_node')
 
-        # # Open serial port to tof sensors controller over USB
-        # try:
-        #     self.ser = serial.Serial(self.serial_port, self.baudrate, timeout=1)
-        #     self.get_logger().info(f"Serial port {self.serial_port} opened.")
-        # except serial.SerialException as e:
-        #     self.get_logger().error(f"Failed to open serial port: {e}")
-        #     self.ser = None
-        #     exit(1)
+        self.cb_group = MutuallyExclusiveCallbackGroup()
+
         self.openSerialPort()
 
         # publish a topic for each TOF sensor fc=front_center etc
@@ -39,7 +37,8 @@ class TofNode(Node):
         self.tof_fc_mid_publisher = self.create_publisher(Float32X8, 'tof_fc_mid', 10)
       
         # timer to check serial port
-        self.timer = self.create_timer((1.0/self.timerRateHz), self.timer_callback)
+        self.timer = self.create_timer((1.0/self.timerRateHz), self.timer_callback
+                                       , callback_group=self.cb_group)
         
         self.get_logger().info(f"TofNode Started")
 
@@ -91,14 +90,6 @@ class TofNode(Node):
     
     # check serial port at timerRateHz and parse out messages to publish
     def timer_callback(self):
-        # Check if a line has been received on the serial port
-        # if self.ser.in_waiting > 0:
-        #     try :
-        #         received_data = self.ser.readline().decode().strip()
-        #         #self.get_logger().info(f"Received engine json: {received_data}")
-        #     except Exception as ex:
-        #         self.get_logger().error(f"TOF sensors serial read failure : {ex}")
-        #         return
         
         received_data = self.getSerialData()
         if received_data == None : return
@@ -244,11 +235,21 @@ def main(args=None):
     rclpy.init(args=args)
 
     node = TofNode()
-    rclpy.spin(node)
+    # rclpy.spin(node)
+    # node.destroy_node()
+    # rclpy.shutdown()
+
+    try :
+        executor = MultiThreadedExecutor()
+        executor.add_node(node)
+        executor.spin()    
+    except KeyboardInterrupt:
+        from rclpy.impl import rcutils_logger
+        logger = rcutils_logger.RcutilsLogger(name="node")
+        logger.info('Received Keyboard Interrupt (^C). Shutting down.')
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
     
-    node.destroy_node()
-    rclpy.shutdown()
-
-
 if __name__ == '__main__':
     main()

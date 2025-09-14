@@ -684,6 +684,12 @@ class NavNode(Node):
 
         return (result, feedback)
 
+    def destroy_node(self):
+        self.get_logger().info("destroy_node")
+        if hasattr(self, 'ser') and self.ser and self.ser.is_open:
+            self.ser.close()
+            self.get_logger().info("Serial port closed.")
+        super().destroy_node()
 
 def main(args=None):
     rclpy.init(args=args)
@@ -692,13 +698,20 @@ def main(args=None):
     node = NavNode(nav)
 
     # rclpy.spin(node)
-    executor = MultiThreadedExecutor()
-    executor.add_node(node)
-    executor.spin()    
+    # node.destroy_node()
+    # rclpy.shutdown()
 
-    node.destroy_node()
-    rclpy.shutdown()
-
+    try :
+        executor = MultiThreadedExecutor()
+        executor.add_node(node)
+        executor.spin()    
+    except KeyboardInterrupt:
+        from rclpy.impl import rcutils_logger
+        logger = rcutils_logger.RcutilsLogger(name="node")
+        logger.info('Received Keyboard Interrupt (^C). Shutting down.')
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()

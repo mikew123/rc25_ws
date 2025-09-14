@@ -4,6 +4,10 @@ from rclpy.node import Node
 from geometry_msgs.msg import PointStamped
 from vision_msgs.msg import Detection3DArray
 
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+
 
 class ConeNode(Node):
     '''
@@ -20,7 +24,7 @@ class ConeNode(Node):
         self.cone_point_publisher = self.create_publisher(PointStamped, 'cone_point', 10)
 
         self.cone_det_cam_subscription = self.create_subscription(Detection3DArray,"color/spatial_detections", 
-                                                                self.cone_det_cam_subscription_callback, 10)
+                                            self.cone_det_cam_subscription_callback, 10)
                 
         self.get_logger().info(f"ConeNode Started")
 
@@ -73,18 +77,34 @@ class ConeNode(Node):
             # publish invalid cone location at 0,0 
             self.cone_point_publisher.publish(pmsg)
             pass
-
-
+  
+    def destroy_node(self):
+        self.get_logger().info("destroy_node")
+        if hasattr(self, 'ser') and self.ser and self.ser.is_open:
+            self.ser.close()
+            self.get_logger().info("Serial port closed.")
+        super().destroy_node()
 
 def main(args=None):
     rclpy.init(args=args)
 
     node = ConeNode()
-    rclpy.spin(node)
-    
-    node.destroy_node()
-    rclpy.shutdown()
 
+    # rclpy.spin(node)
+    # node.destroy_node()
+    # rclpy.shutdown()
+
+    try :
+        executor = MultiThreadedExecutor()
+        executor.add_node(node)
+        executor.spin()    
+    except KeyboardInterrupt:
+        from rclpy.impl import rcutils_logger
+        logger = rcutils_logger.RcutilsLogger(name="node")
+        logger.info('Received Keyboard Interrupt (^C). Shutting down.')
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()

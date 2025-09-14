@@ -4,13 +4,18 @@ import json
 import serial
 import math
 import time
+import tf_transformations
+
 from rclpy.node import Node
 from std_msgs.msg import String, Int32, Float32MultiArray
 from sensor_msgs.msg import Imu
 from sensor_msgs.msg import NavSatFix
 from geometry_msgs.msg import Pose
 from geometry_msgs.msg import Quaternion
-import tf_transformations
+
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 
 class ImuGpsNode(Node):
     '''
@@ -35,30 +40,73 @@ class ImuGpsNode(Node):
     def __init__(self):
         super().__init__('imu_gps_node')
 
-        # Open serial port to imu_gps controll over USB
-        try:
-            self.ser = serial.Serial(self.serial_port, self.baudrate, timeout=1)
-            self.get_logger().info(f"Serial port {self.serial_port} opened.")
-        except serial.SerialException as e:
-            self.get_logger().error(f"Failed to open serial port: {e}")
-            self.ser = None
-            exit(1)
+        self.cb_group = MutuallyExclusiveCallbackGroup()
+
+        # Open serial port to imu_gps control over USB
+        # try:
+        #     self.ser = serial.Serial(self.serial_port, self.baudrate, timeout=1)
+        #     self.get_logger().info(f"Serial port {self.serial_port} opened.")
+        # except serial.SerialException as e:
+        #     self.get_logger().error(f"Failed to open serial port: {e}")
+        #     self.ser = None
+        #     exit(1)
             
+        self.openSerialPort()
+
         self.imu_test_publisher = self.create_publisher(String, 'imu_test', 10)
         self.imu_msg_publisher = self.create_publisher(Imu, 'imu', 10)
         self.gps_nav_publisher = self.create_publisher(NavSatFix, 'gps_nav', 10)
         self.gps_pose_publisher = self.create_publisher(Pose, 'gps_pose', 10)
         self.cmp_azi_publisher = self.create_publisher(Int32, 'cmp_azi', 10)
 
-        self.gps_nav_subscription = self.create_subscription(NavSatFix,"gps_nav", self.gps_nav_subscription_callback, 10)
+        self.gps_nav_subscription = self.create_subscription(NavSatFix,"gps_nav"
+                                        , self.gps_nav_subscription_callback, 10)
         
 
-        self.timer = self.create_timer((1.0/self.timerRateHz), self.timer_callback)
+        self.timer = self.create_timer((1.0/self.timerRateHz), self.timer_callback
+                                       , callback_group=self.cb_group)
         
         # configure interface
         self.send_json_cmd({"cfg":{"imu":True, "gps":True, "cmp":False}})
 
         self.get_logger().info(f"ImuGpsNode Started")
+
+    def openSerialPort(self) :
+        # Open serial port to tof sensors controller over USB
+        # continuously try to open it
+        serialOpen = False
+        while not serialOpen :
+            try :
+                self.ser = serial.Serial(self.serial_port, self.baudrate, timeout=1)
+                self.get_logger().info(f"openSerialPort: Serial port {self.serial_port} opened.")
+                serialOpen = True
+
+            except serial.SerialException as e :
+                self.get_logger().info(f"openSerialPort: Failed to open serial port: {e}")
+                self.get_logger().info("openSerialPort: Try opening serial port again")
+
+    # get data from serial port, returns a line of text
+    def getSerialData(self) -> str :
+        # Check if a line has been received on the serial port
+        err:bool=False
+        try :
+            if self.ser.in_waiting > 0 :
+                received_data:str = self.ser.readline().decode().strip()
+                # self.get_logger().info(f"getSerialData: {received_data=}")
+                return received_data # Exit while 1 loop
+            else :
+                return None
+            
+        except Exception as ex :
+            self.get_logger().info(f"getSerialData: serial read failure : {ex}")
+            err=True
+
+        if err :
+            try :
+                self.ser.close()    
+                self.ser = serial.Serial(self.serial_port, self.baudrate, timeout=1)
+            except serial.SerialException as e:
+                self.get_logger().info(f"getSerialData: Failed to open serial port: {e}")
 
     def send_json_cmd(self,cmd) :
         # self.get_logger().info(f"send_json_cmd: {cmd=}")
@@ -72,32 +120,35 @@ class ImuGpsNode(Node):
     # check serial port at timerRateHz and parse out messages to publish
     def timer_callback(self):
         # Check if a line has been received on the serial port
-        if self.ser.in_waiting > 0:
-            try :
-                received_data = self.ser.readline().decode().strip()
-                #self.get_logger().info(f"Received engine json: {received_data}")
-            except Exception as ex:
-                self.get_logger().error(f"IMU GPS serial read failure : {ex}")
-                return
+        # if self.ser.in_waiting > 0:
+        #     try :
+        #         received_data = self.ser.readline().decode().strip()
+        #         #self.get_logger().info(f"Received engine json: {received_data}")
+        #     except Exception as ex:
+        #         self.get_logger().error(f"IMU GPS serial read failure : {ex}")
+        #         return
 
-            try :
-                unknown = True
-                packet = json.loads(received_data)
-                if "imu" in packet :
-                    self.imuPublish(packet.get("imu"))
-                    unknown = False
-                if "gps" in packet :
-                    self.gpsPublish(packet.get("gps"))
-                    unknown = False
-                if "cmp" in packet :
-                    self.cmpPublish(packet.get("cmp"))
-                    unknown = False
-                if unknown :
-                    self.get_logger().info(f"IMU GPS serial json unknown : {received_data}")
-                    return  
-            except Exception as ex:
-                self.get_logger().error(f"IMU GPS serial json Exception {ex} : {received_data}")
-                return
+        received_data = self.getSerialData()
+        if received_data == None : return
+
+        try :
+            unknown = True
+            packet = json.loads(received_data)
+            if "imu" in packet :
+                self.imuPublish(packet.get("imu"))
+                unknown = False
+            if "gps" in packet :
+                self.gpsPublish(packet.get("gps"))
+                unknown = False
+            if "cmp" in packet :
+                self.cmpPublish(packet.get("cmp"))
+                unknown = False
+            if unknown :
+                self.get_logger().info(f"IMU GPS serial json unknown : {received_data}")
+                return  
+        except Exception as ex:
+            self.get_logger().error(f"IMU GPS serial json Exception {ex} : {received_data}")
+            return
 
     # GPS pose
     def gps_nav_subscription_callback(self, msg: NavSatFix) -> None:
@@ -211,16 +262,33 @@ class ImuGpsNode(Node):
         # msg = String()
         # msg.data = imuJsonStr
         # self.imu_test_publisher.publish(msg)
+    
+    def destroy_node(self):
+        self.get_logger().info("destroy_node")
+        if hasattr(self, 'ser') and self.ser and self.ser.is_open:
+            self.ser.close()
+            self.get_logger().info("Serial port closed.")
+        super().destroy_node()
 
 def main(args=None):
     rclpy.init(args=args)
 
     node = ImuGpsNode()
-    rclpy.spin(node)
-    
-    node.destroy_node()
-    rclpy.shutdown()
+    # rclpy.spin(node)
+    # node.destroy_node()
+    # rclpy.shutdown()
 
+    try :
+        executor = MultiThreadedExecutor()
+        executor.add_node(node)
+        executor.spin()    
+    except KeyboardInterrupt:
+        from rclpy.impl import rcutils_logger
+        logger = rcutils_logger.RcutilsLogger(name="node")
+        logger.info('Received Keyboard Interrupt (^C). Shutting down.')
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
