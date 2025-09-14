@@ -16,23 +16,22 @@ class TofNode(Node):
     '''
 
     timerRateHz = 100.0; # Rate to check serial port for messages
-    serial_port = "/dev/serial/by-id/usb-Waveshare_RP2040_PiZero_45533065790A3B5A-if00"
+    serial_port = "/dev/serial/by-id/usb-Waveshare_RP2040_Zero_45533065790A3B5A-if00"
     baudrate = 1000000
 
-
-    
     def __init__(self):
         super().__init__('tof_node')
 
-        # Open serial port to tof sensors controller over USB
-        try:
-            self.ser = serial.Serial(self.serial_port, self.baudrate, timeout=1)
-            self.get_logger().info(f"Serial port {self.serial_port} opened.")
-        except serial.SerialException as e:
-            self.get_logger().error(f"Failed to open serial port: {e}")
-            self.ser = None
-            exit(1)
-            
+        # # Open serial port to tof sensors controller over USB
+        # try:
+        #     self.ser = serial.Serial(self.serial_port, self.baudrate, timeout=1)
+        #     self.get_logger().info(f"Serial port {self.serial_port} opened.")
+        # except serial.SerialException as e:
+        #     self.get_logger().error(f"Failed to open serial port: {e}")
+        #     self.ser = None
+        #     exit(1)
+        self.openSerialPort()
+
         # publish a topic for each TOF sensor fc=front_center etc
         self.tof_fc_pcd_publisher = self.create_publisher(PointCloud2, 'tof_fc', 10)
         self.tof_fl_pcd_publisher = self.create_publisher(PointCloud2, 'tof_fl', 10)
@@ -42,10 +41,44 @@ class TofNode(Node):
         # timer to check serial port
         self.timer = self.create_timer((1.0/self.timerRateHz), self.timer_callback)
         
-        # # configure interface
-        # self.send_json_cmd({"cfg":{"imu":True, "gps":True, "cmp":False}})
-
         self.get_logger().info(f"TofNode Started")
+
+    def openSerialPort(self) :
+        # Open serial port to tof sensors controller over USB
+        # continuously try to open it
+        serialOpen = False
+        while not serialOpen :
+            try :
+                self.ser = serial.Serial(self.serial_port, self.baudrate, timeout=1)
+                self.get_logger().info(f"openSerialPort: Serial port {self.serial_port} opened.")
+                serialOpen = True
+
+            except serial.SerialException as e :
+                self.get_logger().info(f"openSerialPort: Failed to open serial port: {e}")
+                self.get_logger().info("openSerialPort: Try opening serial port again")
+
+    # get data from serial port, returns a line of text
+    def getSerialData(self) -> str :
+        # Check if a line has been received on the serial port
+        err:bool=False
+        try :
+            if self.ser.in_waiting > 0 :
+                received_data:str = self.ser.readline().decode().strip()
+                # self.get_logger().info(f"getSerialData: {received_data=}")
+                return received_data # Exit while 1 loop
+            else :
+                return None
+            
+        except Exception as ex :
+            self.get_logger().info(f"getSerialData: serial read failure : {ex}")
+            err=True
+
+        if err :
+            try :
+                self.ser.close()    
+                self.ser = serial.Serial(self.serial_port, self.baudrate, timeout=1)
+            except serial.SerialException as e:
+                self.get_logger().info(f"getSerialData: Failed to open serial port: {e}")
 
     def send_json_cmd(self,cmd) :
         # self.get_logger().info(f"send_json_cmd: {cmd=}")
@@ -59,33 +92,36 @@ class TofNode(Node):
     # check serial port at timerRateHz and parse out messages to publish
     def timer_callback(self):
         # Check if a line has been received on the serial port
-        if self.ser.in_waiting > 0:
-            try :
-                received_data = self.ser.readline().decode().strip()
-                #self.get_logger().info(f"Received engine json: {received_data}")
-            except Exception as ex:
-                self.get_logger().error(f"TOF sensors serial read failure : {ex}")
-                return
+        # if self.ser.in_waiting > 0:
+        #     try :
+        #         received_data = self.ser.readline().decode().strip()
+        #         #self.get_logger().info(f"Received engine json: {received_data}")
+        #     except Exception as ex:
+        #         self.get_logger().error(f"TOF sensors serial read failure : {ex}")
+        #         return
+        
+        received_data = self.getSerialData()
+        if received_data == None : return
 
-            try :
-                unknown = True
-                packet = json.loads(received_data)
-                if "tof_fc" in packet :
-                    self.tof_Publish("tof_fc", packet)
-                    unknown = False
-                if "tof_fl" in packet :
-                    self.tof_Publish("tof_fl", packet)
-                    unknown = False
-                if "tof_fr" in packet :
-                    self.tof_Publish("tof_fr", packet)
-                    unknown = False
+        try :
+            unknown = True
+            packet = json.loads(received_data)
+            if "tof_fc" in packet :
+                self.tof_Publish("tof_fc", packet)
+                unknown = False
+            if "tof_fl" in packet :
+                self.tof_Publish("tof_fl", packet)
+                unknown = False
+            if "tof_fr" in packet :
+                self.tof_Publish("tof_fr", packet)
+                unknown = False
 
-                if unknown :
-                    self.get_logger().info(f"TOF sensors serial json unknown : {received_data}")
-                    return  
-            except Exception as ex:
-                self.get_logger().error(f"TOF sensors serial json Exception {ex} : {received_data}")
-                return
+            if unknown :
+                self.get_logger().info(f"TOF sensors serial json unknown : {received_data}")
+                return  
+        except Exception as ex:
+            self.get_logger().error(f"TOF sensors serial json Exception {ex} : {received_data}")
+            return
 
     # 8x8 point cloud for each sensor FOV 45degx45deg
     # calculate x,y,z for each point
