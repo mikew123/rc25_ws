@@ -44,19 +44,21 @@ class NavNode(Node):
 
     cd_sub_state = -1
 
-    # use /cone_point to get location for navigator to drive to
-    cd_stop_dist = 1.0
-    cd_nav_time = 5.0
+    # state=1 use /cone_point to get location for navigator to drive to
+    # Distance from detected cone to end navigation
+    cd_stop_dist = 1.5
+    # nav this aamout of time before getting new cone fix
+    cd_nav_time = 2.5
 
-    # use /cone_point to get closer to cone using /cmd_vel
+    # state=2 use /Lidar +-22.5 FOV to get closer to cone using /cmd_vel
     cd_closer_dist = 0.5
     cd_closer_lvel = 0.25
-    cd_closer_avel = 2*cd_closer_lvel #0.05
+    cd_closer_avel = 2*cd_closer_lvel
 
-    # use /tof_fc_mid to "touch" cone using /cmd_vel
+    # state=3 use /tof_fc_mid to "touch" cone using /cmd_vel
     cd_touch_dist = 0.040
     cd_touch_lin_vel = 0.05
-    cd_touch_ang_vel = 0.01
+    cd_touch_ang_vel = 0.05
 
     # wait while touching cone for observation
     cd_touch_wait = 2.0
