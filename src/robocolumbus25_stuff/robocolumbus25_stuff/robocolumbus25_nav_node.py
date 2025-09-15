@@ -51,7 +51,7 @@ class NavNode(Node):
     # use /cone_point to get closer to cone using /cmd_vel
     cd_closer_dist = 0.5
     cd_closer_lvel = 0.25
-    cd_closer_avel = 0.05
+    cd_closer_avel = 2*cd_closer_lvel #0.05
 
     # use /tof_fc_mid to "touch" cone using /cmd_vel
     cd_touch_dist = 0.040
@@ -309,6 +309,7 @@ class NavNode(Node):
                     # check for nav complete or navigate time finished and try again
                     if (cur_time - self.cd_sub_timer) < t :
                         if self.nav.isTaskComplete() :
+                            self.nav.cancelTask()
                             # x,y is relative to tof_fc sensor
                             d = math.sqrt(x*x + y*y)
 
@@ -320,10 +321,12 @@ class NavNode(Node):
                                 self.cd_sub_state = 0
                     else :
                         self.get_logger().info(f"{func} Get new cone placement and navigate some more {state=}")
+                        self.nav.cancelTask()
                         self.cd_sub_state = 0
 
         else :
             self.get_logger().info(f"{func} lost cone {state=}")
+            self.nav.cancelTask()
             next_state = 0
 
         return next_state
@@ -332,11 +335,16 @@ class NavNode(Node):
     def get_closer_to_cone(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} drive closer to cone using cmd_vel and cone_point {state=}")
+            self.nav.cancelTask()
+
+        if (time.time_ns()*1e-9 - self.cd_timer) < 2.0 : return state
 
         # get cone xy from Lidar data
         x:float = self.cone_at_x_lidar
         y:float = self.cone_at_y_lidar
         a:float = self.cone_angle_lidar
+
+        d = math.sqrt(x*x + y*y)
 
         killSwitchActive:bool = ks
         next_state = state
@@ -346,24 +354,32 @@ class NavNode(Node):
             # Stop motors and wait for kill switch not active
             # Motors are stopped by leaving velocities to msg defaults as 0
             pass
-        elif x == 0 :
+        elif d == 0 :
             self.get_logger().info(f"{func} lost cone {state=}")
             next_state = 0
-        elif x > 2*self.cd_closer_dist :
-            self.get_logger().info(f"{func} cone is too far {x=} {state=}")
+        elif d > 2*self.cd_stop_dist :
+            self.get_logger().info(f"{func} cone is too far {d=} {state=}")
             next_state = 5 # back up
-        elif x > self.cd_closer_dist :
+        elif d > self.cd_closer_dist :
             msg.linear.x =  self.cd_closer_lvel
-            # Y is used to drive to cone head on
-            if y > 0.02 :    msg.angular.z =  self.cd_closer_avel
-            elif y < -0.02 : msg.angular.z = -self.cd_closer_avel
-            else : msg.angular.z = 0.0
+            # Y is used to trun while driving towards cone head on
+            # if y > 0.02 :    msg.angular.z =  self.cd_closer_avel
+            # elif y < -0.02 : msg.angular.z = -self.cd_closer_avel
+            # else : msg.angular.z = 0.0
+            # use angle to turn towards the cone
+            msg.angular.z =  (a/0.393)*self.cd_closer_avel
+            pass
         else : 
-            self.get_logger().info(f"{func} closer {x=:.3f} {y=:.3f}")
+            self.get_logger().info(f"{func} at closer distance {x=:.3f} {y=:.3f}  {a=:.3f} {d=:.3f} {state=}")
             next_state = 3
 
-        self.cmd_vel_publisher.publish(msg)
+        # msg.linear.x = 0.02
+        # msg.angular.z = -0.1
 
+        #self.get_logger().info(f"{func} {x=:.3f} {y=:.3f}  {d=:.3f} lx={msg.linear.x:.3f} az={msg.angular.z:.3f}")
+        self.cmd_vel_publisher.publish(msg)
+        # self.get_logger().info(f"{func} {state=} {msg=}")
+        
         return next_state
 
     #state 3 - use TOF sensors to "touch" cone
