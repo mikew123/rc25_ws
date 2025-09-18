@@ -208,7 +208,7 @@ class WheelControllerNode(Node):
         self.sendJsonMsg(json_msg)
 
     def processBatteryInfo(self, vbat) -> None :
-        if vbat <= 11.1 :
+        if vbat > 0 and vbat <= 11.1 :
             self.get_logger().warning(f"Battery low {vbat=:.3f}")
         elif (time.time_ns()*1e-9 - self.bat_timer) > self.bat_per :
             self.get_logger().info(f"Battery {vbat=:.3f}")
