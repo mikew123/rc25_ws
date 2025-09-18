@@ -70,6 +70,8 @@ class NavNode(Node):
     # Field of view pointing forward from Lidar 36 degree scan data 
     fovRad = 0.758 # 45 deg, +-22.5 degrees
 
+    tof_fc_dist_max = 1.5
+    tof_fov = 0.785 
 
     # GLOBAL variables 
 
@@ -83,17 +85,16 @@ class NavNode(Node):
     cone_det_time_out_cam:int = 2.0
 
     # using Lidar
-    # cone_at_x_lidar:float = 0.0
-    # cone_at_y_lidar:float = 0.0
-    # cone_at_d_lidar:float = 0.0
-    # cone_at_a_lidar:float = 0.0
+    cone_at_x_lidar:float = 0.0
+    cone_at_y_lidar:float = 0.0
+    cone_at_d_lidar:float = 0.0
+    cone_at_a_lidar:float = 0.0
 
     # using /tof_fc_mid (NOTE: distance from front center TOF sensor)
     cone_at_x_tof_fc:float = 0.0
     cone_at_y_tof_fc:float = 0.0
     cone_at_d_tof_fc:float = 0.0
     cone_at_a_tof_fc:float = 0.0
-    cone_dist_idx_min_tof_fc:int = -1
 
     # median 5 filter memory
     # list of tupples [5X(x,y,z)]
@@ -246,6 +247,7 @@ class NavNode(Node):
         self.cd_last_state = state
         self.cd_state = next_state
 
+
     # state 0 - wait for camera cone detection
     def wait_for_cone_det(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
@@ -341,7 +343,8 @@ class NavNode(Node):
 
         return next_state
 
-    #state 2 - use Lidar to get closer to cone
+
+    #state 2 - get closer to cone
     def get_closer_to_cone(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} drive closer to cone using cmd_vel and cone_point {state=}")
@@ -349,17 +352,12 @@ class NavNode(Node):
 
         if (time.time_ns()*1e-9 - self.cd_timer) < 2.0 : return state
 
-        # # get cone xy from Lidar data
-        # x:float = self.cone_at_x_lidar
-        # y:float = self.cone_at_y_lidar
+        # get cone info
         # a:float = self.cone_at_a_lidar
+        # d:float = self.cone_at_d_lidar
 
-        x:float = self.cone_at_x_cam
-        y:float = self.cone_at_y_cam
         a:float = self.cone_at_a_cam
         d:float = self.cone_at_d_cam
-
-        x -= 0.200 # Crude transformation, camera is 0.200 behind tof sensor
         d -= 0.200 # Crude transformation, camera is 0.200 behind tof sensor
 
         killSwitchActive:bool = ks
@@ -378,27 +376,21 @@ class NavNode(Node):
             next_state = 5 # back up
         elif d > self.cd_closer_dist :
             msg.linear.x =  self.cd_closer_lvel
-            # Y is used to trun while driving towards cone head on
-            # if y > 0.02 :    msg.angular.z =  self.cd_closer_avel
-            # elif y < -0.02 : msg.angular.z = -self.cd_closer_avel
-            # else : msg.angular.z = 0.0
             # use angle to turn towards the cone
             msg.angular.z =  (a/0.393)*self.cd_closer_avel
             pass
         else : 
-            self.get_logger().info(f"{func} at closer distance {x=:.3f} {y=:.3f}  {a=:.3f} {d=:.3f} {state=}")
+            self.get_logger().info(f"{func} at the closer distance {d=:.3f} {a=:.3f} {state=}")
             next_state = 3
 
-        # msg.linear.x = 0.02
-        # msg.angular.z = -0.1
-
-        #self.get_logger().info(f"{func} {x=:.3f} {y=:.3f}  {d=:.3f} lx={msg.linear.x:.3f} az={msg.angular.z:.3f}")
+        #self.get_logger().info(f"{func} {d=:.3f} lx={msg.linear.x:.3f} az={msg.angular.z:.3f}")
         self.cmd_vel_publisher.publish(msg)
         # self.get_logger().info(f"{func} {state=} {msg=}")
         
         return next_state
 
-    #state 3 - use TOF sensors to "touch" cone
+
+    #state 3 - "touch" cone
     def touch_cone(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} drive slowly to \"touch\" cone using cmd_vel and tof sensors {state=}")
@@ -406,9 +398,11 @@ class NavNode(Node):
         killSwitchActive:bool = ks
         next_state = state
         msg = Twist()
+
+        # get cone info
         # d = self.cone_at_d_tof_fc
         # a = self.cone_at_a_tof_fc
-        # i = self.cone_dist_idx_min_tof_fc
+
         d = self.cone_at_d_lidar
         d -= 0.435 # Lidar sensor is 435mm back
         d -= 0.040 # Cone surface is 40mm further at Lidar level
@@ -428,8 +422,6 @@ class NavNode(Node):
             self.get_logger().info(f"{func} approaching cone to touch {d=} {state=}")
             msg.linear.x = (d/0.2)*self.cd_touch_lin_vel + 0.010
             # turn towards cone center
-            # if   i <= 2 : msg.angular.z =  self.cd_touch_ang_vel
-            # elif i >= 5 : msg.angular.z = -self.cd_touch_ang_vel
             msg.angular.z =  (a/0.393)*msg.linear.x #self.cd_touch_ang_vel
         else : 
             self.get_logger().info(f"{func} touched {d=:.3f} {state=}")
@@ -438,6 +430,7 @@ class NavNode(Node):
         self.cmd_vel_publisher.publish(msg)
 
         return next_state
+
 
     #state 4 - wait a short time for judge to see the "touch"
     def wait_after_touch(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
@@ -455,28 +448,6 @@ class NavNode(Node):
         
         return next_state
 
-    # #state 5 - backup after "touch"
-    # def backup_after_touch(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
-    #     if state_change :
-    #         self.get_logger().info(f"{func} backup {state=}")
-            
-    #     killSwitchActive:bool = ks
-    #     next_state = state
-    #     t = self.cd_backup_dist/self.cd_backup_vel
-    #     msg = Twist()
-
-    #     if killSwitchActive :
-    #         # Stop motors and wait for kill switch not active
-    #         # Motors are stopped by leaving velocities to msg default as 0
-    #         pass
-    #     elif (time.time_ns()*1e-9 - self.cd_timer) < t :
-    #         msg.linear.x = -self.cd_backup_vel
-    #     else : 
-    #         next_state = 6
-
-    #     self.cmd_vel_publisher.publish(msg)
-
-    #     return next_state
 
     #state 5 - backup after "touch"
     def backup_after_touch(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
@@ -539,7 +510,6 @@ class NavNode(Node):
         cx,cy is the cone xy relative to oak-d_frame.
         """
         # get current robot pose at tof_fc to determine the angle offset
-        # (tf_OK, current_pose) = self.getCurrentPose()
         (tf_OK, current_pose) = self.getPoseFromTF('map','tof_fc_link')
         if not tf_OK : return -1.0
         rx = current_pose.pose.position.x
@@ -623,9 +593,6 @@ class NavNode(Node):
 
 
     # Cone distance and angle relative to front TOF sensors
-    tof_fc_dist_max = 1.5
-    tof_fov = 0.785 
-
     def tof_fc_mid_subscription_callback(self, msg: Float32X8) -> None:
         # self.get_logger().info(f"{msg=}")
 
@@ -658,7 +625,6 @@ class NavNode(Node):
         self.cone_at_y_tof_fc = y
         self.cone_at_d_tof_fc = d
         self.cone_at_a_tof_fc = a
-        self.cone_dist_idx_min_tof_fc = dmin_idx
 
         # self.get_logger().info(f"tof_fc_callback: {x=:.3f} {y=:.3f} {a=:.3f} {d=:.3f} ")
 
@@ -781,9 +747,7 @@ class NavNode(Node):
         """
         Go to the pose within in the time limit
         """
-
         self.nav.goToPose(pose)
-
         (result, _) = self.waitTaskComplete(t)
        
         return result
