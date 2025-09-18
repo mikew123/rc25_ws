@@ -53,12 +53,12 @@ class NavNode(Node):
     # state=2 use /Lidar +-22.5 FOV to get closer to cone using /cmd_vel
     cd_closer_dist = 0.5
     cd_closer_lvel = 0.25
-    cd_closer_avel = 2*cd_closer_lvel
+    cd_closer_avel = cd_closer_lvel
 
     # state=3 use /tof_fc_mid to "touch" cone using /cmd_vel
     cd_touch_dist = 0.040
     cd_touch_lin_vel = 0.05
-    cd_touch_ang_vel = 0.05
+    cd_touch_ang_vel = cd_touch_lin_vel
 
     # wait while touching cone for observation
     cd_touch_wait = 2.0
@@ -406,11 +406,13 @@ class NavNode(Node):
         killSwitchActive:bool = ks
         next_state = state
         msg = Twist()
-        d = self.cone_at_d_tof_fc
-        a = self.cone_at_a_tof_fc
+        # d = self.cone_at_d_tof_fc
+        # a = self.cone_at_a_tof_fc
         # i = self.cone_dist_idx_min_tof_fc
-        # d = self.cone_at_d_lidar
-        # a = self.cone_at_a_lidar
+        d = self.cone_at_d_lidar
+        d -= 0.435 # Lidar sensor is 435mm back
+        d -= 0.040 # Cone surface is 40mm further at Lidar level
+        a = self.cone_at_a_lidar
 
         if killSwitchActive :
             # Stop motors and wait for kill switch not active
@@ -422,12 +424,13 @@ class NavNode(Node):
         elif d > 1.5*self.cd_closer_dist :
             self.get_logger().info(f"{func} cone is too far {d=} {state=}")
             next_state = 5 # back up
-        elif d > self.cd_touch_dist : # + 0.400 : # Lidar sensors are 400mm back
-            msg.linear.x = self.cd_touch_lin_vel
+        elif d > self.cd_touch_dist :
+            self.get_logger().info(f"{func} approaching cone to touch {d=} {state=}")
+            msg.linear.x = (d/0.2)*self.cd_touch_lin_vel + 0.010
             # turn towards cone center
             # if   i <= 2 : msg.angular.z =  self.cd_touch_ang_vel
             # elif i >= 5 : msg.angular.z = -self.cd_touch_ang_vel
-            msg.angular.z =  (a/0.393)*(2*self.cd_touch_lin_vel)
+            msg.angular.z =  (a/0.393)*msg.linear.x #self.cd_touch_ang_vel
         else : 
             self.get_logger().info(f"{func} touched {d=:.3f} {state=}")
             next_state = 4
@@ -679,7 +682,7 @@ class NavNode(Node):
         coneRanges =  np.float32(msg.ranges[dmin:dmax])
         # self.get_logger().info(f"{coneRanges=}")
 
-        diffJump = np.float32(0.4)
+        diffJump = np.float32(0.15)
         coneRayMax = np.float32(2.5)
         rayCountScale = np.float32(1.20) # 20 percent
         rayInfCount = np.int32(10) # allow 10 infinities which reduce ray counts
