@@ -408,7 +408,9 @@ class NavNode(Node):
         msg = Twist()
         d = self.cone_at_d_tof_fc
         a = self.cone_at_a_tof_fc
-        i = self.cone_dist_idx_min_tof_fc
+        # i = self.cone_dist_idx_min_tof_fc
+        # d = self.cone_at_d_lidar
+        # a = self.cone_at_a_lidar
 
         if killSwitchActive :
             # Stop motors and wait for kill switch not active
@@ -420,11 +422,12 @@ class NavNode(Node):
         elif d > 1.5*self.cd_closer_dist :
             self.get_logger().info(f"{func} cone is too far {d=} {state=}")
             next_state = 5 # back up
-        elif d > self.cd_touch_dist :
+        elif d > self.cd_touch_dist : # + 0.400 : # Lidar sensors are 400mm back
             msg.linear.x = self.cd_touch_lin_vel
             # turn towards cone center
-            if   i <= 2 : msg.angular.z =  self.cd_touch_ang_vel
-            elif i >= 5 : msg.angular.z = -self.cd_touch_ang_vel
+            # if   i <= 2 : msg.angular.z =  self.cd_touch_ang_vel
+            # elif i >= 5 : msg.angular.z = -self.cd_touch_ang_vel
+            msg.angular.z =  (a/0.393)*(2*self.cd_touch_lin_vel)
         else : 
             self.get_logger().info(f"{func} touched {d=:.3f} {state=}")
             next_state = 4
@@ -613,7 +616,7 @@ class NavNode(Node):
         self.cone_at_a_cam = a
         self.cone_det_time_cam = t
 
-        self.get_logger().info(f"cone_callback: {x=:.3f} {y=:.3f} {a=:.3f} {d=:.3f} ")
+        # self.get_logger().info(f"cone_callback: {x=:.3f} {y=:.3f} {a=:.3f} {d=:.3f} ")
 
 
     # Cone distance and angle relative to front TOF sensors
@@ -621,7 +624,7 @@ class NavNode(Node):
     tof_fov = 0.785 
 
     def tof_fc_mid_subscription_callback(self, msg: Float32X8) -> None:
-        self.get_logger().info(f"{msg=}")
+        # self.get_logger().info(f"{msg=}")
 
         dmin:float = math.inf
         dmin_idx:int = -1
@@ -654,7 +657,7 @@ class NavNode(Node):
         self.cone_at_a_tof_fc = a
         self.cone_dist_idx_min_tof_fc = dmin_idx
 
-        self.get_logger().info(f"tof_fc_callback: {x=:.3f} {y=:.3f} {a=:.3f} {d=:.3f} ")
+        # self.get_logger().info(f"tof_fc_callback: {x=:.3f} {y=:.3f} {a=:.3f} {d=:.3f} ")
 
 
     # Cone detection from Lidar LaserScan data
@@ -769,7 +772,7 @@ class NavNode(Node):
         self.cone_at_d_lidar = d
         self.cone_at_a_lidar = a
         
-        self.get_logger().info(f"lidar_callback: {x=} {y=} {a=} {d=}")
+        # self.get_logger().info(f"lidar_callback: {x=} {y=} {a=} {d=}")
 
     def gotoPoseBlocking(self, pose, t):
         """
