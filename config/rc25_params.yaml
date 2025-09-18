@@ -448,7 +448,7 @@ velocity_smoother:
 
 collision_monitor:
   ros__parameters:
-    base_frame_id: "base_footprint"
+    base_frame_id: "mid_link"
     odom_frame_id: "odom"
     cmd_vel_in_topic: "cmd_vel_smoothed"
     cmd_vel_out_topic: "cmd_vel"
@@ -459,14 +459,14 @@ collision_monitor:
     polygons: ["PolygonStop", "PolygonSlow"]
     PolygonStop:
       type: "polygon"
-      points: "[[0.4, 0.3], [0.4, -0.3], [0.0, -0.3], [0.0, 0.3]]"
+      points: "[[0.35, 0.2], [0.35, -0.2], [-0.35, -0.2], [-0.35, 0.2]]"
       action_type: "stop"
       min_points: 4  # max_points: 3 for Humble
       visualize: True
       polygon_pub_topic: "polygon_stop"
     PolygonSlow:
       type: "polygon"
-      points: "[[0.6, 0.4], [0.6, -0.4], [0.0, -0.4], [0.0, 0.4]]"
+      points: "[[0.45, 0.3], [0.45, -0.3], [-0.45, -0.3], [-0.45, 0.3]]"
       action_type: "slowdown"
       min_points: 4  # max_points: 3 for Humble
       slowdown_ratio: 0.3

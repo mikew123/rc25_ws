@@ -419,7 +419,7 @@ class NavNode(Node):
             self.get_logger().info(f"{func} cone is too far {d=} {state=}")
             next_state = 5 # back up
         elif d > self.cd_touch_dist :
-            self.get_logger().info(f"{func} approaching cone to touch {d=} {state=}")
+            # self.get_logger().info(f"{func} approaching cone to touch {d=} {state=}")
             msg.linear.x = (d/0.2)*self.cd_touch_lin_vel + 0.010
             # turn towards cone center
             msg.angular.z =  (a/0.393)*msg.linear.x #self.cd_touch_ang_vel
