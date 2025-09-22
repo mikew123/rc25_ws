@@ -432,9 +432,14 @@ class NavNode(Node):
         # a = self.cone_at_a_tof_fc
 
         d = self.cone_at_d_lidar
-        d -= 0.435 # Lidar sensor is 435mm back
-        d -= 0.040 # Cone surface is 40mm further at Lidar level
         a = self.cone_at_a_lidar
+
+        # convert to xy relative to TOF/bumper
+        x = d*math.cos(a)
+        y = d*math.sin(a)
+
+        x -= 0.390 # Lidar sensor is Xmm back
+        x -= 0.040 # Cone surface is Xmm further at Lidar level
 
         # get TOF obstacle detections
         fl_ob_dist = self.tof_fl_obstacle_dist
@@ -444,24 +449,25 @@ class NavNode(Node):
             # Stop motors and wait for kill switch not active
             # Motors are stopped by leaving velocities as msg default = 0
             pass
-        elif math.isinf(d) :
+        elif math.isinf(x) :
             self.get_logger().info(f"{func} lost cone {state=}")
             next_state = 0
-        elif d > 1.5*self.cd_closer_dist :
-            self.get_logger().info(f"{func} cone is too far {d=} {state=}")
+        elif x > 1.5*self.cd_closer_dist :
+            self.get_logger().info(f"{func} cone is too far {d=:.3f} {a=:.3f} {x=:.3f} {y=:.3f} {state=}")
             next_state = 5 # back up
-        elif d > self.cd_touch_dist :
-            # self.get_logger().info(f"{func} approaching cone to touch {d=} {state=}")
-            msg.linear.x = (d/0.2)*self.cd_touch_lin_vel + 0.010
+        elif x > self.cd_touch_dist :
+            self.get_logger().info(f"{func} approaching cone to touch {d=:.3f} {a=:.3f} {x=:.3f} {y=:.3f} {fl_ob_dist=:.3f} {fr_ob_dist=:.3f} {state=}")
+            msg.linear.x = (x/0.2)*self.cd_touch_lin_vel + 0.010
             # turn towards cone center
-            msg.angular.z =  (a/0.393)*msg.linear.x #self.cd_touch_ang_vel
+            # msg.angular.z =  (a/0.393)*msg.linear.x #self.cd_touch_ang_vel
+            msg.angular.z =  (8*y)*msg.linear.x
             # steer away from obstacle detected using TOF sensors
-            if fl_ob_dist < 0.3 :
-                msg.angular.z += 4*(fl_ob_dist - 0.3) * msg.linear.x
-            if fr_ob_dist < 0.3 :
-                msg.angular.z -= 4*(fr_ob_dist - 0.3) * msg.linear.x
+            if fl_ob_dist < 0.2 :
+                msg.angular.z += 4*(fl_ob_dist - 0.2) * msg.linear.x
+            if fr_ob_dist < 0.2 :
+                msg.angular.z -= 4*(fr_ob_dist - 0.2) * msg.linear.x
         else : 
-            self.get_logger().info(f"{func} touched {d=:.3f} {state=}")
+            self.get_logger().info(f"{func} touched {d=:.3f} {a=:.3f} {x=:.3f} {y=:.3f} {fl_ob_dist=:.3f} {fr_ob_dist=:.3f} {state=}")
             next_state = 4
 
         self.cmd_vel_publisher.publish(msg)
