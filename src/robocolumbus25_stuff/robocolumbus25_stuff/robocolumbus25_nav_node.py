@@ -7,10 +7,10 @@ import numpy as np
 
 from rclpy.node import Node
 from std_msgs.msg import String
-from geometry_msgs.msg import PointStamped
-from geometry_msgs.msg import PoseStamped, Pose
+from geometry_msgs.msg import PointStamped, PoseStamped
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import LaserScan
+from sensor_msgs.msg import PointCloud2
 
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
 
@@ -19,7 +19,7 @@ from tf2_ros import Duration
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
 
-from rc25_interfaces.msg import Float32X8
+from rc25_interfaces.msg import Float32X8, TofDist
 
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
@@ -116,6 +116,8 @@ class NavNode(Node):
                                             , self.cone_point_subscription_callback, 10)
         self.tof_fc_mid_subscription = self.create_subscription(Float32X8, 'tof_fc_mid'
                                             , self.tof_fc_mid_subscription_callback, 10)
+        self.tof_dist_subscription = self.create_subscription(TofDist, 'tof_dist'
+                                            , self.tof_dist_subscription_callback, 10)
         self.lidar_subscription = self.create_subscription(LaserScan,"scan" 
                                             , self.lidar_subscription_callback, 10)
 
@@ -178,15 +180,20 @@ class NavNode(Node):
             # get cone xy from camera detect
             x:float = self.cone_at_x_cam
             y:float = self.cone_at_y_cam
+            d:float = self.cone_at_d_cam
+            a:float = self.cone_at_a_cam
+
+            # This time out really does not do anything
             t:int = self.cone_det_time_cam
             to:int = self.cone_det_time_out_cam
             dt:int = (time.time_ns()*1e-9) - t
             # self.get_logger().info(f"{func} {dt=} {t=} {x=} {y=} ")
             if dt>to and t>0:
-                self.get_logger().info(f"sm_timer: cone detection is stale {x=} {y=} {dt=}")
-                x = 0
-                y = 0
-            if x!=0 :
+                self.get_logger().info(f"sm_timer: cone detection is stale {dt=:.3f} {x=:.3f} {y=:.3f} {d=:.3f}  {a=:.3f}")
+                d = 0
+
+            if d>=0 :
+                self.get_logger().info(f"sm_timer: cone detected - cancel rviz nav {x=:.3f} {y=:.3f} {d=:.3f}  {a=:.3f}")
                 # cancel navigation initiated by rviz
                 self.nav.cancelTask()
                 next_state = 1
@@ -590,6 +597,36 @@ class NavNode(Node):
         self.cone_det_time_cam = t
 
         # self.get_logger().info(f"cone_callback: {x=:.3f} {y=:.3f} {a=:.3f} {d=:.3f} ")
+
+    # Get TOF sensor data for obstacle detection
+    tof_dist_obstacle_max = 0.300
+    tof_fc_obstacle_dist:np.float32 = np.inf
+    tof_fl_obstacle_dist:np.float32 = np.inf
+    tof_fr_obstacle_dist:np.float32 = np.inf
+    # tof_fc_obstacle_angle:np.float32 = 0 #TODO: do we need the angle?
+
+    def tof_dist_subscription_callback(self,msg:TofDist) -> None :
+        tof = msg.tof
+        # array shape as 8x8
+        dist = np.float32(msg.dist).reshape(8,8)/np.float32(1000) # meters
+        # replace -1mm with inf
+        dist = np.where(dist>=0, dist, np.inf)
+
+        # find minimum dist for obstacle detection
+        # TODO: Do we need to not use the lower rows to not see ground clutter?
+        # TODO: Should we have different max based on row?
+        # TODO: Do we need to calc distance based on row angle?
+        dist_min = np.min(dist)
+        if dist_min > self.tof_dist_obstacle_max : dist_min = np.inf
+
+        # self.get_logger().info(f"tof_dist_callback: {tof} {dist_min=:.3f}")
+
+        if tof == "tof_fc" :
+            self.tof_fc_obstacle_dist = dist_min
+        if tof == "tof_fl" :
+            self.tof_fl_obstacle_dist = dist_min
+        if tof == "tof_fr" :
+            self.tof_fr_obstacle_dist = dist_min
 
 
     # Cone distance and angle relative to front TOF sensors

@@ -7,7 +7,7 @@ import numpy as np
 from rclpy.node import Node
 from sensor_msgs.msg import PointCloud2, PointField
 from std_msgs.msg import Header
-from rc25_interfaces.msg import Float32X8
+from rc25_interfaces.msg import Float32X8, TofDist
 
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
@@ -38,6 +38,7 @@ class TofNode(Node):
         self.tof_fl_pcd_publisher = self.create_publisher(PointCloud2, 'tof_fl', 10)
         self.tof_fr_pcd_publisher = self.create_publisher(PointCloud2, 'tof_fr', 10)
         self.tof_fc_mid_publisher = self.create_publisher(Float32X8, 'tof_fc_mid', 10)
+        self.tof_dist_publisher = self.create_publisher(TofDist, 'tof_dist', 10)
       
         # timer to check serial port
         self.timer = self.create_timer((1.0/self.timerRateHz), self.timer_callback
@@ -104,13 +105,13 @@ class TofNode(Node):
             unknown = True
             packet = json.loads(received_data)
             if "tof_fc" in packet :
-                self.tof_Publish("tof_fc", packet)
+                tof_ab = "tof_fc"
                 unknown = False
             if "tof_fl" in packet :
-                self.tof_Publish("tof_fl", packet)
+                tof_ab = "tof_fl"
                 unknown = False
             if "tof_fr" in packet :
-                self.tof_Publish("tof_fr", packet)
+                tof_ab = "tof_fr"
                 unknown = False
 
             if unknown :
@@ -120,10 +121,31 @@ class TofNode(Node):
             self.get_logger().error(f"TOF sensors serial json Exception {ex} : {received_data}")
             return
 
+        # publish front center mid row point cloud    
+        self.tof_pcd_publish(tof_ab, packet)
+        # publish raw data from sensors
+        self.tof_sensor_publish(tof_ab, packet)
+        
+    # publish the "raw" TOF sensor distance data
+    def tof_sensor_publish(self, tof_ab, packet) -> None :
+        if tof_ab in packet :
+            tof = packet.get(tof_ab)
+        else : return
+
+        if "dist" in tof :
+            dist = np.int16(tof.get("dist")).reshape(64)
+        else : return
+        # self.get_logger().info(f"tof_sensor_publish: {tof_ab} {dist=}")
+
+        msg = TofDist()
+        msg.tof = tof_ab
+        msg.dist = dist
+        self.tof_dist_publisher.publish(msg)
+
     # 8x8 point cloud for each sensor FOV 45degx45deg
     # calculate x,y,z for each point
     # TODO: Optimize math with numpy
-    def tof_Publish(self, tof_ab, packet) -> None:
+    def tof_pcd_publish(self, tof_ab, packet) -> None:
         # self.get_logger().info(f"tof_Publish: {tof_ab=} {packet=}")
 
         tof = packet.get(tof_ab)
