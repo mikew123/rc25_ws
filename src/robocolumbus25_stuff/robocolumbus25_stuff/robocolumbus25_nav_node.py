@@ -401,10 +401,11 @@ class NavNode(Node):
             msg.linear.x =  self.cd_closer_lvel
             # use angle to turn towards the cone
             msg.angular.z =  (a/0.393)*self.cd_closer_avel
+            # steer away from obstacle detected using TOF sensors
             if fl_ob_dist < 0.3 :
-                msg.angular.z -= 4*(fl_ob_dist - 0.3) * self.cd_closer_avel
-            if fr_ob_dist < 0.3 :
                 msg.angular.z += 4*(fl_ob_dist - 0.3) * self.cd_closer_avel
+            if fr_ob_dist < 0.3 :
+                msg.angular.z -= 4*(fr_ob_dist - 0.3) * self.cd_closer_avel
             
         else : 
             self.get_logger().info(f"{func} at the closer distance {d=:.3f} {a=:.3f} {state=}")
@@ -435,6 +436,10 @@ class NavNode(Node):
         d -= 0.040 # Cone surface is 40mm further at Lidar level
         a = self.cone_at_a_lidar
 
+        # get TOF obstacle detections
+        fl_ob_dist = self.tof_fl_obstacle_dist
+        fr_ob_dist = self.tof_fr_obstacle_dist
+
         if killSwitchActive :
             # Stop motors and wait for kill switch not active
             # Motors are stopped by leaving velocities as msg default = 0
@@ -450,6 +455,11 @@ class NavNode(Node):
             msg.linear.x = (d/0.2)*self.cd_touch_lin_vel + 0.010
             # turn towards cone center
             msg.angular.z =  (a/0.393)*msg.linear.x #self.cd_touch_ang_vel
+            # steer away from obstacle detected using TOF sensors
+            if fl_ob_dist < 0.3 :
+                msg.angular.z += 4*(fl_ob_dist - 0.3) * msg.linear.x
+            if fr_ob_dist < 0.3 :
+                msg.angular.z -= 4*(fr_ob_dist - 0.3) * msg.linear.x
         else : 
             self.get_logger().info(f"{func} touched {d=:.3f} {state=}")
             next_state = 4
@@ -797,7 +807,7 @@ class NavNode(Node):
         x = d*np.cos(a)
         y = d*np.sin(a)
 
-        self.get_logger().info(f"lidar_callback: {x=} {y=} {a=} {d=} {coneMax=} {minRatio=}")
+        # self.get_logger().info(f"lidar_callback: {x=} {y=} {a=} {d=} {coneMax=} {minRatio=}")
 
         coneRays -= d # normalize data, zero is closest
         np.set_printoptions(precision=3, suppress=True)
