@@ -73,6 +73,18 @@ class NavNode(Node):
     tof_fc_dist_max = 1.5
     tof_fov = 0.785 
 
+    # Lidar cone detection parameters
+    coneMinRatioLimit = np.float32(0.250)
+    coneMinMaxDiffMax = np.float32(0.060)
+    coneMinMaxDiffMin = np.float32(0.005)
+    coneRadius        = np.float32(0.05) # 100mm diameter at Lidar scan height     
+    diffJump          = np.float32(0.15)
+    coneRayMax        = np.float32(2.5)
+
+    # rayCountScale = np.float32(1.20) # 20 percent
+    # rayInfCount = np.int32(10) # allow 10 infinities which reduce ray counts
+    # rayMinCnt = np.int32(10) # minimum number of ray counts in cone detect
+
     # GLOBAL variables 
 
     # for cone navigation
@@ -354,7 +366,7 @@ class NavNode(Node):
     #state 2 - get closer to cone
     def get_closer_to_cone(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
-            self.get_logger().info(f"{func} drive closer to cone using cmd_vel and cone_point {state=}")
+            self.get_logger().info(f"{func} drive closer to cone using cmd_vel and camera {state=}")
             self.nav.cancelTask()
 
         if (time.time_ns()*1e-9 - self.cd_timer) < 2.0 : return state
@@ -366,6 +378,10 @@ class NavNode(Node):
         a:float = self.cone_at_a_cam
         d:float = self.cone_at_d_cam
         d -= 0.200 # Crude transformation, camera is 0.200 behind tof sensor
+
+        # get TOF obstacle detections
+        fl_ob_dist = self.tof_fl_obstacle_dist
+        fr_ob_dist = self.tof_fr_obstacle_dist
 
         killSwitchActive:bool = ks
         next_state = state
@@ -385,7 +401,11 @@ class NavNode(Node):
             msg.linear.x =  self.cd_closer_lvel
             # use angle to turn towards the cone
             msg.angular.z =  (a/0.393)*self.cd_closer_avel
-            pass
+            if fl_ob_dist < 0.3 :
+                msg.angular.z -= 4*(fl_ob_dist - 0.3) * self.cd_closer_avel
+            if fr_ob_dist < 0.3 :
+                msg.angular.z += 4*(fl_ob_dist - 0.3) * self.cd_closer_avel
+            
         else : 
             self.get_logger().info(f"{func} at the closer distance {d=:.3f} {a=:.3f} {state=}")
             next_state = 3
@@ -400,7 +420,7 @@ class NavNode(Node):
     #state 3 - "touch" cone
     def touch_cone(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
-            self.get_logger().info(f"{func} drive slowly to \"touch\" cone using cmd_vel and tof sensors {state=}")
+            self.get_logger().info(f"{func} drive slowly to \"touch\" cone using cmd_vel and lidar sensor {state=}")
         
         killSwitchActive:bool = ks
         next_state = state
@@ -674,7 +694,6 @@ class NavNode(Node):
         angle_min       = np.float32(msg.angle_min)
         angle_max       = np.float32(msg.angle_max)
         angle_increment = np.float32(msg.angle_increment)
-        coneRadius      = np.float32(0.05) # 100mm diameter at Lidar scan height     
         # self.get_logger().info(f"lidar_callback: {angle_min=:.3f} {angle_max:.3f} {angle_increment=:.3f}")
 
         # get Lidar scan data within determined field of view for cone detection
@@ -685,11 +704,6 @@ class NavNode(Node):
         coneRanges =  np.float32(msg.ranges[dmin:dmax])
         # self.get_logger().info(f"{coneRanges=}")
 
-        diffJump = np.float32(0.15)
-        coneRayMax = np.float32(2.5)
-        rayCountScale = np.float32(1.20) # 20 percent
-        rayInfCount = np.int32(10) # allow 10 infinities which reduce ray counts
-        rayMinCnt = np.int32(10) # minimum number of ray counts in cone detect
 
         begin = np.int32(0)
         end = np.int32(0)
@@ -701,13 +715,13 @@ class NavNode(Node):
             # if np.math.isinf(ray) : ray = 100 
             if begin==0 :
                 # look for dist jump hi to lo to indicate possible start
-                if (ray<coneRayMax) and ((lastRay-ray)>diffJump) :
+                if (ray<self.coneRayMax) and ((lastRay-ray)>self.diffJump) :
                     # possible start of cone detect
                     begin = rayNum
 
-            elif (lastRay<coneRayMax) :
+            elif (lastRay<self.coneRayMax) :
                 # look for dist jump lo to hi to indicate possible end
-                if((ray-lastRay)>diffJump) :
+                if((ray-lastRay)>self.diffJump) :
                     # possible end of cone detect
                     end = rayNum-1
                     if False : #(end-begin) < rayMinCnt :
@@ -717,24 +731,39 @@ class NavNode(Node):
 
                     else :
                         coneRays = coneRanges[begin:end]
-                        coneRayMin = np.min(coneRays)
+                        coneMin = np.min(coneRays)
+                        coneMax = np.max(coneRays)
                         # find ray number at center of minimums
                         idx = begin
                         cnt = np.int32(0)
                         coneRayIdxAtMin = np.int32(0)
                         for ray in coneRays :
-                            if ray == coneRayMin :
+                            if ray == coneMin :
                                 coneRayIdxAtMin += idx
                                 cnt +=1
                             idx +=1
-                        coneRayIdxAtMin = np.int32(coneRayIdxAtMin/cnt)
-                        # validate num rays vs distance
-                        numRaysMeas = (end-begin)+1+rayInfCount
-                        numRaysCalc = np.arctan2(coneRadius,coneRayMin+coneRadius) # dist to cone center
-                        numRaysCalc *= 2/angle_increment
-                        numRaysDiff = np.abs(numRaysMeas-numRaysCalc)
 
-                        if True : #(numRaysDiff)  < 100 : #((numRaysCalc*rayCountScale)) :
+                        # get min position as avg of all min positions
+                        coneRayIdxAtMin = np.int32(coneRayIdxAtMin/cnt)
+
+                        # validate if cone is near center of range of rays
+                        numRays = end - begin
+                        minCtr = coneRayIdxAtMin - begin
+                        minRatio = math.fabs(0.5 - minCtr/numRays)
+                        minRatioValid = minRatio < self.coneMinRatioLimit
+
+                        # Validate min - max distance and cone radius
+                        minMaxValid =   ((coneMax - coneMin) < self.coneMinMaxDiffMax) \
+                                    and ((coneMax - coneMin) > self.coneMinMaxDiffMin) 
+
+                        # # validate num rays vs distance
+                        # numRaysMeas = (end-begin)+1+rayInfCount
+                        # numRaysCalc = np.arctan2(coneRadius,coneMin+coneRadius) # dist to cone center
+                        # numRaysCalc *= 2/angle_increment
+                        # numRaysDiff = np.abs(numRaysMeas-numRaysCalc)
+                        # if True : #(numRaysDiff)  < 100 : #((numRaysCalc*rayCountScale)) :
+
+                        if (minMaxValid and minRatioValid) :
                             # validated cone detection
                             break
                         else :
@@ -764,10 +793,12 @@ class NavNode(Node):
         a = np.float32(angle_increment*(coneRayIdxAtMin-(np.size(coneRanges)/2)))
 
         # convert to x,y coordinates relative to lidar "/oak-d_frame"
-        d = np.float32(coneRayMin)
+        d = np.float32(coneMin)
         x = d*np.cos(a)
         y = d*np.sin(a)
-        
+
+        self.get_logger().info(f"lidar_callback: {x=} {y=} {a=} {d=} {coneMax=} {minRatio=}")
+
         coneRays -= d # normalize data, zero is closest
         np.set_printoptions(precision=3, suppress=True)
         # self.get_logger().info(f"lidar_callback: {x=} {y=} {d=}  {a=} {pfov=} {coneRayIdxAtMin=} {coneRays=}")
@@ -778,7 +809,7 @@ class NavNode(Node):
         self.cone_at_d_lidar = d
         self.cone_at_a_lidar = a
         
-        # self.get_logger().info(f"lidar_callback: {x=} {y=} {a=} {d=}")
+        
 
     def gotoPoseBlocking(self, pose, t):
         """
