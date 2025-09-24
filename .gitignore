@@ -3,3 +3,4 @@ install
 log
 support/rc25_MotorServoControler/rc25_MotorServoControler-backups
 support/rc25_ImuGpsControler/rc25_ImuGpsControler/rc25_ImuGpsControler-backups
+support/rc25_TofSensorsControler/rc25_TofSensorsControler/rc25_TofSensorsControler-backups

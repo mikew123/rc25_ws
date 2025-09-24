@@ -113,6 +113,9 @@ The DC-DC converters are inside the waterproof box. The power input from the bat
 ### IMU and GPS Controller Board
 <img src="support/rc25_ImuGpsController.jpg"></br>
 
+### TOF Sensors Controller Board
+<img src="support/rc25_TofSensorsControler.jpg"></br>
+
 # Micro controller firmware
 The microcontroller firmware is C-code developed using the Arduino IDE. The interface to the controller uses the USB port for a serial communications interface. A simple Json data structure sends data to-from the computer in the cabin over the USB serial interface.
 ## RC switch interface
