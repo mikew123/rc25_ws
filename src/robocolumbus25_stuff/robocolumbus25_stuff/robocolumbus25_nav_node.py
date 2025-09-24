@@ -7,10 +7,10 @@ import numpy as np
 
 from rclpy.node import Node
 from std_msgs.msg import String
-from geometry_msgs.msg import PointStamped
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PointStamped, PoseStamped
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import LaserScan
+from sensor_msgs.msg import PointCloud2
 
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
 
@@ -19,7 +19,7 @@ from tf2_ros import Duration
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
 
-from rc25_interfaces.msg import Float32X8
+from rc25_interfaces.msg import Float32X8, TofDist
 
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
@@ -44,19 +44,21 @@ class NavNode(Node):
 
     cd_sub_state = -1
 
-    # use /cone_point to get location for navigator to drive to
-    cd_stop_dist = 1.0
-    cd_nav_time = 5.0
+    # state=1 use /cone_point to get location for navigator to drive to
+    # Distance from detected cone to end navigation
+    cd_stop_dist = 1.5
+    # nav this aamout of time before getting new cone fix
+    cd_nav_time = 2.5
 
-    # use /cone_point to get closer to cone using /cmd_vel
+    # state=2 use /Lidar +-22.5 FOV to get closer to cone using /cmd_vel
     cd_closer_dist = 0.5
     cd_closer_lvel = 0.25
-    cd_closer_avel = 0.05
+    cd_closer_avel = cd_closer_lvel
 
-    # use /tof_fc_mid to "touch" cone using /cmd_vel
+    # state=3 use /tof_fc_mid to "touch" cone using /cmd_vel
     cd_touch_dist = 0.040
     cd_touch_lin_vel = 0.05
-    cd_touch_ang_vel = 0.01
+    cd_touch_ang_vel = cd_touch_lin_vel
 
     # wait while touching cone for observation
     cd_touch_wait = 2.0
@@ -68,24 +70,43 @@ class NavNode(Node):
     # Field of view pointing forward from Lidar 36 degree scan data 
     fovRad = 0.758 # 45 deg, +-22.5 degrees
 
+    tof_fc_dist_max = 1.5
+    tof_fov = 0.785 
 
-    # global variables 
+    # Lidar cone detection parameters
+    coneMinRatioLimit = np.float32(0.250)
+    coneMinMaxDiffMax = np.float32(0.060)
+    coneMinMaxDiffMin = np.float32(0.005)
+    coneRadius        = np.float32(0.05) # 100mm diameter at Lidar scan height     
+    diffJump          = np.float32(0.15)
+    coneRayMax        = np.float32(2.5)
+
+    # rayCountScale = np.float32(1.20) # 20 percent
+    # rayInfCount = np.int32(10) # allow 10 infinities which reduce ray counts
+    # rayMinCnt = np.int32(10) # minimum number of ray counts in cone detect
+
+    # GLOBAL variables 
 
     # for cone navigation
     # using /cone_point 
     cone_at_x_cam:float = 0.0
     cone_at_y_cam:float = 0.0
+    cone_at_d_cam:float = 0.0
+    cone_at_a_cam:float = 0.0
     cone_det_time_cam:int = 0
     cone_det_time_out_cam:int = 2.0
 
     # using Lidar
     cone_at_x_lidar:float = 0.0
     cone_at_y_lidar:float = 0.0
-    cone_angle_lidar:float = 0.0
+    cone_at_d_lidar:float = 0.0
+    cone_at_a_lidar:float = 0.0
 
     # using /tof_fc_mid (NOTE: distance from front center TOF sensor)
-    cone_dist_tof_fc:float = 0.0
-    cone_dist_idx_min_tof_fc:int = -1
+    cone_at_x_tof_fc:float = 0.0
+    cone_at_y_tof_fc:float = 0.0
+    cone_at_d_tof_fc:float = 0.0
+    cone_at_a_tof_fc:float = 0.0
 
     # median 5 filter memory
     # list of tupples [5X(x,y,z)]
@@ -107,8 +128,10 @@ class NavNode(Node):
                                             , self.cone_point_subscription_callback, 10)
         self.tof_fc_mid_subscription = self.create_subscription(Float32X8, 'tof_fc_mid'
                                             , self.tof_fc_mid_subscription_callback, 10)
-        self.cone_det_lidar_subscription = self.create_subscription(LaserScan,"scan" 
-                                            , self.cone_det_lidar_subscription_callback, 10)
+        self.tof_dist_subscription = self.create_subscription(TofDist, 'tof_dist'
+                                            , self.tof_dist_subscription_callback, 10)
+        self.lidar_subscription = self.create_subscription(LaserScan,"scan" 
+                                            , self.lidar_subscription_callback, 10)
 
         # Message topic to/from all nodes for general messaging Json formated string
         self.json_msg_publisher = self.create_publisher(String, "json_msg", 10)
@@ -160,9 +183,32 @@ class NavNode(Node):
 
         if state == 0 :
             # wait for navigator
-            # This does not work, it waits forever and send out messages lke setting inital pose
+            # This does not work, it waits forever and send out messages like setting inital pose
+            # initialPose = self.createPose(0,0,0,"map")
+            # self.nav.setInitialPose(initialPose)
             # self.nav.waitUntilNav2Active()
-            next_state = 1
+
+            # Rviz 2DGoalPose can be used to move robot until a cone is detected
+            # get cone xy from camera detect
+            x:float = self.cone_at_x_cam
+            y:float = self.cone_at_y_cam
+            d:float = self.cone_at_d_cam
+            a:float = self.cone_at_a_cam
+
+            # This time out really does not do anything
+            t:int = self.cone_det_time_cam
+            to:int = self.cone_det_time_out_cam
+            dt:int = (time.time_ns()*1e-9) - t
+            # self.get_logger().info(f"{func} {dt=} {t=} {x=} {y=} ")
+            if dt>to and t>0:
+                self.get_logger().info(f"sm_timer: cone detection is stale {dt=:.3f} {x=:.3f} {y=:.3f} {d=:.3f}  {a=:.3f}")
+                d = 0
+
+            if d>=0 :
+                self.get_logger().info(f"sm_timer: cone detected - cancel rviz nav {x=:.3f} {y=:.3f} {d=:.3f}  {a=:.3f}")
+                # cancel navigation initiated by rviz
+                self.nav.cancelTask()
+                next_state = 1
 
         # initialize at start point and wait for start command
 
@@ -220,7 +266,8 @@ class NavNode(Node):
         self.cd_last_state = state
         self.cd_state = next_state
 
-    # state 0
+
+    # state 0 - wait for camera cone detection
     def wait_for_cone_det(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} wait for cone detection {state=}")
@@ -240,13 +287,13 @@ class NavNode(Node):
         killSwitchActive:bool  = ks
         next_state:int = state
 
-        if x!=0 and y!=0:
+        if x!=0 :
             self.get_logger().info(f"{func} cone detected at {x=:.3f} {y=:.3f}  {state=} {killSwitchActive=}")
             if not killSwitchActive : 
                 next_state = 1
         return next_state
 
-    #state 1
+    #state 1 - use camera to locate cone and get close
     cd_sub_timer = 0
     def nav_to_cone(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         cur_time = time.time_ns()*1e-9
@@ -293,6 +340,7 @@ class NavNode(Node):
                     # check for nav complete or navigate time finished and try again
                     if (cur_time - self.cd_sub_timer) < t :
                         if self.nav.isTaskComplete() :
+                            self.nav.cancelTask()
                             # x,y is relative to tof_fc sensor
                             d = math.sqrt(x*x + y*y)
 
@@ -304,23 +352,36 @@ class NavNode(Node):
                                 self.cd_sub_state = 0
                     else :
                         self.get_logger().info(f"{func} Get new cone placement and navigate some more {state=}")
+                        self.nav.cancelTask()
                         self.cd_sub_state = 0
 
         else :
             self.get_logger().info(f"{func} lost cone {state=}")
+            self.nav.cancelTask()
             next_state = 0
 
         return next_state
 
-    #state 2
+
+    #state 2 - get closer to cone
     def get_closer_to_cone(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
-            self.get_logger().info(f"{func} drive closer to cone using cmd_vel and cone_point {state=}")
+            self.get_logger().info(f"{func} drive closer to cone using cmd_vel and camera {state=}")
+            self.nav.cancelTask()
 
-        # get cone xy from Lidar data
-        x:float = self.cone_at_x_lidar
-        y:float = self.cone_at_y_lidar
-        a:float = self.cone_angle_lidar
+        if (time.time_ns()*1e-9 - self.cd_timer) < 2.0 : return state
+
+        # get cone info
+        # a:float = self.cone_at_a_lidar
+        # d:float = self.cone_at_d_lidar
+
+        a:float = self.cone_at_a_cam
+        d:float = self.cone_at_d_cam
+        d -= 0.200 # Crude transformation, camera is 0.200 behind tof sensor
+
+        # get TOF obstacle detections
+        fl_ob_dist = self.tof_fl_obstacle_dist
+        fr_ob_dist = self.tof_fr_obstacle_dist
 
         killSwitchActive:bool = ks
         next_state = state
@@ -328,55 +389,93 @@ class NavNode(Node):
 
         if killSwitchActive :
             # Stop motors and wait for kill switch not active
-            # Motors are stopped by leaving velocities to msg default as 0
+            # Motors are stopped by leaving velocities to msg defaults as 0
             pass
-        elif x==0 and y==0 :
+        elif d == 0 :
             self.get_logger().info(f"{func} lost cone {state=}")
             next_state = 0
-        elif x > self.cd_closer_dist :
+        elif d > 2*self.cd_stop_dist :
+            self.get_logger().info(f"{func} cone is too far {d=} {state=}")
+            next_state = 5 # back up
+        elif d > self.cd_closer_dist :
             msg.linear.x =  self.cd_closer_lvel
-            # Y is used to drive to cone head on
-            if y > 0.02 :    msg.angular.z =  self.cd_closer_avel
-            elif y < -0.02 : msg.angular.z = -self.cd_closer_avel
-            else : msg.angular.z = 0.0
+            # use angle to turn towards the cone
+            msg.angular.z =  (a/0.393)*self.cd_closer_avel
+            # steer away from obstacle detected using TOF sensors
+            if fl_ob_dist < 0.3 :
+                msg.angular.z += 4*(fl_ob_dist - 0.3) * self.cd_closer_avel
+            if fr_ob_dist < 0.3 :
+                msg.angular.z -= 4*(fr_ob_dist - 0.3) * self.cd_closer_avel
+            
         else : 
-            self.get_logger().info(f"{func} closer {x=:.3f} {y=:.3f}")
+            self.get_logger().info(f"{func} at the closer distance {d=:.3f} {a=:.3f} {state=}")
             next_state = 3
 
+        #self.get_logger().info(f"{func} {d=:.3f} lx={msg.linear.x:.3f} az={msg.angular.z:.3f}")
         self.cmd_vel_publisher.publish(msg)
-
+        # self.get_logger().info(f"{func} {state=} {msg=}")
+        
         return next_state
 
-    #state 3
+
+    #state 3 - "touch" cone
     def touch_cone(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
-            self.get_logger().info(f"{func} drive slowly to \"touch\" cone using cmd_vel and tof sensors {state=}")
+            self.get_logger().info(f"{func} drive slowly to \"touch\" cone using cmd_vel and lidar sensor {state=}")
         
         killSwitchActive:bool = ks
         next_state = state
         msg = Twist()
-        d = self.cone_dist_tof_fc
-        i = self.cone_dist_idx_min_tof_fc
+
+        # get cone info
+        # d = self.cone_at_d_tof_fc
+        # a = self.cone_at_a_tof_fc
+
+        d = self.cone_at_d_lidar
+        a = self.cone_at_a_lidar
+
+        # convert to xy relative to TOF/bumper
+        x = d*math.cos(a)
+        y = d*math.sin(a)
+
+        x -= 0.390 # Lidar sensor is Xmm back
+        x -= 0.040 # Cone surface is Xmm further at Lidar level
+
+        # get TOF obstacle detections
+        fl_ob_dist = self.tof_fl_obstacle_dist
+        fr_ob_dist = self.tof_fr_obstacle_dist
 
         if killSwitchActive :
             # Stop motors and wait for kill switch not active
-            # Motors are stopped by leaving velocities to msg default as 0
+            # Motors are stopped by leaving velocities as msg default = 0
             pass
-        elif((not math.isinf(d)) and (d > self.cd_touch_dist)) :
-            msg.linear.x = self.cd_touch_lin_vel
+        elif math.isinf(x) :
+            self.get_logger().info(f"{func} lost cone {state=}")
+            next_state = 0
+        elif x > 1.5*self.cd_closer_dist :
+            self.get_logger().info(f"{func} cone is too far {d=:.3f} {a=:.3f} {x=:.3f} {y=:.3f} {state=}")
+            next_state = 5 # back up
+        elif x > self.cd_touch_dist :
+            self.get_logger().info(f"{func} approaching cone to touch {d=:.3f} {a=:.3f} {x=:.3f} {y=:.3f} {fl_ob_dist=:.3f} {fr_ob_dist=:.3f} {state=}")
+            msg.linear.x = (x/0.2)*self.cd_touch_lin_vel + 0.010
             # turn towards cone center
-            if   i <= 2 : msg.angular.z =  self.cd_touch_ang_vel
-            elif i >= 5 : msg.angular.z = -self.cd_touch_ang_vel
-
+            # msg.angular.z =  (a/0.393)*msg.linear.x #self.cd_touch_ang_vel
+            msg.angular.z =  (8*y)*msg.linear.x
+            # steer away from obstacle detected using TOF sensors
+            if fl_ob_dist < 0.2 :
+                msg.angular.z += 4*(fl_ob_dist - 0.2) * msg.linear.x
+            if fr_ob_dist < 0.2 :
+                msg.angular.z -= 4*(fr_ob_dist - 0.2) * msg.linear.x
         else : 
-            self.get_logger().info(f"{func} touched {d=:.3f} {state=}")
+            self.get_logger().info(f"{func} touched {d=:.3f} {a=:.3f} {x=:.3f} {y=:.3f} {fl_ob_dist=:.3f} {fr_ob_dist=:.3f} {state=}")
             next_state = 4
 
         self.cmd_vel_publisher.publish(msg)
 
         return next_state
 
-    #state 4
+
+    #state 4 - wait a short time for judge to see the "touch"
     def wait_after_touch(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} wait a short time {state=}")
@@ -392,30 +491,52 @@ class NavNode(Node):
         
         return next_state
 
-    #state 5
+
+    #state 5 - backup after "touch"
     def backup_after_touch(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} backup {state=}")
-            
+            self.cd_sub_state = 0
+
+        cur_time = time.time_ns()*1e-9            
         killSwitchActive:bool = ks
+        killSwitchChange = ksc
         next_state = state
-        t = self.cd_backup_dist/self.cd_backup_vel
-        msg = Twist()
+        dist = self.cd_backup_dist
+        vel = self.cd_backup_vel
+        t = 1.5*self.cd_backup_dist/self.cd_backup_vel
 
-        if killSwitchActive :
-            # Stop motors and wait for kill switch not active
-            # Motors are stopped by leaving velocities to msg default as 0
-            pass
-        elif (time.time_ns()*1e-9 - self.cd_timer) < t :
-            msg.linear.x = -self.cd_backup_vel
-        else : 
-            next_state = 6
+        # if killSwitchActive :
+        #     # restart timer
+        #     # TODO: Should timer be frozen?
+        #     self.cd_timer = time.time_ns()*1e-9
 
-        self.cmd_vel_publisher.publish(msg)
+        if self.cd_sub_state == 0 :
+            if not killSwitchActive :
+                # issue a backup navigation command with obstical avoidance
+                self.nav.backup(backup_dist=dist, backup_speed=vel
+                    , time_allowance=10) #, disable_collision_checks=True) # non-blocking
+                self.cd_sub_timer = cur_time
+                self.cd_sub_state = 1
+
+        elif self.cd_sub_state == 1 :
+            if killSwitchActive :
+                # Cancel goal and wait when kill switch status changes to active
+                if killSwitchChange :
+                    self.nav.cancelTask()
+                    self.cd_sub_state = 0
+            else : # Execute when kill switch is not active
+                # check for nav backup is complete or navigate time finished
+                if (cur_time - self.cd_sub_timer) < t :
+                    if self.nav.isTaskComplete() :
+                        next_state = 6
+                else :
+                    self.nav.cancelTask()
+                    next_state = 6
 
         return next_state
 
-    #state 6
+    #state 6 - STOP
     def stop_after_touch(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} STOP {state=}")
@@ -432,7 +553,6 @@ class NavNode(Node):
         cx,cy is the cone xy relative to oak-d_frame.
         """
         # get current robot pose at tof_fc to determine the angle offset
-        # (tf_OK, current_pose) = self.getCurrentPose()
         (tf_OK, current_pose) = self.getPoseFromTF('map','tof_fc_link')
         if not tf_OK : return -1.0
         rx = current_pose.pose.position.x
@@ -496,25 +616,66 @@ class NavNode(Node):
 
 
 
-    # Cone detection from camera AI relative to camera
+    # Cone detection from camera AI relative to camera "oak-d_frame"
     def cone_point_subscription_callback(self, msg: PointStamped) -> None:
         # if msg.point.x == 0 : self.get_logger().info(f"{msg=}")
         x = msg.point.x
         y = msg.point.y
         t = time.time_ns() * 1e-9 # seconds
+        a = math.atan2(y,x)
+        d = math.sqrt(x*x + y*y)
+
         # transform cone xy to "/tof_fc_link" which is considered the front of the robot
-        self.cone_at_x_cam = x - 0.200 # Crude transformation, camera is 0.200 behind tof sensor
+        self.cone_at_x_cam = x
         self.cone_at_y_cam = y
+        self.cone_at_d_cam = d
+        self.cone_at_a_cam = a
         self.cone_det_time_cam = t
-        # self.get_logger().info(f"cone_point_subscription_callback: {t=} {x=} {y=} ")
+
+        # self.get_logger().info(f"cone_callback: {x=:.3f} {y=:.3f} {a=:.3f} {d=:.3f} ")
+
+    # Get TOF sensor data for obstacle detection
+    tof_dist_obstacle_max = 0.300
+    tof_fc_obstacle_dist:np.float32 = np.inf
+    tof_fl_obstacle_dist:np.float32 = np.inf
+    tof_fr_obstacle_dist:np.float32 = np.inf
+    # tof_fc_obstacle_angle:np.float32 = 0 #TODO: do we need the angle?
+
+    def tof_dist_subscription_callback(self,msg:TofDist) -> None :
+        tof = msg.tof
+        # array shape as 8x8
+        dist = np.float32(msg.dist).reshape(8,8)/np.float32(1000) # meters
+        # replace -1mm with inf
+        dist = np.where(dist>=0, dist, np.inf)
+
+        # find minimum dist for obstacle detection
+        # TODO: Do we need to not use the lower rows to not see ground clutter?
+        # TODO: Should we have different max based on row?
+        # TODO: Do we need to calc distance based on row angle?
+        dist_min = np.min(dist)
+        if dist_min > self.tof_dist_obstacle_max : dist_min = np.inf
+
+        # self.get_logger().info(f"tof_dist_callback: {tof} {dist_min=:.3f}")
+
+        if tof == "tof_fc" :
+            self.tof_fc_obstacle_dist = dist_min
+        if tof == "tof_fl" :
+            self.tof_fl_obstacle_dist = dist_min
+        if tof == "tof_fr" :
+            self.tof_fr_obstacle_dist = dist_min
+
 
     # Cone distance and angle relative to front TOF sensors
     def tof_fc_mid_subscription_callback(self, msg: Float32X8) -> None:
-        #self.get_logger().info(f"{msg=}")
+        # self.get_logger().info(f"{msg=}")
 
-        dmin:float = 100.0
+        dmin:float = math.inf
         dmin_idx:int = -1
         idx:int = 0
+
+        dist_max = self.tof_fc_dist_max
+        fov = self.tof_fov 
+        pt_angle = fov/8
 
         for d in msg.data :
             if not math.isinf(d) :
@@ -522,51 +683,155 @@ class NavNode(Node):
                     dmin = d
                     dmin_idx = idx
             idx += 1
-        if dmin >= 100 : dmin = math.inf
-        self.cone_dist_tof_fc = dmin
-        self.cone_dist_idx_min_tof_fc = dmin_idx
+            # self.get_logger().info(f"tof_fc_callback: {d=:.3f} {dmin=:.3f} {dmin_idx=}")
+
+        # TODO: validate cone detect using width and maybe shape
+
+        if dmin >= dist_max : dmin = math.inf
+
+        d = dmin
+        a = fov/2 - pt_angle/2 - dmin_idx*pt_angle
+        x = d * math.cos(a)
+        y = d * math.sin(a)
+
+        self.cone_at_x_tof_fc = x
+        self.cone_at_y_tof_fc = y
+        self.cone_at_d_tof_fc = d
+        self.cone_at_a_tof_fc = a
+
+        # self.get_logger().info(f"tof_fc_callback: {x=:.3f} {y=:.3f} {a=:.3f} {d=:.3f} ")
+
 
     # Cone detection from Lidar LaserScan data
-    def cone_det_lidar_subscription_callback(self, msg: LaserScan) -> None:
+    def lidar_subscription_callback(self, msg: LaserScan) -> None:
         #self.get_logger().info(f"cone_det_cam_subscription_callback: {msg=}")
 
+   
         angle_min       = np.float32(msg.angle_min)
         angle_max       = np.float32(msg.angle_max)
-        angle_increment = np.float32(msg.angle_increment)       
-        # self.get_logger().info(f"cone_det_cam_subscription_callback: {angle_min=:.3f} {angle_max:.3f} {angle_increment=:.3f}")
+        angle_increment = np.float32(msg.angle_increment)
+        # self.get_logger().info(f"lidar_callback: {angle_min=:.3f} {angle_max:.3f} {angle_increment=:.3f}")
 
-        stamp = self.get_clock().now().to_msg()
-        pmsg = PointStamped()
-        pmsg.header.frame_id="lidar_link"
-        pmsg.header.stamp = stamp
-
-        # find minimum detected distance in a range of +-22.5 in front of robot where cone should be
+        # get Lidar scan data within determined field of view for cone detection
         len = np.int32((angle_max-angle_min)/angle_increment)
         pfov = np.int32(self.fovRad/angle_increment)
         dmin = np.int32(len/2 - pfov/2)
         dmax = np.int32(len/2 + pfov/2)
-        ranges =  np.float32(msg.ranges[dmin:dmax])
-        rangeMin = np.min(ranges)
-        minAngle = angle_increment*(np.argmin(ranges)-(pfov/2))
-        # convert to x,y coordinates relative to lidar "/oak-d_frame"
-        x = rangeMin*np.cos(minAngle)
-        y = rangeMin*np.sin(minAngle)
-        
-        np.set_printoptions(precision=3, suppress=True)
-        #self.get_logger().info(f"cone_det_cam_subscription_callback: {x=} {y=} {pfov=} {rangeMin=} {minAngle=}")
+        coneRanges =  np.float32(msg.ranges[dmin:dmax])
+        # self.get_logger().info(f"{coneRanges=}")
 
+
+        begin = np.int32(0)
+        end = np.int32(0)
+        lastRay = np.float32(coneRanges[0])
+        rayNum = np.int32(1)
+
+        # NOTE: 1st ray cant be start of cone
+        for ray in coneRanges[1:] :
+            # if np.math.isinf(ray) : ray = 100 
+            if begin==0 :
+                # look for dist jump hi to lo to indicate possible start
+                if (ray<self.coneRayMax) and ((lastRay-ray)>self.diffJump) :
+                    # possible start of cone detect
+                    begin = rayNum
+
+            elif (lastRay<self.coneRayMax) :
+                # look for dist jump lo to hi to indicate possible end
+                if((ray-lastRay)>self.diffJump) :
+                    # possible end of cone detect
+                    end = rayNum-1
+                    if False : #(end-begin) < rayMinCnt :
+                        # number of rays too small for a cone, look for another cone
+                        begin = np.int32(0)
+                        end = np.int32(0)
+
+                    else :
+                        coneRays = coneRanges[begin:end]
+                        coneMin = np.min(coneRays)
+                        coneMax = np.max(coneRays)
+                        # find ray number at center of minimums
+                        idx = begin
+                        cnt = np.int32(0)
+                        coneRayIdxAtMin = np.int32(0)
+                        for ray in coneRays :
+                            if ray == coneMin :
+                                coneRayIdxAtMin += idx
+                                cnt +=1
+                            idx +=1
+
+                        # get min position as avg of all min positions
+                        coneRayIdxAtMin = np.int32(coneRayIdxAtMin/cnt)
+
+                        # validate if cone is near center of range of rays
+                        numRays = end - begin
+                        minCtr = coneRayIdxAtMin - begin
+                        minRatio = math.fabs(0.5 - minCtr/numRays)
+                        minRatioValid = minRatio < self.coneMinRatioLimit
+
+                        # Validate min - max distance and cone radius
+                        minMaxValid =   ((coneMax - coneMin) < self.coneMinMaxDiffMax) \
+                                    and ((coneMax - coneMin) > self.coneMinMaxDiffMin) 
+
+                        # # validate num rays vs distance
+                        # numRaysMeas = (end-begin)+1+rayInfCount
+                        # numRaysCalc = np.arctan2(coneRadius,coneMin+coneRadius) # dist to cone center
+                        # numRaysCalc *= 2/angle_increment
+                        # numRaysDiff = np.abs(numRaysMeas-numRaysCalc)
+                        # if True : #(numRaysDiff)  < 100 : #((numRaysCalc*rayCountScale)) :
+
+                        if (minMaxValid and minRatioValid) :
+                            # validated cone detection
+                            break
+                        else :
+                            # not valid cone, look for another
+                            begin = np.int32(0)
+                            end = np.int32(0)
+
+            else :
+                # cone ray distance was too far, look for another cone
+                begin = np.int32(0)
+                end = np.int32(0)
+
+            lastRay = ray
+            rayNum +=1
+ 
+        if (begin==0) or (end==0) :
+            # no cone detected
+            #self.get_logger().info(f"lidar_callback: No cone detected {coneRanges=}")
+            # default for no cone detected
+            self.cone_at_x_lidar = 0
+            self.cone_at_y_lidar = 0
+            self.cone_at_a_lidar = 0
+            return
+        
+        # find angle of detected cone in FOV in front of robot where cone is searched
+        # middle of coneRanges[] data is 0 degrees
+        a = np.float32(angle_increment*(coneRayIdxAtMin-(np.size(coneRanges)/2)))
+
+        # convert to x,y coordinates relative to lidar "/oak-d_frame"
+        d = np.float32(coneMin)
+        x = d*np.cos(a)
+        y = d*np.sin(a)
+
+        # self.get_logger().info(f"lidar_callback: {x=} {y=} {a=} {d=} {coneMax=} {minRatio=}")
+
+        coneRays -= d # normalize data, zero is closest
+        np.set_printoptions(precision=3, suppress=True)
+        # self.get_logger().info(f"lidar_callback: {x=} {y=} {d=}  {a=} {pfov=} {coneRayIdxAtMin=} {coneRays=}")
+        np.set_printoptions(precision=3, suppress=True)
         # transform coordinates to "/tof_fc_link" which is considered front of robot
-        self.cone_at_x_lidar = x - 0.400 # crude transformation, Lidar is 0.400 behind tof sensor
+        self.cone_at_x_lidar = x - 0.400 # crude transformation not TF, Lidar is 0.400 behind tof sensor
         self.cone_at_y_lidar = y
-        self.cone_angle_lidar = minAngle
+        self.cone_at_d_lidar = d
+        self.cone_at_a_lidar = a
+        
+        
 
     def gotoPoseBlocking(self, pose, t):
         """
         Go to the pose within in the time limit
         """
-
         self.nav.goToPose(pose)
-
         (result, _) = self.waitTaskComplete(t)
        
         return result
@@ -668,6 +933,12 @@ class NavNode(Node):
 
         return (result, feedback)
 
+    def destroy_node(self):
+        self.get_logger().info("destroy_node")
+        if hasattr(self, 'ser') and self.ser and self.ser.is_open:
+            self.ser.close()
+            self.get_logger().info("Serial port closed.")
+        super().destroy_node()
 
 def main(args=None):
     rclpy.init(args=args)
@@ -676,13 +947,20 @@ def main(args=None):
     node = NavNode(nav)
 
     # rclpy.spin(node)
-    executor = MultiThreadedExecutor()
-    executor.add_node(node)
-    executor.spin()    
+    # node.destroy_node()
+    # rclpy.shutdown()
 
-    node.destroy_node()
-    rclpy.shutdown()
-
+    try :
+        executor = MultiThreadedExecutor()
+        executor.add_node(node)
+        executor.spin()    
+    except KeyboardInterrupt:
+        from rclpy.impl import rcutils_logger
+        logger = rcutils_logger.RcutilsLogger(name="node")
+        logger.info('Received Keyboard Interrupt (^C). Shutting down.')
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()

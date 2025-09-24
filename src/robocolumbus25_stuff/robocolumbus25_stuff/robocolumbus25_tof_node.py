@@ -2,50 +2,89 @@ import rclpy
 import json
 import serial
 import math
+import numpy as np
+
 from rclpy.node import Node
 from sensor_msgs.msg import PointCloud2, PointField
 from std_msgs.msg import Header
-from rc25_interfaces.msg import Float32X8
+from rc25_interfaces.msg import Float32X8, TofDist
 
-import numpy as np
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 
 class TofNode(Node):
     '''
-    This processes the serial port from the RP2040 for the fornt and rear
+    This processes the serial port from the RP2040 for the front and rear
     TOF sensors
     '''
 
     timerRateHz = 100.0; # Rate to check serial port for messages
-    serial_port = "/dev/serial/by-id/usb-Waveshare_RP2040_PiZero_45533065790A3B5A-if00"
+    serial_port = ["/dev/serial/by-id/usb-Waveshare_RP2040_Zero_45533065790A3B5A-if00"
+                   ,"/dev/serial/by-id/usb-Waveshare_RP2040_PiZero_45533065790A3B5A-if00"]
+    serial_port_idx:int = 0
+
     baudrate = 1000000
 
-
-    
     def __init__(self):
         super().__init__('tof_node')
 
-        # Open serial port to tof sensors controller over USB
-        try:
-            self.ser = serial.Serial(self.serial_port, self.baudrate, timeout=1)
-            self.get_logger().info(f"Serial port {self.serial_port} opened.")
-        except serial.SerialException as e:
-            self.get_logger().error(f"Failed to open serial port: {e}")
-            self.ser = None
-            exit(1)
-            
+        self.cb_group = MutuallyExclusiveCallbackGroup()
+
+        self.openSerialPort()
+
         # publish a topic for each TOF sensor fc=front_center etc
         self.tof_fc_pcd_publisher = self.create_publisher(PointCloud2, 'tof_fc', 10)
         self.tof_fl_pcd_publisher = self.create_publisher(PointCloud2, 'tof_fl', 10)
         self.tof_fr_pcd_publisher = self.create_publisher(PointCloud2, 'tof_fr', 10)
         self.tof_fc_mid_publisher = self.create_publisher(Float32X8, 'tof_fc_mid', 10)
+        self.tof_dist_publisher = self.create_publisher(TofDist, 'tof_dist', 10)
       
         # timer to check serial port
-        self.timer = self.create_timer((1.0/self.timerRateHz), self.timer_callback)
+        self.timer = self.create_timer((1.0/self.timerRateHz), self.timer_callback
+                                       , callback_group=self.cb_group)
         
-        # # configure interface
-        # self.send_json_cmd({"cfg":{"imu":True, "gps":True, "cmp":False}})
-
         self.get_logger().info(f"TofNode Started")
+
+    def openSerialPort(self) :
+        # Open serial port to tof sensors controller over USB
+        # continuously try to open it
+        serialOpen = False
+        while not serialOpen :
+            try :
+                self.ser = serial.Serial(self.serial_port[self.serial_port_idx], self.baudrate, timeout=1)
+                self.get_logger().info(f"openSerialPort: Serial port {self.serial_port[self.serial_port_idx]} opened.")
+                serialOpen = True
+
+            except serial.SerialException as e :
+                self.get_logger().info(f"openSerialPort: Failed to open serial port: {e}")
+                self.get_logger().info("openSerialPort: Try opening serial port again, cycle between ports")
+                self.serial_port_idx +=1
+                if self.serial_port_idx > 1 : self.serial_port_idx = 0
+
+    # get data from serial port, returns a line of text
+    def getSerialData(self) -> str :
+        # Check if a line has been received on the serial port
+        err:bool=False
+        try :
+            if self.ser.in_waiting > 0 :
+                received_data:str = self.ser.readline().decode().strip()
+                # self.get_logger().info(f"getSerialData: {received_data=}")
+                return received_data # Exit while 1 loop
+            else :
+                return None
+            
+        except Exception as ex :
+            self.get_logger().info(f"getSerialData: serial read failure : {ex}")
+            err=True
+
+        if err :
+            try :
+                self.ser.close()    
+                # self.ser = serial.Serial(self.serial_port, self.baudrate, timeout=1)
+                self.openSerialPort()
+            except serial.SerialException as e:
+                self.get_logger().info(f"getSerialData: Failed to open serial port: {e}")
 
     def send_json_cmd(self,cmd) :
         # self.get_logger().info(f"send_json_cmd: {cmd=}")
@@ -58,39 +97,55 @@ class TofNode(Node):
     
     # check serial port at timerRateHz and parse out messages to publish
     def timer_callback(self):
-        # Check if a line has been received on the serial port
-        if self.ser.in_waiting > 0:
-            try :
-                received_data = self.ser.readline().decode().strip()
-                #self.get_logger().info(f"Received engine json: {received_data}")
-            except Exception as ex:
-                self.get_logger().error(f"TOF sensors serial read failure : {ex}")
-                return
+        
+        received_data = self.getSerialData()
+        if received_data == None : return
 
-            try :
-                unknown = True
-                packet = json.loads(received_data)
-                if "tof_fc" in packet :
-                    self.tof_Publish("tof_fc", packet)
-                    unknown = False
-                if "tof_fl" in packet :
-                    self.tof_Publish("tof_fl", packet)
-                    unknown = False
-                if "tof_fr" in packet :
-                    self.tof_Publish("tof_fr", packet)
-                    unknown = False
+        try :
+            unknown = True
+            packet = json.loads(received_data)
+            if "tof_fc" in packet :
+                tof_ab = "tof_fc"
+                unknown = False
+            if "tof_fl" in packet :
+                tof_ab = "tof_fl"
+                unknown = False
+            if "tof_fr" in packet :
+                tof_ab = "tof_fr"
+                unknown = False
 
-                if unknown :
-                    self.get_logger().info(f"TOF sensors serial json unknown : {received_data}")
-                    return  
-            except Exception as ex:
-                self.get_logger().error(f"TOF sensors serial json Exception {ex} : {received_data}")
-                return
+            if unknown :
+                self.get_logger().info(f"TOF sensors serial json unknown : {received_data}")
+                return  
+        except Exception as ex:
+            self.get_logger().error(f"TOF sensors serial json Exception {ex} : {received_data}")
+            return
+
+        # publish front center mid row point cloud    
+        self.tof_pcd_publish(tof_ab, packet)
+        # publish raw data from sensors
+        self.tof_sensor_publish(tof_ab, packet)
+        
+    # publish the "raw" TOF sensor distance data
+    def tof_sensor_publish(self, tof_ab, packet) -> None :
+        if tof_ab in packet :
+            tof = packet.get(tof_ab)
+        else : return
+
+        if "dist" in tof :
+            dist = np.int16(tof.get("dist")).reshape(64)
+        else : return
+        # self.get_logger().info(f"tof_sensor_publish: {tof_ab} {dist=}")
+
+        msg = TofDist()
+        msg.tof = tof_ab
+        msg.dist = dist
+        self.tof_dist_publisher.publish(msg)
 
     # 8x8 point cloud for each sensor FOV 45degx45deg
     # calculate x,y,z for each point
     # TODO: Optimize math with numpy
-    def tof_Publish(self, tof_ab, packet) -> None:
+    def tof_pcd_publish(self, tof_ab, packet) -> None:
         # self.get_logger().info(f"tof_Publish: {tof_ab=} {packet=}")
 
         tof = packet.get(tof_ab)
@@ -208,11 +263,21 @@ def main(args=None):
     rclpy.init(args=args)
 
     node = TofNode()
-    rclpy.spin(node)
+    # rclpy.spin(node)
+    # node.destroy_node()
+    # rclpy.shutdown()
+
+    try :
+        executor = MultiThreadedExecutor()
+        executor.add_node(node)
+        executor.spin()    
+    except KeyboardInterrupt:
+        from rclpy.impl import rcutils_logger
+        logger = rcutils_logger.RcutilsLogger(name="node")
+        logger.info('Received Keyboard Interrupt (^C). Shutting down.')
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
     
-    node.destroy_node()
-    rclpy.shutdown()
-
-
 if __name__ == '__main__':
     main()

@@ -13,6 +13,10 @@ from geometry_msgs.msg import Twist
 #from geometry_msgs.msg import TransformStamped
 from sensor_msgs.msg import Joy
 
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+
 class Robocolumbus25TeleopNode(Node):
     maxLinearX: float       = 1.0   # Meters per second
     maxSteerAngleRad: float = 0.698   # ~40 degrees
@@ -22,7 +26,9 @@ class Robocolumbus25TeleopNode(Node):
     def __init__(self):
         super().__init__('robocolumbus25_teleop_node')
 
-        self.joy_subscription = self.create_subscription(Joy, '/joy', self.joy_callback, 10)
+        self.joy_subscription = self.create_subscription(Joy, '/joy'
+                                    , self.joy_callback, 10)
+        
         self.cmd_vel_publisher = self.create_publisher(Twist, '/cmd_vel', 10)
 
         self.get_logger().info("Teleop Started")
@@ -58,15 +64,34 @@ class Robocolumbus25TeleopNode(Node):
         cmd_vel.linear.x = linearX
         cmd_vel.angular.z = angularZ
         self.cmd_vel_publisher.publish(cmd_vel)
+  
+    def destroy_node(self):
+        self.get_logger().info("destroy_node")
+        if hasattr(self, 'ser') and self.ser and self.ser.is_open:
+            self.ser.close()
+            self.get_logger().info("Serial port closed.")
+        super().destroy_node()
 
 def main(args=None):
     rclpy.init(args=args)
 
     node = Robocolumbus25TeleopNode()
-    rclpy.spin(node)
-    
-    node.destroy_node()
-    rclpy.shutdown()
+
+    # rclpy.spin(node)
+    # node.destroy_node()
+    # rclpy.shutdown()
+
+    try :
+        executor = MultiThreadedExecutor()
+        executor.add_node(node)
+        executor.spin()    
+    except KeyboardInterrupt:
+        from rclpy.impl import rcutils_logger
+        logger = rcutils_logger.RcutilsLogger(name="node")
+        logger.info('Received Keyboard Interrupt (^C). Shutting down.')
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
 
 # This code is needed to run .py file directly
 if __name__ == '__main__':

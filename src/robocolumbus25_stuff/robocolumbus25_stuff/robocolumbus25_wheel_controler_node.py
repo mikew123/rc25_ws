@@ -27,6 +27,10 @@ import tf_transformations
 import time
 import numpy as np
 
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+
 class WheelControllerNode(Node):
     #PID coefficients
     coeffA = 0.2
@@ -51,7 +55,9 @@ class WheelControllerNode(Node):
     last_cv_msg = Twist()
 
     # Serial port configuration (update as needed)
-    serial_port = "/dev/serial/by-id/usb-Waveshare_RP2040_Zero_E6625887D37C3E30-if00"
+    serial_port = ["/dev/serial/by-id/usb-Waveshare_RP2040_Zero_E6625887D37C3E30-if00"
+                   ,"/dev/serial/by-id/usb-Waveshare_RP2040_PiZero_E6625887D37C3E30-if00"]
+    serial_port_idx = 0
     baudrate = 1000000
 
     # Odometry from encoder or velocity
@@ -64,28 +70,33 @@ class WheelControllerNode(Node):
     def __init__(self):
         super().__init__('robocolumbus25_wheel_controler_node')
 
+        self.cb_group = MutuallyExclusiveCallbackGroup()
+
+        # try:
+        #     self.ser = serial.Serial(self.serial_port, self.baudrate, timeout=1)
+        #     self.get_logger().info(f"Serial port {self.serial_port} opened.")
+        # except serial.SerialException as e:
+        #     self.get_logger().error(f"Failed to open serial port: {e}")
+        #     self.ser = None
+
+        self.openSerialPort()
+
         self.last_time_sec = self.get_clock().now().nanoseconds * 1e-9
 
-        self.cmd_vel_subscription = self.create_subscription(
-            Twist,
-            '/cmd_vel',
-            self.cmd_vel_callback,
-            10
-        )
+        self.cmd_vel_subscription = self.create_subscription(Twist, '/cmd_vel'
+                                        , self.cmd_vel_callback, 10)
+
         self.wheel_odom_publisher = self.create_publisher(Odometry, 'wheel_odom', 10)
         self.battery_status_msg_publisher = self.create_publisher(BatteryState, 'battery_status', 10)
-        self.serialTimer = self.create_timer(0.010, self.serialTimerCallback)
+
+        # Timer is used for serial port, has own call back group is serial processing takes time
+        self.serialTimer = self.create_timer(0.010, self.serialTimerCallback
+                                       , callback_group=self.cb_group)
 
         # Message topic to/from all nodes for general messaging Json formated string
         self.json_msg_publisher = self.create_publisher(String, "json_msg", 10)
-        self.json_msg_subscription = self.create_subscription(String, "json_msg", self.json_msg_callback, 10)
-
-        try:
-            self.ser = serial.Serial(self.serial_port, self.baudrate, timeout=1)
-            self.get_logger().info(f"Serial port {self.serial_port} opened.")
-        except serial.SerialException as e:
-            self.get_logger().error(f"Failed to open serial port: {e}")
-            self.ser = None
+        self.json_msg_subscription = self.create_subscription(String, "json_msg"
+                                        , self.json_msg_callback, 10)
 
         cmd = {"pid":[self.coeffA,self.coeffB,self.coeffDA,self.coeffDB]}
         self.sendJsonCmd(cmd)
@@ -96,6 +107,46 @@ class WheelControllerNode(Node):
         time.sleep(5)  # engine controller seems to act weird if no delay
 
         self.get_logger().info(f"WheelControllerNode: Started node")
+
+    def openSerialPort(self) :
+        # Open serial port to tof sensors controller over USB
+        # continuously try to open it
+        serialOpen = False
+        while not serialOpen :
+            try :
+                self.ser = serial.Serial(self.serial_port[self.serial_port_idx], self.baudrate, timeout=1)
+                self.get_logger().info(f"openSerialPort: Serial port {self.serial_port[self.serial_port_idx]} opened.")
+                serialOpen = True
+
+            except serial.SerialException as e :
+                self.get_logger().info(f"openSerialPort: Failed to open serial port: {e}")
+                self.get_logger().info("openSerialPort: Try opening serial port again")
+                self.serial_port_idx +=1
+                if self.serial_port_idx>1 : self.serial_port_idx=0
+
+    # get data from serial port, returns a line of text
+    def getSerialData(self) -> str :
+        # Check if a line has been received on the serial port
+        err:bool=False
+        try :
+            if self.ser.in_waiting > 0 :
+                received_data:str = self.ser.readline().decode().strip()
+                # self.get_logger().info(f"getSerialData: {received_data=}")
+                return received_data # Exit while 1 loop
+            else :
+                return None
+            
+        except Exception as ex :
+            self.get_logger().info(f"getSerialData: serial read failure : {ex}")
+            err=True
+
+        if err :
+            try :
+                self.ser.close()    
+                # self.ser = serial.Serial(self.serial_port, self.baudrate, timeout=1)
+                self.openSerialPort()
+            except serial.SerialException as e:
+                self.get_logger().info(f"getSerialData: Failed to open serial port: {e}")
 
     def json_msg_callback(self, msg:String) -> None :
         #self.get_logger().info(f"json_msg_callback: {msg=}")
@@ -119,9 +170,15 @@ class WheelControllerNode(Node):
     def serialTimerCallback(self) :
         # self.get_logger().info(f"serialTimerCallback")
         data = {}
-        while self.ser.in_waiting :
-            line = self.ser.readline().decode('utf-8').strip()
-            #self.get_logger().info(f"serialTimerCallback: {line=}")
+        # while self.ser.in_waiting :
+        #     line = self.ser.readline().decode('utf-8').strip()
+        #     #self.get_logger().info(f"serialTimerCallback: {line=}")
+
+        # keep trying until a valid JSON formtaed line is read
+        while 1 :
+            line:str = self.getSerialData()
+            if line == None : return
+            
             try:
                 data = json.loads(line)
                 break
@@ -151,7 +208,7 @@ class WheelControllerNode(Node):
         self.sendJsonMsg(json_msg)
 
     def processBatteryInfo(self, vbat) -> None :
-        if vbat <= 11.1 :
+        if vbat > 0 and vbat <= 11.1 :
             self.get_logger().warning(f"Battery low {vbat=:.3f}")
         elif (time.time_ns()*1e-9 - self.bat_timer) > self.bat_per :
             self.get_logger().info(f"Battery {vbat=:.3f}")
@@ -332,7 +389,6 @@ class WheelControllerNode(Node):
         self.last_cv_msg = msg
         self.last_cv_time_sec = current_time_sec
             
-
     def destroy_node(self):
         self.get_logger().info("destroy_node")
         if hasattr(self, 'ser') and self.ser and self.ser.is_open:
@@ -348,15 +404,18 @@ class WheelControllerNode(Node):
             self.get_logger().info("Serial port closed.")
         super().destroy_node()
 
-
 def main(args=None):
     rclpy.init(args=args)
     node = WheelControllerNode()
     # rclpy.spin(node)
     # node.destroy_node()
     # rclpy.shutdown()
+
     try:
-        rclpy.spin(node)
+        # rclpy.spin(node)
+        executor = MultiThreadedExecutor()
+        executor.add_node(node)
+        executor.spin()    
     except KeyboardInterrupt:
         from rclpy.impl import rcutils_logger
         logger = rcutils_logger.RcutilsLogger(name="node")
@@ -364,7 +423,6 @@ def main(args=None):
     finally:
         node.destroy_node()
         rclpy.shutdown()
-
 
 if __name__ == '__main__':
     main()
