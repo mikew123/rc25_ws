@@ -23,7 +23,7 @@
 
 #define SERIAL_HZ 1000000
 
-// Power enable does not exist yet
+// Vl53l8cx power enable is not used
 #define PWREN_PIN -1
 #define SDA_PIN 0
 #define SCL_PIN 1
@@ -34,7 +34,8 @@
 #define LPNL_PIN 7
 #define LPNR_PIN 8
 
-#define PWRN_PIN 29
+// 3.3V TOF regulator enable pin
+#define PWRN_PIN 2
 
 #define I2C_HZ 1000000
 #define SCAN_RATE_HZ 10
