@@ -17,7 +17,7 @@
         },
         {
             "name": "Arduino",
-            "compilerPath": "C:\\Users\\Mikes\\AppData\\Local\\Arduino15\\packages\\rp2040\\tools\\pqt-gcc\\4.1.0-1aec55e\\bin\\arm-none-eabi-g++",
+            "compilerPath": "/home/mikew/.arduino15/packages/rp2040/tools/pqt-gcc/4.1.0-1aec55e/bin/arm-none-eabi-g++",
             "compilerArgs": [
                 "-I",
                 "-Werror=return-type",
@@ -31,20 +31,20 @@
             ],
             "intelliSenseMode": "gcc-x64",
             "includePath": [
-                "C:\\Users\\Mikes\\AppData\\Local\\Arduino15\\packages\\rp2040\\hardware\\rp2040\\5.0.0\\include",
-                "C:\\Users\\Mikes\\AppData\\Local\\Arduino15\\packages\\rp2040\\hardware\\rp2040\\5.0.0\\cores\\rp2040",
-                "C:\\Users\\Mikes\\AppData\\Local\\Arduino15\\packages\\rp2040\\hardware\\rp2040\\5.0.0\\variants\\waveshare_rp2040_zero",
-                "C:\\Users\\Mikes\\Documents\\Arduino\\libraries\\107-Arduino-Servo-RP2040\\src",
-                "C:\\Users\\Mikes\\Documents\\Arduino\\libraries\\Arduino_JSON\\src",
-                "C:\\Users\\Mikes\\AppData\\Local\\Arduino15\\packages\\rp2040\\tools\\pqt-gcc\\4.1.0-1aec55e\\arm-none-eabi\\include\\c++\\14.3.0",
-                "C:\\Users\\Mikes\\AppData\\Local\\Arduino15\\packages\\rp2040\\tools\\pqt-gcc\\4.1.0-1aec55e\\arm-none-eabi\\include\\c++\\14.3.0\\arm-none-eabi\\thumb",
-                "C:\\Users\\Mikes\\AppData\\Local\\Arduino15\\packages\\rp2040\\tools\\pqt-gcc\\4.1.0-1aec55e\\arm-none-eabi\\include\\c++\\14.3.0\\backward",
-                "C:\\Users\\Mikes\\AppData\\Local\\Arduino15\\packages\\rp2040\\tools\\pqt-gcc\\4.1.0-1aec55e\\lib\\gcc\\arm-none-eabi\\14.3.0\\include",
-                "C:\\Users\\Mikes\\AppData\\Local\\Arduino15\\packages\\rp2040\\tools\\pqt-gcc\\4.1.0-1aec55e\\lib\\gcc\\arm-none-eabi\\14.3.0\\include-fixed",
-                "C:\\Users\\Mikes\\AppData\\Local\\Arduino15\\packages\\rp2040\\tools\\pqt-gcc\\4.1.0-1aec55e\\arm-none-eabi\\include"
+                "/home/mikew/.arduino15/packages/rp2040/hardware/rp2040/4.6.0/include",
+                "/home/mikew/.arduino15/packages/rp2040/hardware/rp2040/4.6.0/cores/rp2040",
+                "/home/mikew/.arduino15/packages/rp2040/hardware/rp2040/4.6.0/variants/waveshare_rp2040_zero",
+                "/home/mikew/Arduino/libraries/107-Arduino-Servo-RP2040/src",
+                "/home/mikew/Arduino/libraries/Arduino_JSON/src",
+                "/home/mikew/.arduino15/packages/rp2040/tools/pqt-gcc/4.1.0-1aec55e/arm-none-eabi/include/c++/14.3.0",
+                "/home/mikew/.arduino15/packages/rp2040/tools/pqt-gcc/4.1.0-1aec55e/arm-none-eabi/include/c++/14.3.0/arm-none-eabi/thumb",
+                "/home/mikew/.arduino15/packages/rp2040/tools/pqt-gcc/4.1.0-1aec55e/arm-none-eabi/include/c++/14.3.0/backward",
+                "/home/mikew/.arduino15/packages/rp2040/tools/pqt-gcc/4.1.0-1aec55e/lib/gcc/arm-none-eabi/14.3.0/include",
+                "/home/mikew/.arduino15/packages/rp2040/tools/pqt-gcc/4.1.0-1aec55e/lib/gcc/arm-none-eabi/14.3.0/include-fixed",
+                "/home/mikew/.arduino15/packages/rp2040/tools/pqt-gcc/4.1.0-1aec55e/arm-none-eabi/include"
             ],
             "forcedInclude": [
-                "C:\\Users\\Mikes\\AppData\\Local\\Arduino15\\packages\\rp2040\\hardware\\rp2040\\5.0.0\\cores\\rp2040\\Arduino.h"
+                "/home/mikew/.arduino15/packages/rp2040/hardware/rp2040/4.6.0/cores/rp2040/Arduino.h"
             ],
             "cStandard": "c11",
             "cppStandard": "c++17",
