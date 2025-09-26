@@ -46,7 +46,7 @@ bt_navigator:
     robot_base_frame: base_footprint
     odom_topic: /wheel_odom
     bt_loop_duration: 10
-    default_server_timeout: 20
+    default_server_timeout: 50 #20
     wait_for_service_timeout: 1000
     action_server_result_timeout: 900.0
     navigators: ["navigate_to_pose", "navigate_through_poses"]
@@ -74,7 +74,7 @@ controller_server:
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
       required_movement_radius: 1.0
-      movement_time_allowance: 10.0
+      movement_time_allowance: 20.0 #10.0
       
     goal_checker:
       stateful: True
@@ -365,7 +365,7 @@ planner_server:
       allow_unknown: False #true
       max_iterations: 1000000
       max_on_approach_iterations: 1000
-      max_planning_time: 10.0  # 增加规划时间以支持复杂机动
+      max_planning_time: 20.0 #10.0  # 增加规划时间以支持复杂机动
       motion_model_for_search: "REEDS_SHEPP"  # 支持前进/后退的模型
       angle_quantization_bins: 72
       analytic_expansion_ratio: 3.5
@@ -416,7 +416,7 @@ behavior_server:
     global_frame: map
     robot_base_frame: base_footprint
     transform_tolerance: 0.1
-    simulate_ahead_time: 2.0
+    simulate_ahead_time: 5.0 #2.0
     max_rotational_vel: 2.0
     min_rotational_vel: 0.0
     rotational_acc_lim: 1.0
