@@ -56,7 +56,7 @@ class NavNode(Node):
     cd_closer_avel = cd_closer_lvel
 
     # state=3 use /tof_fc_mid to "touch" cone using /cmd_vel
-    cd_touch_dist = 0.040
+    cd_touch_dist = 0.045
     cd_touch_lin_vel = 0.05
     cd_touch_ang_vel = cd_touch_lin_vel
 
@@ -438,7 +438,7 @@ class NavNode(Node):
         x = d*math.cos(a)
         y = d*math.sin(a)
 
-        x -= 0.390 # Lidar sensor is Xmm back
+        x -= 0.400 # Lidar sensor is Xmm back
         x -= 0.040 # Cone surface is Xmm further at Lidar level
 
         # get TOF obstacle detections

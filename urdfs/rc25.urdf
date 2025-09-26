@@ -109,7 +109,7 @@
   <joint name="imu_joint" type="fixed">
     <parent link="base_link"/>
     <child link="imu_link"/>
-    <origin xyz="0 0 0.285" rpy="0 0 0"/>
+    <origin xyz="0 0 0.250" rpy="0 0 0"/>
   </joint>
 
   <link name="imu_link">
@@ -126,7 +126,7 @@
   <joint name="lidar_joint" type="fixed">
     <parent link="base_link"/>
     <child link="lidar_link"/>
-    <origin xyz="0.220 0 0.355" rpy="0 0 0"/>
+    <origin xyz="0.200 0 0.320" rpy="0 0 0"/>
   </joint>
 
   <link name="lidar_link">
@@ -144,7 +144,7 @@
   <joint name="gps_joint" type="fixed">
     <parent link="base_link"/>
     <child link="gps_link"/>
-    <origin xyz="0.110 0 0.325" rpy="0 0 0"/>
+    <origin xyz="0.040 0 0.250" rpy="0 0 0"/>
   </joint>
 
   <link name="gps_link">
@@ -161,7 +161,7 @@
   <joint name="oak-d-base-frame" type="fixed">
     <parent link="base_link"/>
     <child link="oak-d-base-frame"/>
-    <origin xyz="0.400 -0.030 0.315" rpy="0 0 0"/>
+    <origin xyz="0.300 0.00 0.240" rpy="0 0 0"/>
   </joint>
 
   <link name="oak-d-base-frame">
