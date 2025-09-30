@@ -3,10 +3,12 @@ import json
 import serial
 import math
 import numpy as np
+import time
 
 from rclpy.node import Node
 from sensor_msgs.msg import PointCloud2, PointField
 from std_msgs.msg import Header
+from std_msgs.msg import String
 from rc25_interfaces.msg import Float32X8, TofDist
 
 from rclpy.executors import MultiThreadedExecutor
@@ -31,6 +33,13 @@ class TofNode(Node):
 
         self.cb_group = MutuallyExclusiveCallbackGroup()
 
+
+        # Message topic to/from all nodes for general messaging Json formated string
+        self.json_msg_publisher = self.create_publisher(String, "json_msg", 10)
+        self.json_msg_subscription = self.create_subscription(String, "json_msg"
+                                        , self.json_msg_callback, 10)
+
+
         self.openSerialPort()
 
         # publish a topic for each TOF sensor fc=front_center etc
@@ -44,7 +53,26 @@ class TofNode(Node):
         self.timer = self.create_timer((1.0/self.timerRateHz), self.timer_callback
                                        , callback_group=self.cb_group)
         
+        time.sleep(2) # wait for json_msg_publisher to be ready!!??
+        self.tts("Time of Flight Node Started")
         self.get_logger().info(f"TofNode Started")
+
+
+    def tts(self, tts) -> None:
+        """
+        Send text to speaker 
+        """
+        json_msg = {"speaker":{"tts":tts}}
+        self.sendJsonMsg(json_msg)
+
+    def sendJsonMsg(self, json_msg) -> None :
+        #self.get_logger().info(f"{json_msg=}")
+        str = json.dumps(json_msg)
+        msg = String(data=str)
+        self.json_msg_publisher.publish(msg)
+
+    def json_msg_callback(self,msg) :
+        pass
 
     def openSerialPort(self) :
         # Open serial port to tof sensors controller over USB

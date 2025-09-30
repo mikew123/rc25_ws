@@ -32,6 +32,7 @@ setup(
             'robocolumbus25_cone_node = robocolumbus25_stuff.robocolumbus25_cone_node:main',
             'robocolumbus25_nav_node = robocolumbus25_stuff.robocolumbus25_nav_node:main',
             'robocolumbus25_tof_node = robocolumbus25_stuff.robocolumbus25_tof_node:main',
+            'robocolumbus25_speaker_node = robocolumbus25_stuff.robocolumbus25_speaker_node:main',
         ],
     },
 )

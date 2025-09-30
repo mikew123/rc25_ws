@@ -45,14 +45,10 @@ class ImuGpsNode(Node):
 
         self.cb_group = MutuallyExclusiveCallbackGroup()
 
-        # Open serial port to imu_gps control over USB
-        # try:
-        #     self.ser = serial.Serial(self.serial_port, self.baudrate, timeout=1)
-        #     self.get_logger().info(f"Serial port {self.serial_port} opened.")
-        # except serial.SerialException as e:
-        #     self.get_logger().error(f"Failed to open serial port: {e}")
-        #     self.ser = None
-        #     exit(1)
+        # Message topic to/from all nodes for general messaging Json formated string
+        self.json_msg_publisher = self.create_publisher(String, "json_msg", 10)
+        self.json_msg_subscription = self.create_subscription(String, "json_msg"
+                                        , self.json_msg_callback, 10)
             
         self.openSerialPort()
 
@@ -64,7 +60,6 @@ class ImuGpsNode(Node):
 
         self.gps_nav_subscription = self.create_subscription(NavSatFix,"gps_nav"
                                         , self.gps_nav_subscription_callback, 10)
-        
 
         self.timer = self.create_timer((1.0/self.timerRateHz), self.timer_callback
                                        , callback_group=self.cb_group)
@@ -72,7 +67,25 @@ class ImuGpsNode(Node):
         # configure interface
         self.send_json_cmd({"cfg":{"imu":True, "gps":True, "cmp":False}})
 
+        time.sleep(2) # wait for json_msg_publisher to be ready!!??
+        self.tts("Imu and GPS Node Started")               
         self.get_logger().info(f"ImuGpsNode Started")
+
+
+    def tts(self, tts) -> None:
+        """
+        Send text to speaker 
+        """
+        json_msg = {"speaker":{"tts":tts}}
+        self.sendJsonMsg(json_msg)
+
+    def sendJsonMsg(self, json_msg) -> None :
+        str = json.dumps(json_msg)
+        msg = String(data=str)
+        self.json_msg_publisher.publish(msg)
+
+    def json_msg_callback(self,msg) :
+        pass
 
     def openSerialPort(self) :
         # Open serial port to tof sensors controller over USB

@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 
 import rclpy
-#import sys
-#import serial
 import math
-#import time
-#import numpy as np
+import json
+import time
 
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
-#from std_msgs.msg import String
+from std_msgs.msg import String
 #from geometry_msgs.msg import TransformStamped
 from sensor_msgs.msg import Joy
 
@@ -26,13 +24,38 @@ class Robocolumbus25TeleopNode(Node):
     def __init__(self):
         super().__init__('robocolumbus25_teleop_node')
 
+
+        # Message topic to/from all nodes for general messaging Json formated string
+        self.json_msg_publisher = self.create_publisher(String, "json_msg", 10)
+        self.json_msg_subscription = self.create_subscription(String, "json_msg"
+                                        , self.json_msg_callback, 10)
+
         self.joy_subscription = self.create_subscription(Joy, '/joy'
                                     , self.joy_callback, 10)
         
         self.cmd_vel_publisher = self.create_publisher(Twist, '/cmd_vel', 10)
 
-        self.get_logger().info("Teleop Started")
-       
+        time.sleep(2) # wait for json_msg_publisher to be ready!!??
+        self.tts("Teleop Node Started")
+        self.get_logger().info("Teleop Node Started")
+
+
+    def tts(self, tts) -> None:
+        """
+        Send text to speaker 
+        """
+        json_msg = {"speaker":{"tts":tts}}
+        self.sendJsonMsg(json_msg)
+
+    def sendJsonMsg(self, json_msg) -> None :
+        #self.get_logger().info(f"{json_msg=}")
+        str = json.dumps(json_msg)
+        msg = String(data=str)
+        self.json_msg_publisher.publish(msg)
+
+    def json_msg_callback(self,msg) :
+        pass
+
     # Get button commands from Joy message
     def joy_callback(self, msg):
         cmd_vel = Twist()

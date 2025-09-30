@@ -106,6 +106,7 @@ class WheelControllerNode(Node):
         self.ser.flush()
         time.sleep(5)  # engine controller seems to act weird if no delay
 
+        self.tts("Wheel Controller Node Started")
         self.get_logger().info(f"WheelControllerNode: Started node")
 
     def openSerialPort(self) :
@@ -151,6 +152,10 @@ class WheelControllerNode(Node):
     def json_msg_callback(self, msg:String) -> None :
         #self.get_logger().info(f"json_msg_callback: {msg=}")
         pass
+
+    def tts(self, tts) -> None:
+        json_msg = {"speaker":{"tts":tts}}
+        self.sendJsonMsg(json_msg)
 
     def sendJsonMsg(self, json_msg) -> None :
         str = json.dumps(json_msg)
@@ -207,6 +212,8 @@ class WheelControllerNode(Node):
         json_msg =  {"kill":kill}
         self.sendJsonMsg(json_msg)
 
+    lastVbat = -1
+
     def processBatteryInfo(self, vbat) -> None :
         if vbat > 0 and vbat <= 11.1 :
             self.get_logger().warning(f"Battery low {vbat=:.3f}")
@@ -214,6 +221,7 @@ class WheelControllerNode(Node):
             self.get_logger().info(f"Battery {vbat=:.3f}")
             self.bat_timer = time.time_ns()*1e-9
 
+        # Send /battery_state topic message
         # TODO: add current and possibly cell voltages
         bmsg = BatteryState()
         bmsg.header.stamp = self.get_clock().now().to_msg()
@@ -221,6 +229,19 @@ class WheelControllerNode(Node):
         bmsg.voltage = float(vbat)
         bmsg.present = True
         self.battery_status_msg_publisher.publish(bmsg)
+
+        # Send battery status to the speaker
+        if vbat!=self.lastVbat :
+            self.lastVbat = vbat
+            if vbat == 0.0 :
+                self.tts("No battery")
+            if vbat == 11.3 :
+                self.tts("Battery voltage is getting low: 11.3 Volts")
+            if vbat == 11.0 :
+                self.tts("Battery voltage is criticaly low: 11.0 Volts")
+            if vbat>0.0 and vbat<11.0 :
+                self.tts(f"DANGER low battery voltage: {vbat} Volts")
+
 
     # Process odom info from wheels to get /wheel_odom with velocity and pose
     def proc_wheel_odom_msg(self, odom) :

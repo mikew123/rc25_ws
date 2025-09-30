@@ -1,9 +1,12 @@
 import rclpy
 import math
+import json
+import time
 
 from rclpy.node import Node
 from geometry_msgs.msg import PointStamped
 from vision_msgs.msg import Detection3DArray
+from std_msgs.msg import String
 
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
@@ -22,18 +25,48 @@ class ConeNode(Node):
     def __init__(self):
         super().__init__('cone_node')
             
+
+        # Message topic to/from all nodes for general messaging Json formated string
+        self.json_msg_publisher = self.create_publisher(String, "json_msg", 10)
+        self.json_msg_subscription = self.create_subscription(String, "json_msg"
+                                        , self.json_msg_callback, 10)
+
         self.cone_point_publisher = self.create_publisher(PointStamped, 'cone_point', 10)
 
         self.cone_det_cam_subscription = self.create_subscription(Detection3DArray,"color/spatial_detections", 
                                             self.cone_det_cam_subscription_callback, 10)
-                
+
+        time.sleep(2) # wait for json_msg_publisher to be ready!!??
+        self.tts("Cone Node Started")               
         self.get_logger().info(f"ConeNode Started")
 
+    def tts(self, tts) -> None:
+        """
+        Send text to speaker 
+        """
+        json_msg = {"speaker":{"tts":tts}}
+        self.sendJsonMsg(json_msg)
+
+    def sendJsonMsg(self, json_msg) -> None :
+        #self.get_logger().info(f"{json_msg=}")
+        str = json.dumps(json_msg)
+        msg = String(data=str)
+        self.json_msg_publisher.publish(msg)
+
+    def json_msg_callback(self,msg) :
+        pass
+
+    cameraMsgDetected = False
+    cameraConeDetected = False
 
     # Cone detection from camera AI
     # TODO: manage multiple detections!!!! like an orange shoe or shirt
     def cone_det_cam_subscription_callback(self, msg: Detection3DArray) -> None:
         #self.get_logger().info(f"{msg=}")
+
+        if not self.cameraMsgDetected :
+            self.tts("Camera is active")
+            self.cameraMsgDetected = True
 
         stamp = self.get_clock().now().to_msg()
         pmsg = PointStamped()
@@ -90,7 +123,16 @@ class ConeNode(Node):
         if num_detections == 0 :
             # publish invalid cone location at 0,0 
             self.cone_point_publisher.publish(pmsg)
-            pass
+            if self.cameraConeDetected :
+                self.tts("Lost Camera AI cone detection")
+                self.cameraConeDetected = False
+        else :
+            if not self.cameraConeDetected :
+                x = pmsg.point.x
+                y = pmsg.point.y
+                self.tts(f"Camera AI cone has been detected at {x=} {y=}")
+                self.cameraConeDetected = True
+
   
     def destroy_node(self):
         self.get_logger().info("destroy_node")

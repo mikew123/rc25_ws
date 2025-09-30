@@ -150,7 +150,17 @@ class NavNode(Node):
         self.sm_timer = self.create_timer((1.0/self.smTimerRateHz), self.sm_timer_callback
                                        , callback_group=self.cb_group)
 
+        time.sleep(2) # wait for json_msg_publisher to be ready!!??
+        self.tts("RC25 Navigation Node Started")
         self.get_logger().info(f"NavNode Started")
+
+
+    def tts(self, tts) -> None:
+        """
+        Send text to speaker 
+        """
+        json_msg = {"speaker":{"tts":tts}}
+        self.sendJsonMsg(json_msg)
 
     def sendJsonMsg(self, json_msg) -> None :
         str = json.dumps(json_msg)
@@ -203,6 +213,7 @@ class NavNode(Node):
             if dt>to and t>0:
                 self.get_logger().info(f"sm_timer: cone detection is stale {dt=:.3f} {x=:.3f} {y=:.3f} {d=:.3f}  {a=:.3f}")
                 d = 0
+
 
             if d>=0 :
                 self.get_logger().info(f"sm_timer: cone detected - cancel rviz nav {x=:.3f} {y=:.3f} {d=:.3f}  {a=:.3f}")
@@ -283,6 +294,10 @@ class NavNode(Node):
             self.get_logger().info(f"{func} cone detection is stale {x=} {y=} {dt=}")
             x = 0
             y = 0
+            # clear out globals
+            self.cone_det_time_cam = 0.0
+            self.cone_at_x_cam = 0.0
+            self.cone_at_y_cam = 0.0
 
         killSwitchActive:bool  = ks
         next_state:int = state

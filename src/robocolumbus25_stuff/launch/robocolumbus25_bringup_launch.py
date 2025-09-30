@@ -75,6 +75,13 @@ def generate_launch_description():
 
         launch_ros.actions.Node(
             package='robocolumbus25_stuff',
+            executable='robocolumbus25_speaker_node',
+            name='speaker_node',
+            namespace="",
+        ),
+
+        launch_ros.actions.Node(
+            package='robocolumbus25_stuff',
             executable='robocolumbus25_tof_node',
             name='tof_node',
             namespace="",
