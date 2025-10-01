@@ -19,8 +19,8 @@ class ConeNode(Node):
     '''
 
     # median 5 filter memory for tof_foc data
-    # list of tupples [5X(x,y,z)]
-    m5_filter:list = [(0.0,0.0,0.0)]*5
+    # list of tupples [7X(x,y,z)]
+    m7_filter:list = [(0.0,0.0,0.0)]*7
 
     def __init__(self):
         super().__init__('cone_node')
@@ -58,6 +58,7 @@ class ConeNode(Node):
 
     cameraMsgDetected = False
     cameraConeDetected = False
+    coneCounter = 0
 
     # Cone detection from camera AI
     # TODO: manage multiple detections!!!! like an orange shoe or shirt
@@ -77,7 +78,6 @@ class ConeNode(Node):
 
         # TODO: filter out for best cone detection when multiple occur
         for detection in detections :
-            num_detections +=1
             #header = detection.header
             results = detection.results
             bbox = detection.bbox
@@ -97,21 +97,23 @@ class ConeNode(Node):
                 by1 = 59*(2.8/z)
                 xx = math.fabs(1.0 - bx0/bx1)
                 yy = math.fabs(1.0 - by0/by1)
-                if z>1 : pct = 0.2
-                else : pct = 0.5
+                if z>1 : pct = 0.3
+                else : pct = 0.6
                 if (xx < pct) and (yy < pct) :
+                    # Cone validated using bbox shape and size
+                    num_detections +=1
                     # Use median-5 filter to remove points with distance spikes
-                    m5 = self.m5_filter
+                    m7 = self.m7_filter
                     # add new sample to filter list memory
-                    m5 = [(x,y,z),m5[0],m5[1],m5[2],m5[3]]
-                    self.m5_filter = m5
-                    # sort tupple[2] z is distance (m5 is not modified)
-                    m5s = sorted(m5, key=lambda xyz: xyz[2])
+                    m7 = [(x,y,z),m7[0],m7[1],m7[2],m7[3],m7[4],m7[5]]
+                    self.m7_filter = m7
+                    # sort tupple[2] z is distance (m7 is not modified)
+                    m7s = sorted(m7, key=lambda xyz: xyz[2])
                     # pick the median sample
-                    (xm,ym,zm) = m5s[2]
-                    #(xm,ym,zm) = m5[2] # DEBUG: unfiltered
+                    (xm,ym,zm) = m7s[3]
+                    #(xm,ym,zm) = m7[3] # DEBUG: unfiltered
                     #(xm,ym,zm) = (x,y,z)
-                    #self.get_logger().info(f"{m5=} {m5s=}")
+                    #self.get_logger().info(f"{m7=} {m7s=}")
                     
                     # Publish the cone location point x,y,z relative to camera
                     pmsg.point.x = zm # Forward meters
@@ -120,18 +122,43 @@ class ConeNode(Node):
                     self.cone_point_publisher.publish(pmsg)
                     # self.get_logger().info(f"cone_callback: {stamp=} x={zm:.3f} y={-xm:.3f} z={ym:.3f} {bboxSize=}")
 
-        if num_detections == 0 :
-            # publish invalid cone location at 0,0 
-            self.cone_point_publisher.publish(pmsg)
-            if self.cameraConeDetected :
-                # self.tts("Lost Camera AI cone detection")
-                self.cameraConeDetected = False
-        else :
-            if not self.cameraConeDetected :
+                    break # exit detections loop after 1st validated cone
+
+        if self.cameraConeDetected :
+            # change to not detected after N consecutive no cone
+            if num_detections == 0 :
+                self.coneCounter +=1
+                if self.coneCounter > 10 :
+                    self.cameraConeDetected = False
+                    self.tts("Camera lost cone detection")
+            else :
+                # reset when cone is detected
+                self.coneCounter = 0
+        else : # Cone not detected
+            if num_detections>0 and pmsg.point.x>0:
+                self.cameraConeDetected = True
                 x = pmsg.point.x
                 y = pmsg.point.y
-                # self.tts(f"Camera AI cone has been detected at {x=} {y=}")
-                self.cameraConeDetected = True
+                self.tts(f"Camera cone detected at {x=:.2f} {y=:.2f}")
+            else :
+                # pulish 0,0,0 cone location - invalid
+                pmsg.point.x = 0.0
+                pmsg.point.y = 0.0
+                pmsg.point.z = 0.0
+                self.cone_point_publisher.publish(pmsg)
+
+        # if num_detections == 0 :
+        #     # publish invalid cone location at 0,0 
+        #     self.cone_point_publisher.publish(pmsg)
+        #     if self.cameraConeDetected :
+        #         # self.tts("Lost Camera AI cone detection")
+        #         self.cameraConeDetected = False
+        # else :
+        #     if not self.cameraConeDetected :
+        #         x = pmsg.point.x
+        #         y = pmsg.point.y
+        #         # self.tts(f"Camera AI cone has been detected at {x=} {y=}")
+        #         self.cameraConeDetected = True
 
   
     def destroy_node(self):

@@ -237,15 +237,15 @@ class WheelControllerNode(Node):
         if vbat!=self.lastVbat :
             if vbat == 0.0 :
                 self.tts("No battery")
-            if self.lastVbat<=0 and vbat>11.3 :
+            elif vbat>11.3 :
                 self.tts(f"Battery voltage is {vbat} Volts")
-            if vbat>11.0 and vbat<=11.3 :
+            elif vbat>11.0 :
                 self.tts(f"Battery voltage is getting low: {vbat} Volts")
-            if vbat == 11.0 :
-                self.tts(f"Battery voltage is criticaly low: {vbat} Volts")
-            if vbat>0.0 and vbat<11.0 :
-                self.tts(f"DANGER low battery voltage: {vbat} Volts")
-            self.lastVbat = vbat
+            elif vbat == 11.0 :
+                self.tts(f"Warning! Battery voltage is criticaly low: {vbat} Volts")
+            elif vbat<11.0 :
+                self.tts(f"DANGER! Battery voltage is dangerously low: {vbat} Volts")
+        self.lastVbat = vbat
 
 
     # Process odom info from wheels to get /wheel_odom with velocity and pose

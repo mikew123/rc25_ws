@@ -457,8 +457,8 @@ class NavNode(Node):
         x = d*math.cos(a)
         y = d*math.sin(a)
 
-        x -= 0.400 # Lidar sensor is Xmm back
-        x -= 0.040 # Cone surface is Xmm further at Lidar level
+        x -= 0.400 # Lidar sensor is X mm back from TOF sensors
+        x -= 0.055 # Cone surface is X mm further at Lidar level
 
         # get TOF obstacle detections
         fl_ob_dist = self.tof_fl_obstacle_dist
@@ -474,7 +474,7 @@ class NavNode(Node):
         elif x > 1.5*self.cd_closer_dist :
             self.get_logger().info(f"{func} cone is too far {d=:.3f} {a=:.3f} {x=:.3f} {y=:.3f} {state=}")
             self.tts("State 3: The cone is too far at distance {d:.3f} meters")
-            next_state = 5 # back up
+            next_state = 0 # restart by looking for the cone
         elif x > self.cd_touch_dist :
             self.get_logger().info(f"{func} approaching cone to touch {d=:.3f} {a=:.3f} {x=:.3f} {y=:.3f} {fl_ob_dist=:.3f} {fr_ob_dist=:.3f} {state=}")
             msg.linear.x = (x/0.2)*self.cd_touch_lin_vel + 0.010
@@ -518,11 +518,8 @@ class NavNode(Node):
     def backup_after_touch(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} backup {state=}")
-            self.tts("State 5: Backup after touching the cone")
+            self.tts("State 5: Backing up")
             self.cd_sub_state = 0
-
-        # #DEBUG
-        # return 6
 
         cur_time = time.time_ns()*1e-9            
         killSwitchActive:bool = ks
