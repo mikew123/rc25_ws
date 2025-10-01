@@ -215,6 +215,9 @@ class WheelControllerNode(Node):
     lastVbat = -1
 
     def processBatteryInfo(self, vbat) -> None :
+        # round to 1 decimal place
+        vbat = round(vbat, 1)
+
         if vbat > 0 and vbat <= 11.1 :
             self.get_logger().warning(f"Battery low {vbat=:.3f}")
         elif (time.time_ns()*1e-9 - self.bat_timer) > self.bat_per :
@@ -232,15 +235,17 @@ class WheelControllerNode(Node):
 
         # Send battery status to the speaker
         if vbat!=self.lastVbat :
-            self.lastVbat = vbat
             if vbat == 0.0 :
                 self.tts("No battery")
-            if vbat == 11.3 :
-                self.tts("Battery voltage is getting low: 11.3 Volts")
+            if self.lastVbat<=0 and vbat>11.3 :
+                self.tts(f"Battery voltage is {vbat} Volts")
+            if vbat>11.0 and vbat<=11.3 :
+                self.tts(f"Battery voltage is getting low: {vbat} Volts")
             if vbat == 11.0 :
-                self.tts("Battery voltage is criticaly low: 11.0 Volts")
+                self.tts(f"Battery voltage is criticaly low: {vbat} Volts")
             if vbat>0.0 and vbat<11.0 :
                 self.tts(f"DANGER low battery voltage: {vbat} Volts")
+            self.lastVbat = vbat
 
 
     # Process odom info from wheels to get /wheel_odom with velocity and pose

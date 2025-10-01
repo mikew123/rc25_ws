@@ -282,6 +282,7 @@ class NavNode(Node):
     def wait_for_cone_det(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} wait for cone detection {state=}")
+            self.tts("State 0: Wait for cone detect")
 
         # get cone xy from camera detect
         x:float = self.cone_at_x_cam
@@ -314,6 +315,7 @@ class NavNode(Node):
         cur_time = time.time_ns()*1e-9
         if state_change :
             self.get_logger().info(f"{func} navigate with BasicNavigator close to cone {state=}")
+            self.tts("State 1: Navigate to the cone")
             self.cd_sub_state = 0
 
         # get cone xy from camera detect
@@ -382,6 +384,7 @@ class NavNode(Node):
     def get_closer_to_cone(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} drive closer to cone using cmd_vel and camera {state=}")
+            self.tts("State 2: Get closer to the cone")
             self.nav.cancelTask()
 
         if (time.time_ns()*1e-9 - self.cd_timer) < 2.0 : return state
@@ -437,6 +440,7 @@ class NavNode(Node):
     def touch_cone(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} drive slowly to \"touch\" cone using cmd_vel and lidar sensor {state=}")
+            self.tts("State 3: Go touch the cone")
         
         killSwitchActive:bool = ks
         next_state = state
@@ -469,6 +473,7 @@ class NavNode(Node):
             next_state = 0
         elif x > 1.5*self.cd_closer_dist :
             self.get_logger().info(f"{func} cone is too far {d=:.3f} {a=:.3f} {x=:.3f} {y=:.3f} {state=}")
+            self.tts("State 3: The cone is too far at distance {d:.3f} meters")
             next_state = 5 # back up
         elif x > self.cd_touch_dist :
             self.get_logger().info(f"{func} approaching cone to touch {d=:.3f} {a=:.3f} {x=:.3f} {y=:.3f} {fl_ob_dist=:.3f} {fr_ob_dist=:.3f} {state=}")
@@ -483,6 +488,7 @@ class NavNode(Node):
                 msg.angular.z -= 4*(fr_ob_dist - 0.2) * msg.linear.x
         else : 
             self.get_logger().info(f"{func} touched {d=:.3f} {a=:.3f} {x=:.3f} {y=:.3f} {fl_ob_dist=:.3f} {fr_ob_dist=:.3f} {state=}")
+            self.tts("State 3: Successfully touched the cone")
             next_state = 4
 
         self.cmd_vel_publisher.publish(msg)
@@ -494,6 +500,7 @@ class NavNode(Node):
     def wait_after_touch(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} wait a short time {state=}")
+            self.tts("State 3: Waiting for referee to see touch")
         
         killSwitchActive:bool = ks
         next_state = state
@@ -511,7 +518,11 @@ class NavNode(Node):
     def backup_after_touch(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} backup {state=}")
+            self.tts("State 5: Backup after touching the cone")
             self.cd_sub_state = 0
+
+        # #DEBUG
+        # return 6
 
         cur_time = time.time_ns()*1e-9            
         killSwitchActive:bool = ks
@@ -555,6 +566,7 @@ class NavNode(Node):
     def stop_after_touch(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} STOP {state=}")
+            self.tts("State 6: Stopping now")
         
         next_state = state
 

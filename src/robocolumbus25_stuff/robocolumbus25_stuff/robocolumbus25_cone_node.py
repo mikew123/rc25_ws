@@ -124,13 +124,13 @@ class ConeNode(Node):
             # publish invalid cone location at 0,0 
             self.cone_point_publisher.publish(pmsg)
             if self.cameraConeDetected :
-                self.tts("Lost Camera AI cone detection")
+                # self.tts("Lost Camera AI cone detection")
                 self.cameraConeDetected = False
         else :
             if not self.cameraConeDetected :
                 x = pmsg.point.x
                 y = pmsg.point.y
-                self.tts(f"Camera AI cone has been detected at {x=} {y=}")
+                # self.tts(f"Camera AI cone has been detected at {x=} {y=}")
                 self.cameraConeDetected = True
 
   

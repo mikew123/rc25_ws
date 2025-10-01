@@ -68,7 +68,7 @@ class ImuGpsNode(Node):
         self.send_json_cmd({"cfg":{"imu":True, "gps":True, "cmp":False}})
 
         time.sleep(2) # wait for json_msg_publisher to be ready!!??
-        self.tts("Imu and GPS Node Started")               
+        self.tts("IMU and GPS Node Started")               
         self.get_logger().info(f"ImuGpsNode Started")
 
 
