@@ -36,7 +36,7 @@ class NavNode(Node):
     smTimerRateHz:float = 10.0
 
     tc_state = -1
-    tc_next_state = 0
+    tc_next_state = 1 # got straight to find cone state machine #0
 
     cd_timer:float = 0.0
     cd_state:int = 0
@@ -186,17 +186,26 @@ class NavNode(Node):
 
         # need a main state machine
         next_state = self.tc_next_state
+
+        stateChange = False
         if self.tc_state!= next_state :
+            stateChange = True
             self.get_logger().info(f"sm_timer_callback: state change to {next_state}")
+
         state = next_state
         self.tc_state = state
 
         if state == 0 :
-            # wait for navigator
-            # This does not work, it waits forever and send out messages like setting inital pose
-            # initialPose = self.createPose(0,0,0,"map")
-            # self.nav.setInitialPose(initialPose)
-            # self.nav.waitUntilNav2Active()
+            # if stateChange :
+            #     # wait for navigator
+            #     # This does not work, it waits forever and send out messages like setting inital pose
+            #     self.get_logger().info(f"sm_timer_callback: Wait for Nav2 to be active")
+            #     initialPose = self.createPose(0,0,0,"map")
+            #     self.nav.setInitialPose(initialPose)
+            #     self.nav.waitUntilNav2Active()
+            #     self.get_logger().info(f"sm_timer_callback: Nav2 active now")
+            #     self.tts("Nav2 active")
+                
 
             # Rviz 2DGoalPose can be used to move robot until a cone is detected
             # get cone xy from camera detect
@@ -215,10 +224,10 @@ class NavNode(Node):
                 d = 0
 
 
-            if d>=0 :
+            if d>0 :
                 self.get_logger().info(f"sm_timer: cone detected - cancel rviz nav {x=:.3f} {y=:.3f} {d=:.3f}  {a=:.3f}")
                 # cancel navigation initiated by rviz
-                self.nav.cancelTask()
+                # self.nav.cancelTask()
                 next_state = 1
 
         # initialize at start point and wait for start command
@@ -238,10 +247,10 @@ class NavNode(Node):
     def cd_sm(self) :
         func = "cone_sm:"
 
-        
         state_change:bool = False
         if self.cd_state != self.cd_last_state : 
             state_change = True
+            # self.nav.cancelTask() # cancel the running task when state changes
 
         ks = self.killSw
         ksc = self.cd_killSwChange
@@ -282,7 +291,8 @@ class NavNode(Node):
     def wait_for_cone_det(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} wait for cone detection {state=}")
-            self.tts("State 0: Wait for cone detect")
+            self.tts("State 0")
+            # self.nav.cancelTask()
 
         # get cone xy from camera detect
         x:float = self.cone_at_x_cam
@@ -315,8 +325,9 @@ class NavNode(Node):
         cur_time = time.time_ns()*1e-9
         if state_change :
             self.get_logger().info(f"{func} navigate with BasicNavigator close to cone {state=}")
-            self.tts("State 1: Navigate to the cone")
+            self.tts("State 1")
             self.cd_sub_state = 0
+            # self.nav.cancelTask()
 
         # get cone xy from camera detect
         x:float = self.cone_at_x_cam
@@ -351,13 +362,13 @@ class NavNode(Node):
                 if killSwitchActive :
                     # Cancel goal and wait when kill switch status changes to active
                     if killSwitchChange :
-                        self.nav.cancelTask()
+                        # self.nav.cancelTask()
                         self.cd_sub_state = 0
                 else : # Execute when kill switch is not active
                     # check for nav complete or navigate time finished and try again
                     if (cur_time - self.cd_sub_timer) < t :
                         if self.nav.isTaskComplete() :
-                            self.nav.cancelTask()
+                            # self.nav.cancelTask()
                             # x,y is relative to tof_fc sensor
                             d = math.sqrt(x*x + y*y)
 
@@ -369,12 +380,12 @@ class NavNode(Node):
                                 self.cd_sub_state = 0
                     else :
                         self.get_logger().info(f"{func} Get new cone placement and navigate some more {state=}")
-                        self.nav.cancelTask()
+                        # self.nav.cancelTask()
                         self.cd_sub_state = 0
 
         else :
             self.get_logger().info(f"{func} lost cone {state=}")
-            self.nav.cancelTask()
+            # self.nav.cancelTask()
             next_state = 0
 
         return next_state
@@ -384,8 +395,10 @@ class NavNode(Node):
     def get_closer_to_cone(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} drive closer to cone using cmd_vel and camera {state=}")
-            self.tts("State 2: Get closer to the cone")
-            self.nav.cancelTask()
+            self.tts("State 2")
+            # self.nav.cancelTask()
+
+        # self.nav.cancelTask()
 
         if (time.time_ns()*1e-9 - self.cd_timer) < 2.0 : return state
 
@@ -440,8 +453,11 @@ class NavNode(Node):
     def touch_cone(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} drive slowly to \"touch\" cone using cmd_vel and lidar sensor {state=}")
-            self.tts("State 3: Go touch the cone")
-        
+            self.tts("State 3")
+            # self.nav.cancelTask()
+
+        # self.nav.cancelTask()
+
         killSwitchActive:bool = ks
         next_state = state
         msg = Twist()
@@ -500,7 +516,8 @@ class NavNode(Node):
     def wait_after_touch(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} wait a short time {state=}")
-            self.tts("State 3: Waiting for referee to see touch")
+            self.tts("State 4")
+            # self.nav.cancelTask()
         
         killSwitchActive:bool = ks
         next_state = state
@@ -518,7 +535,7 @@ class NavNode(Node):
     def backup_after_touch(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} backup {state=}")
-            self.tts("State 5: Backing up")
+            self.tts("State 5: Backup")
             self.cd_sub_state = 0
 
         cur_time = time.time_ns()*1e-9            
@@ -546,7 +563,7 @@ class NavNode(Node):
             if killSwitchActive :
                 # Cancel goal and wait when kill switch status changes to active
                 if killSwitchChange :
-                    self.nav.cancelTask()
+                    # self.nav.cancelTask()
                     self.cd_sub_state = 0
             else : # Execute when kill switch is not active
                 # check for nav backup is complete or navigate time finished
@@ -554,7 +571,6 @@ class NavNode(Node):
                     if self.nav.isTaskComplete() :
                         next_state = 6
                 else :
-                    self.nav.cancelTask()
                     next_state = 6
 
         return next_state
@@ -563,8 +579,9 @@ class NavNode(Node):
     def stop_after_touch(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} STOP {state=}")
+            # self.nav.cancelTask()
             self.tts("State 6: Stopping now")
-        
+
         next_state = state
 
         return next_state
@@ -726,10 +743,15 @@ class NavNode(Node):
         # self.get_logger().info(f"tof_fc_callback: {x=:.3f} {y=:.3f} {a=:.3f} {d=:.3f} ")
 
 
+    lidarActive = False
+
     # Cone detection from Lidar LaserScan data
     def lidar_subscription_callback(self, msg: LaserScan) -> None:
         #self.get_logger().info(f"cone_det_cam_subscription_callback: {msg=}")
 
+        if not self.lidarActive :
+            self.lidarActive = True
+            self.tts("Lidar is active")
    
         angle_min       = np.float32(msg.angle_min)
         angle_max       = np.float32(msg.angle_max)
@@ -938,7 +960,7 @@ class NavNode(Node):
                 nt = feedback.navigation_time.sec
                 if nt > t :
                     self.get_logger().info(f"waitTaskComplete: Canceling task {nt=} > {t=}")
-                    self.nav.cancelTask()
+                    # self.nav.cancelTask()
             except :
                 pass
                 
@@ -969,6 +991,9 @@ def main(args=None):
 
     nav = BasicNavigator()
     node = NavNode(nav)
+
+    # wait never returns
+    # nav.waitUntilNav2Active()
 
     # rclpy.spin(node)
     # node.destroy_node()

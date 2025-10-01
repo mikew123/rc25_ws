@@ -106,6 +106,10 @@ class WheelControllerNode(Node):
         self.ser.flush()
         time.sleep(5)  # engine controller seems to act weird if no delay
 
+        # Send zero velocity command to unstick battery status - worked!
+        cmd = {"cv":[0,0]}
+        self.sendJsonCmd(cmd)
+
         self.tts("Wheel Controller Node Started")
         self.get_logger().info(f"WheelControllerNode: Started node")
 
@@ -238,13 +242,13 @@ class WheelControllerNode(Node):
             if vbat == 0.0 :
                 self.tts("No battery")
             elif vbat>11.3 :
-                self.tts(f"Battery voltage is {vbat} Volts")
+                self.tts(f"Battery {vbat}")
             elif vbat>11.0 :
-                self.tts(f"Battery voltage is getting low: {vbat} Volts")
+                self.tts(f"Battery low: {vbat}")
             elif vbat == 11.0 :
-                self.tts(f"Warning! Battery voltage is criticaly low: {vbat} Volts")
+                self.tts(f"Warning! Battery {vbat}")
             elif vbat<11.0 :
-                self.tts(f"DANGER! Battery voltage is dangerously low: {vbat} Volts")
+                self.tts(f"DANGER! Battery {vbat}")
         self.lastVbat = vbat
 
 

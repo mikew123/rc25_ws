@@ -59,6 +59,7 @@ class ConeNode(Node):
     cameraMsgDetected = False
     cameraConeDetected = False
     coneCounter = 0
+    coneLastDetXYZ = (0.0,0.0,0.0)
 
     # Cone detection from camera AI
     # TODO: manage multiple detections!!!! like an orange shoe or shirt
@@ -97,12 +98,16 @@ class ConeNode(Node):
                 by1 = 59*(2.8/z)
                 xx = math.fabs(1.0 - bx0/bx1)
                 yy = math.fabs(1.0 - by0/by1)
-                if z>1 : pct = 0.3
-                else : pct = 0.6
-                if (xx < pct) and (yy < pct) :
+                if z>1.2 : 
+                    pctx = 0.35 # height when more than 1.2 meter
+                    pcty = 0.25 # width
+                else : 
+                    pctx = 0.55 # top or bottom of cone may be out of FOV
+                    pcty = 0.55 # width
+                if (xx < pctx) and (yy < pcty) :
                     # Cone validated using bbox shape and size
                     num_detections +=1
-                    # Use median-5 filter to remove points with distance spikes
+                    # Use median-7 filter to remove points with distance spikes
                     m7 = self.m7_filter
                     # add new sample to filter list memory
                     m7 = [(x,y,z),m7[0],m7[1],m7[2],m7[3],m7[4],m7[5]]
@@ -124,28 +129,41 @@ class ConeNode(Node):
 
                     break # exit detections loop after 1st validated cone
 
+        x = pmsg.point.x
+        y = pmsg.point.y
+        z = pmsg.point.z
+
         if self.cameraConeDetected :
             # change to not detected after N consecutive no cone
             if num_detections == 0 :
                 self.coneCounter +=1
                 if self.coneCounter > 10 :
                     self.cameraConeDetected = False
-                    self.tts("Camera lost cone detection")
+                    self.tts("Cam no cone detect")
+                else :
+                    # Send last detected cone coordinates
+                    (pmsg.point.x,
+                     pmsg.point.y,
+                     pmsg.point.z) = self.coneLastDetXYZ
+                
             else :
                 # reset when cone is detected
                 self.coneCounter = 0
         else : # Cone not detected
             if num_detections>0 and pmsg.point.x>0:
-                self.cameraConeDetected = True
-                x = pmsg.point.x
-                y = pmsg.point.y
-                self.tts(f"Camera cone detected at {x=:.2f} {y=:.2f}")
+                self.coneCounter +=1
+                if self.coneCounter > 4 :
+                    self.cameraConeDetected = True
+                    self.tts(f"Cam cone detect {x=:.2f} {y=:.2f}")
             else :
+                self.coneCounter = 0
                 # pulish 0,0,0 cone location - invalid
                 pmsg.point.x = 0.0
                 pmsg.point.y = 0.0
                 pmsg.point.z = 0.0
                 self.cone_point_publisher.publish(pmsg)
+
+        self.coneLastDetXYZ = (x,y,z)
 
         # if num_detections == 0 :
         #     # publish invalid cone location at 0,0 
