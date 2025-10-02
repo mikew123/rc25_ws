@@ -463,7 +463,7 @@ class NavNode(Node):
         msg = Twist()
 
         # get cone info
-        # d = self.cone_at_d_tof_fc
+        # d_tof = self.cone_at_d_tof_fc
         # a = self.cone_at_a_tof_fc
 
         d = self.cone_at_d_lidar
@@ -477,8 +477,12 @@ class NavNode(Node):
         x -= 0.055 # Cone surface is X mm further at Lidar level
 
         # get TOF obstacle detections
+        fc_ob_dist = self.tof_fc_obstacle_dist
         fl_ob_dist = self.tof_fl_obstacle_dist
         fr_ob_dist = self.tof_fr_obstacle_dist
+
+        # use TOF distance to help determine when touched
+        d_tof = np.min((fc_ob_dist,fl_ob_dist,fr_ob_dist))
 
         if killSwitchActive :
             # Stop motors and wait for kill switch not active
@@ -491,8 +495,8 @@ class NavNode(Node):
             self.get_logger().info(f"{func} cone is too far {d=:.3f} {a=:.3f} {x=:.3f} {y=:.3f} {state=}")
             self.tts("State 3: The cone is too far at distance {d:.3f} meters")
             next_state = 0 # restart by looking for the cone
-        elif x > self.cd_touch_dist :
-            self.get_logger().info(f"{func} approaching cone to touch {d=:.3f} {a=:.3f} {x=:.3f} {y=:.3f} {fl_ob_dist=:.3f} {fr_ob_dist=:.3f} {state=}")
+        elif (x > self.cd_touch_dist) and (d_tof > self.cd_touch_dist) :
+            self.get_logger().info(f"{func} approaching cone to touch {d=:.3f} {a=:.3f} {x=:.3f} {y=:.3f} {fc_ob_dist=:.3f} {fl_ob_dist=:.3f} {fr_ob_dist=:.3f} {state=}")
             msg.linear.x = (x/0.2)*self.cd_touch_lin_vel + 0.010
             # turn towards cone center
             # msg.angular.z =  (a/0.393)*msg.linear.x #self.cd_touch_ang_vel
@@ -503,8 +507,8 @@ class NavNode(Node):
             if fr_ob_dist < 0.2 :
                 msg.angular.z -= 4*(fr_ob_dist - 0.2) * msg.linear.x
         else : 
-            self.get_logger().info(f"{func} touched {d=:.3f} {a=:.3f} {x=:.3f} {y=:.3f} {fl_ob_dist=:.3f} {fr_ob_dist=:.3f} {state=}")
-            self.tts("State 3: Successfully touched the cone")
+            self.get_logger().info(f"{func} touched {d=:.3f} {d_tof=:.3f} {a=:.3f} {x=:.3f} {y=:.3f} {fc_ob_dist=:.3f} {fl_ob_dist=:.3f} {fr_ob_dist=:.3f} {state=}")
+            self.tts("State 3: Touched the cone")
             next_state = 4
 
         self.cmd_vel_publisher.publish(msg)
