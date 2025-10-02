@@ -4,7 +4,7 @@ import json
 import time
 
 from rclpy.node import Node
-from geometry_msgs.msg import PointStamped
+from geometry_msgs.msg import PointStamped, PoseStamped
 from vision_msgs.msg import Detection3DArray
 from std_msgs.msg import String
 
@@ -32,6 +32,7 @@ class ConeNode(Node):
                                         , self.json_msg_callback, 10)
 
         self.cone_point_publisher = self.create_publisher(PointStamped, 'cone_point', 10)
+        self.cone_pose_publisher = self.create_publisher(PoseStamped, 'cone_pose_cam', 10)
 
         self.cone_det_cam_subscription = self.create_subscription(Detection3DArray,"color/spatial_detections", 
                                             self.cone_det_cam_subscription_callback, 10)
@@ -57,23 +58,25 @@ class ConeNode(Node):
         pass
 
     cameraMsgDetected = False
-    cameraConeDetected = False
+    cameraConeDetection = False
     coneCounter = 0
     coneLastDetXYZ = (0.0,0.0,0.0)
 
     # Cone detection from camera AI
     # TODO: manage multiple detections!!!! like an orange shoe or shirt
     def cone_det_cam_subscription_callback(self, msg: Detection3DArray) -> None:
-        #self.get_logger().info(f"{msg=}")
+        # self.get_logger().info(f"{msg=}")
 
         if not self.cameraMsgDetected :
+            # speak once at startup
             self.tts("Camera is active")
             self.cameraMsgDetected = True
 
-        stamp = self.get_clock().now().to_msg()
-        pmsg = PointStamped()
-        pmsg.header.frame_id="oak-d_frame"
-        pmsg.header.stamp = stamp
+        # default cone at 0,0,0 - Invalid
+        x = 0.0
+        y = 0.0
+        z = 0.0
+
         detections = msg.detections
         num_detections = 0
 
@@ -86,16 +89,16 @@ class ConeNode(Node):
             for result in results :
                 pose = result.pose.pose
                 position = pose.position
-                x = position.x
-                y = position.y
-                z = position.z
-                if z==0 : continue
+                cx = position.x
+                cy = position.y
+                cz = position.z
+                if cz==0 : continue
 
                 # use bounding box to "filter" non-cones
                 bx0 = bboxSize.x
                 by0 = bboxSize.y
-                bx1 = 33*(2.8/z) # z is distance
-                by1 = 59*(2.8/z)
+                bx1 = 33*(2.8/cz) # z is distance
+                by1 = 59*(2.8/cz)
                 xx = math.fabs(1.0 - bx0/bx1)
                 yy = math.fabs(1.0 - by0/by1)
                 if z>1.2 : 
@@ -110,75 +113,73 @@ class ConeNode(Node):
                     # Use median-7 filter to remove points with distance spikes
                     m7 = self.m7_filter
                     # add new sample to filter list memory
-                    m7 = [(x,y,z),m7[0],m7[1],m7[2],m7[3],m7[4],m7[5]]
+                    m7 = [(cx,cy,cz),m7[0],m7[1],m7[2],m7[3],m7[4],m7[5]]
                     self.m7_filter = m7
                     # sort tupple[2] z is distance (m7 is not modified)
                     m7s = sorted(m7, key=lambda xyz: xyz[2])
-                    # pick the median sample
-                    (xm,ym,zm) = m7s[3]
-                    #(xm,ym,zm) = m7[3] # DEBUG: unfiltered
-                    #(xm,ym,zm) = (x,y,z)
-                    #self.get_logger().info(f"{m7=} {m7s=}")
-                    
-                    # Publish the cone location point x,y,z relative to camera
-                    pmsg.point.x = zm # Forward meters
-                    pmsg.point.y = -xm # Side meters (-x fixes rviz location mapping)
-                    pmsg.point.z = ym # Elevation center of cone (on level ground)
-                    self.cone_point_publisher.publish(pmsg)
-                    # self.get_logger().info(f"cone_callback: {stamp=} x={zm:.3f} y={-xm:.3f} z={ym:.3f} {bboxSize=}")
 
+                    # pick the middle sample after sorting
+                    (mx,my,mz) = m7s[3]
+
+                    # translate to ROS coordinates
+                    (x,y,z) = (mz,-mx,my) # (x,y) and z=distance
+
+                    # self.get_logger().info(f"cone detect: {x=:.2f}, {y=:.2f}, {z=:.2f}")
                     break # exit detections loop after 1st validated cone
 
-        x = pmsg.point.x
-        y = pmsg.point.y
-        z = pmsg.point.z
-
-        if self.cameraConeDetected :
+        if self.cameraConeDetection :
             # change to not detected after N consecutive no cone
             if num_detections == 0 :
                 self.coneCounter +=1
                 if self.coneCounter > 10 :
-                    self.cameraConeDetected = False
+                    # 10 consecutive cone not detected
+                    self.cameraConeDetection = False
                     self.tts("Cam no cone detect")
+
                 else :
                     # Send last detected cone coordinates
-                    (pmsg.point.x,
-                     pmsg.point.y,
-                     pmsg.point.z) = self.coneLastDetXYZ
+                    (x,y,z) = self.coneLastDetXYZ
                 
-            else :
-                # reset when cone is detected
+            else : # cone detection
+                # reset counter when cone is detected
                 self.coneCounter = 0
+                self.coneLastDetXYZ = (x,y,z)
+
         else : # Cone not detected
-            if num_detections>0 and pmsg.point.x>0:
+            if num_detections>0 and x>0:
                 self.coneCounter +=1
                 if self.coneCounter > 4 :
-                    self.cameraConeDetected = True
+                    # 4 consecutive cones detected
+                    self.cameraConeDetection = True
                     self.tts(f"Cam cone detect {x=:.2f} {y=:.2f}")
+                    self.coneLastDetXYZ =(x,y,z)
+
             else :
+                # reset cone counter when cone not detected
                 self.coneCounter = 0
-                # pulish 0,0,0 cone location - invalid
-                pmsg.point.x = 0.0
-                pmsg.point.y = 0.0
-                pmsg.point.z = 0.0
-                self.cone_point_publisher.publish(pmsg)
 
-        self.coneLastDetXYZ = (x,y,z)
-
-        # if num_detections == 0 :
-        #     # publish invalid cone location at 0,0 
-        #     self.cone_point_publisher.publish(pmsg)
-        #     if self.cameraConeDetected :
-        #         # self.tts("Lost Camera AI cone detection")
-        #         self.cameraConeDetected = False
-        # else :
-        #     if not self.cameraConeDetected :
-        #         x = pmsg.point.x
-        #         y = pmsg.point.y
-        #         # self.tts(f"Camera AI cone has been detected at {x=} {y=}")
-        #         self.cameraConeDetected = True
+        self.pointPublish("Camera",x,y,z)
 
   
+    def pointPublish(self, sensor:String, x:float,y:float,z:float) -> None :
+        """
+        Publish a PointStamped msg topic
+        The sensor name chooses the reference frame and publisher to use
+        """
+        # self.get_logger().info(f"pointPublish: {sensor}, {x=:.2f}, {y=:.2f}, {z=:.2f}")
+        stamp = self.get_clock().now().to_msg()
+        pmsg = PointStamped()
+        pmsg.header.stamp = stamp
+        pmsg.point.x = x # Forward meters from sensor
+        pmsg.point.y = y # Side meters from sensor
+        pmsg.point.z = z # Elevation of center of the cone from sensor level
+
+        if sensor == "Camera" :
+            pmsg.header.frame_id="oak-d_frame"
+            self.cone_point_publisher.publish(pmsg)
+
+
+
     def destroy_node(self):
         self.get_logger().info("destroy_node")
         if hasattr(self, 'ser') and self.ser and self.ser.is_open:
