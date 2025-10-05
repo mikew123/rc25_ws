@@ -134,7 +134,7 @@ class ConeNode(Node):
                 if self.coneCounter > 10 :
                     # 10 consecutive cone not detected
                     self.cameraConeDetection = False
-                    self.tts("Cam no cone detect")
+                    self.tts("Cam lost cone")
 
                 else :
                     # Send last detected cone coordinates
@@ -151,7 +151,7 @@ class ConeNode(Node):
                 if self.coneCounter > 4 :
                     # 4 consecutive cones detected
                     self.cameraConeDetection = True
-                    self.tts(f"Cam cone detect {x=:.2f} {y=:.2f}")
+                    self.tts(f"Cam cone detected {x=:.2f} {y=:.2f}")
                     self.coneLastDetXYZ =(x,y,z)
 
             else :

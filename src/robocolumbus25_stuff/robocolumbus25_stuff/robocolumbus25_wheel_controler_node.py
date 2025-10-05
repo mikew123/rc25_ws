@@ -207,14 +207,9 @@ class WheelControllerNode(Node):
             vbat = status['vbat']
             self.processBatteryInfo(vbat)
 
-        if 'kill' in status:
-            kill = status['kill']
-            self.processKillStatus(kill)
-
-    def processKillStatus(self, kill) -> None :
-        #self.get_logger().info(f"processKillStatus: {kill=}")
-        json_msg =  {"kill":kill}
+        json_msg = {"engine":{"status":status}}
         self.sendJsonMsg(json_msg)
+
 
     lastVbat = -1
 

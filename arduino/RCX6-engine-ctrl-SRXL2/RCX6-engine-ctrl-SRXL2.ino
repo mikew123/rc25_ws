@@ -676,10 +676,10 @@ bool jsonParse(const char *jsonStr) {
   }
 
 
-  // get Battery Voltage and RPM from telemetry
-  // move to PID loop?
-  escVin = srx.getEscVin();
-  motorRpm = srx.getEscRpm();
+//  // get Battery Voltage and RPM from telemetry
+//  // move to PID loop?
+//  escVin = srx.getEscVin();
+//  motorRpm = srx.getEscRpm();
 
   return true;
 }
@@ -737,6 +737,11 @@ void sendOdomMsg() {
 
 // Send status message to host computer
 void sendStatusMsg() {
+
+  // get Battery Voltage and RPM from telemetry
+  // move to PID loop?
+  escVin = srx.getEscVin();
+  motorRpm = srx.getEscRpm();
 
   JSONVar statuses;
 
