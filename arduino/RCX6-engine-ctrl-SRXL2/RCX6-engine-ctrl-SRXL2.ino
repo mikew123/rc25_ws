@@ -811,6 +811,8 @@ void killSwReset(void) {
 #define killSwHiLvl 40000
 #define killSwLoLvl 20000
 
+bool ksl0_g = false;
+
 void killSwDecode(void) {
 
   int throttle = srx.getRcvThrottle();
@@ -824,6 +826,10 @@ void killSwDecode(void) {
   bool steerCCW    = steer<killSwLoLvl;
   bool shiftAction = false;
   bool modeChange  = false;
+
+    // filter throttle since no shift action
+  if(throttleFWD && (killCnt_g<10)) killCnt_g++;
+  if(throttleZER && (killCnt_g>0))  killCnt_g--;
 
   // Detect shift action switch is up then down, only occurs once per shift sequence
   // TODO: does this need a filter?
@@ -873,9 +879,9 @@ void killSwDecode(void) {
     }    
   } 
   else {
-    // filter throttle since no shift action
-    if(throttleFWD && (killCnt_g<10)) killCnt_g++;
-    if(throttleZER && (killCnt_g>0))  killCnt_g--;
+    // // filter throttle since no shift action
+    // if(throttleFWD && (killCnt_g<10)) killCnt_g++;
+    // if(throttleZER && (killCnt_g>0))  killCnt_g--;
 
     if(killSwActive_g && (killCnt_g>=10)) { // one shot
       killSwActive_g = false;
@@ -893,11 +899,18 @@ void killSwDecode(void) {
   }
 
   // decode kill switch latch, shift action toggle
-  if (killSwActive_g || (killSwLatch_g && shiftAction && throttleFWD)) {
+  if (!killSwEnable_g || (killSwLatch_g && killCnt_g>=10)) {
     killSwLatch_g = false;
+    ksl0_g = false;
   }
-  else if((killCnt_g>=10) && (!killSwLatch_g && shiftAction && throttleFWD)) {
+  else if(!killSwLatch_g && !killSwActive_g && shiftAction) {
+    // Latch when throttle is activated and shift up/dn
+    ksl0_g = true;
+  }
+  else if (ksl0_g && killCnt_g<=5) {
+    // Latch after throttle is released
     killSwLatch_g = true;
+    ksl0_g = false;
   }
 
   // Debug print
