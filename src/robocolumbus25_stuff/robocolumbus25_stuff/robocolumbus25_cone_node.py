@@ -2,11 +2,13 @@ import rclpy
 import math
 import json
 import time
+import numpy as np
 
 from rclpy.node import Node
+from std_msgs.msg import String
 from geometry_msgs.msg import PointStamped, PoseStamped
 from vision_msgs.msg import Detection3DArray
-from std_msgs.msg import String
+from sensor_msgs.msg import LaserScan
 
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
@@ -27,15 +29,17 @@ class ConeNode(Node):
             
 
         # Message topic to/from all nodes for general messaging Json formated string
-        self.json_msg_publisher = self.create_publisher(String, "json_msg", 10)
-        self.json_msg_subscription = self.create_subscription(String, "json_msg"
+        self.json_msg_publisher = self.create_publisher(String, "/json_msg", 10)
+        self.json_msg_subscription = self.create_subscription(String, "/json_msg"
                                         , self.json_msg_callback, 10)
 
-        self.cone_point_publisher = self.create_publisher(PointStamped, 'cone_point', 10)
-        self.cone_pose_publisher = self.create_publisher(PoseStamped, 'cone_pose_cam', 10)
+        self.cone_point_cam_publisher = self.create_publisher(PointStamped, '/cone_point_cam', 10)
+        self.cone_point_lidar_publisher = self.create_publisher(PointStamped, '/cone_point_lidar', 10)
 
-        self.cone_det_cam_subscription = self.create_subscription(Detection3DArray,"color/spatial_detections", 
+        self.cone_det_cam_subscription = self.create_subscription(Detection3DArray,"/color/spatial_detections", 
                                             self.cone_det_cam_subscription_callback, 10)
+        self.lidar_subscription = self.create_subscription(LaserScan,"/scan" 
+                                            , self.lidar_subscription_callback, 10)
 
         time.sleep(2) # wait for json_msg_publisher to be ready!!??
         self.tts("Cone Node Started")               
@@ -57,13 +61,14 @@ class ConeNode(Node):
     def json_msg_callback(self,msg) :
         pass
 
+    ######################################################################################################
+    # Camera cone detection parameters
     cameraMsgDetected = False
     cameraConeDetection = False
     coneCounter = 0
     coneLastDetXYZ = (0.0,0.0,0.0)
 
-    # Cone detection from camera AI
-    # TODO: manage multiple detections!!!! like an orange shoe or shirt
+    # Cone detection from oak-D-Lite camera AI - publish /cone_point/cam
     def cone_det_cam_subscription_callback(self, msg: Detection3DArray) -> None:
         # self.get_logger().info(f"{msg=}")
 
@@ -160,6 +165,146 @@ class ConeNode(Node):
 
         self.pointPublish("Camera",x,y,z)
 
+
+    ######################################################################################################
+    # Lidar cone detection parameters
+    lidarActive = False
+    # Field of view pointing forward from Lidar 36 degree scan data 
+    fovRad_lidar = 0.758 # 45 deg, +-22.5 degrees
+    coneMinRatioLimit = np.float32(0.250)
+    coneMinMaxDiffMax = np.float32(0.060)
+    coneMinMaxDiffMin = np.float32(0.005)
+    coneRadius        = np.float32(0.05) # 100mm diameter at Lidar scan height     
+    diffJump          = np.float32(0.15)
+    coneRayMax        = np.float32(2.5)
+
+    # Cone detection from Lidar LaserScan data - publish /cone_point/cam
+    def lidar_subscription_callback(self, msg: LaserScan) -> None:
+        pass
+    #     #self.get_logger().info(f"lidar_subscription_callback: {msg=}")
+
+        if not self.lidarActive :
+            self.lidarActive = True
+            self.tts("Lidar is active")
+   
+        angle_min       = np.float32(msg.angle_min)
+        angle_max       = np.float32(msg.angle_max)
+        angle_increment = np.float32(msg.angle_increment)
+        # self.get_logger().info(f"lidar_callback: {angle_min=:.3f} {angle_max:.3f} {angle_increment=:.3f}")
+
+        # get Lidar scan data within determined field of view for cone detection
+        len = np.int32((angle_max-angle_min)/angle_increment)
+        pfov = np.int32(self.fovRad_lidar/angle_increment)
+        dmin = np.int32(len/2 - pfov/2)
+        dmax = np.int32(len/2 + pfov/2)
+        coneRanges =  np.float32(msg.ranges[dmin:dmax])
+        # self.get_logger().info(f"{coneRanges=}")
+
+
+        begin = np.int32(0)
+        end = np.int32(0)
+        lastRay = np.float32(coneRanges[0])
+        rayNum = np.int32(1)
+ 
+        coneMinDet:float = math.inf
+        coneIdxDet:int = 0
+        coneRaysDet:list = []
+
+        # NOTE: 1st ray cant be start of cone
+        for ray in coneRanges[1:] :
+            # if np.math.isinf(ray) : ray = 100 
+            if begin==0 :
+                # look for dist jump hi to lo to indicate possible start
+                if (ray<self.coneRayMax) :
+                    if ((lastRay-ray)>self.diffJump) :
+                        # possible start of cone detect
+                        begin = rayNum
+                        # self.get_logger().info(f" possible start of cone detect {begin=}")
+
+            elif (lastRay<self.coneRayMax) :
+                # look for dist jump lo to hi to indicate possible end
+                if((ray-lastRay)>self.diffJump) :
+                    # possible end of cone detect
+                    end = rayNum-1
+                    # self.get_logger().info(f" possible end of cone detect {end=}")
+                    if False : #(end-begin) < rayMinCnt :
+                        # number of rays too small for a cone, look for another cone
+                        begin = np.int32(0)
+                        end = np.int32(0)
+
+                    else :
+                        coneRays = coneRanges[begin:end]
+                        coneMin = np.min(coneRays)
+                        coneMax = np.max(coneRays)
+                        # find ray number at center of minimums
+                        idx = begin
+                        cnt = np.int32(0)
+                        coneRayIdxAtMin = np.int32(0)
+                        for ray in coneRays :
+                            if ray == coneMin :
+                                coneRayIdxAtMin += idx
+                                cnt +=1
+                            idx +=1
+
+                        # get min position as avg of all min positions
+                        coneRayIdxAtMin = np.int32(coneRayIdxAtMin/cnt)
+
+                        # validate if cone is near center of range of rays
+                        numRays = end - begin
+                        minCtr = coneRayIdxAtMin - begin
+                        minRatio = math.fabs(0.5 - minCtr/numRays)
+                        minRatioValid = minRatio < self.coneMinRatioLimit
+
+                        # Validate min - max distance and cone radius
+                        minMaxValid =   ((coneMax - coneMin) < self.coneMinMaxDiffMax) \
+                                    and ((coneMax - coneMin) > self.coneMinMaxDiffMin) 
+
+                        if (minMaxValid and minRatioValid) :
+                            # validated cone detection
+                            # self.get_logger().info(f" possible cone {coneMin=} {coneMax=} {coneRayIdxAtMin=} {coneRays=}")
+                            
+                            # keep the closest cone candidate 
+                            if coneMin<coneMinDet :
+                                coneMinDet = coneMin
+                                coneIdxDet = coneRayIdxAtMin
+                                coneRaysDet = coneRays
+
+
+                        # keep looking for more cone candidates
+                        begin = np.int32(0)
+                        end = np.int32(0)
+
+            else :
+                # cone ray distance was too far, look for another cone
+                begin = np.int32(0)
+                end = np.int32(0)
+
+            lastRay = ray
+            rayNum +=1
+ 
+        # self.get_logger().info(f"{coneMinDet=} {coneIdxDet=} {coneRaysDet=}")
+
+        
+        coneMin = coneMinDet
+        coneIdx = coneIdxDet
+        coneRays = coneRaysDet
+
+        # self.get_logger().info(f" {coneMin=} {coneIdx=} {coneRays=}")
+
+        # find angle of detected cone in FOV in front of robot where cone is searched
+        # middle of coneRanges[] data is 0 degrees
+        # a = np.float32(angle_increment*(coneRayIdxAtMin-(np.size(coneRanges)/2)))
+        a = np.float32(angle_increment*(coneIdx-(np.size(coneRanges)/2)))
+
+        # convert to x,y coordinates relative to lidar
+        d = np.float32(coneMin)
+        x = float(d*np.cos(a))
+        y = float(d*np.sin(a))
+        z = float(0.0)
+        self.pointPublish("Lidar",x,y,z)
+
+        # self.get_logger().info(f"lidar_callback: {x=} {y=} {a=} {d=} {coneMax=} {minRatio=}")
+
   
     def pointPublish(self, sensor:String, x:float,y:float,z:float) -> None :
         """
@@ -176,9 +321,11 @@ class ConeNode(Node):
 
         if sensor == "Camera" :
             pmsg.header.frame_id="oak-d_frame"
-            self.cone_point_publisher.publish(pmsg)
+            self.cone_point_cam_publisher.publish(pmsg)
 
-
+        if sensor == "Lidar" :
+            pmsg.header.frame_id="lidar_link"
+            self.cone_point_lidar_publisher.publish(pmsg)
 
     def destroy_node(self):
         self.get_logger().info("destroy_node")
