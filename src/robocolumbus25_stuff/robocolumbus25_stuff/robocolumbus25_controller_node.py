@@ -6,6 +6,7 @@ import time
 from rclpy.node import Node
 from std_msgs.msg import String
 from rclpy.executors import MultiThreadedExecutor
+from sensor_msgs.msg import BatteryState
 
 class ControllerNode(Node):
     '''
@@ -22,6 +23,8 @@ class ControllerNode(Node):
         self.json_msg_subscription = self.create_subscription(String, "json_msg"
                                         , self.json_msg_callback, 10)
                 
+        self.battery_status_msg_publisher = self.create_publisher(BatteryState, 'battery_status', 10)
+
         self.tts("Controller Node Started")
         self.get_logger().info(f"ControllerNode Started")
 
@@ -52,12 +55,50 @@ class ControllerNode(Node):
                 self.processEngineStatus(status)
 
     def processEngineStatus(self,status:String) -> None :
-            self.get_logger().info(f"processEngineStatus: {status=}")
+            # self.get_logger().info(f"processEngineStatus: {status=}")
             if "mode" in status : self.processMode(status["mode"])
-            if "rca" in status : self.processRca(status["rca"])
-            if "kse" in status : self.processKse(status["kse"])
-            if "ksl" in status : self.processKsl(status["ksl"])
-            if "ksa" in status : self.processKsa(status["ksa"])
+            if "rca"  in status : self.processRca(status["rca"])
+            if "kse"  in status : self.processKse(status["kse"])
+            if "ksl"  in status : self.processKsl(status["ksl"])
+            if "vbat" in status : self.processVbat(status["vbat"])
+
+    # timer for battery report when not LOW
+    bat_timer = 0
+    bat_per = 10.0
+    lastVbat = 100.0
+    def processVbat(self, vbat) -> None :
+        # round to 1 decimal place
+        vbat = round(vbat, 1)
+
+        if vbat > 0 and vbat <= 11.1 :
+            self.get_logger().warning(f"Battery low {vbat=:.3f}")
+        elif (time.time_ns()*1e-9 - self.bat_timer) > self.bat_per :
+            self.get_logger().info(f"Battery {vbat=:.3f}")
+            self.bat_timer = time.time_ns()*1e-9
+
+        # Send /battery_state topic message
+        # TODO: add current and possibly cell voltages
+        bmsg = BatteryState()
+        bmsg.header.stamp = self.get_clock().now().to_msg()
+        bmsg.header.frame_id = "base_link"
+        bmsg.voltage = float(vbat)
+        bmsg.present = True
+        self.battery_status_msg_publisher.publish(bmsg)
+
+        # Send battery status to the speaker
+        if ((vbat>11.1 and vbat<(self.lastVbat - 0.1)) or vbat<self.lastVbat) :
+            if vbat == 0.0 :
+                self.tts("No battery")
+            elif vbat>11.1 :
+                self.tts(f"Battery {vbat}")
+            elif vbat>10.9 :
+                self.tts(f"Battery low: {vbat}")
+            elif vbat > 10.8 :
+                self.tts(f"Warning! Battery {vbat}")
+            else :
+                self.tts(f"DANGER! Battery {vbat}")
+        
+            self.lastVbat = vbat
 
     modeState:String = ""
     def processMode(self, mode:String) -> None :

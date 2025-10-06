@@ -134,21 +134,40 @@ Enable computer control: Steering CW, toggle Shift DOWN then UP<br>
 Enable receiver control: Steering CCW, toggle Shift DOWN the UP<br>
 - From computer<br>
 Send JSON message<br>
+### Kill switch
+The remote control transmitter can be used as a "kill" switch to stop and resume robot movements. The kill switch operation can be used when the engine controller is controlled by the computer in "cv" mode. Turning off the remote transmitter or switching out of "cv" mode disables the kill switch and it must be re-enabled next time it is in "cv" mode<br>
+The engine must be in computer control mode "cv":<br>
+The shift action is to press the shift switch up the down.<br>
+- Enable kill switch: Pull trigger and shift<br>
+- Disable kill switch: Change mode or power transmitter OFF<br>
+- Latch the kill switch: While enabled and trigger is pulled and shift then release trigger<br>
+- Unlatch the kill switch: Pull the trigger (must re-latch if desired)<br>
+
+While the kill switch is enabled releasing the trigger will stop any movement. Pulling the trigger will resume movement. Changing mode or powering the transmitter OFF will disable the latch.<br>
+
 ## JSON messages
 ### Congfigure messages from the computer
-- Switch to/from computer control<br>
-{"rc":bool} Select signal source, RC receiver true, USB computer false<br>
-- Failsafe enable/disable<br>
-{"fse":bool} Failsafe enabled, enabled true, disabled false<br>
+- Switch to/from computer control modes<br>
+{"mode":"bypass"}: Use remote Rc transmitter to control the robot directly <br>
+{"mode":"passthru"}: Use remote Rc transmitter to control the robot indirectly <br>
+{"mode":"cv"}: Control robot using fwd velocity and steering angle<br>
+{"mode":"pct"}: Control robot using Steering and throttle percents <br>
 ### Runtime control messages from computer
-The throttle and steer commands will be send to motors when the remote trigger is pulled while failsafe is enabled (default enabled)<br>
 When powered on the throttle and steering are from the receiver. They can be switched to the computer with a JSON command or from controls on the receiver<br>
+#### Computer control using percent
+The mode must be "pct":
 - Throttle<br>
 {"thr":pct} percent throttle, forward +pct, reverse -pct<br>
 - Steer<br>
 {"str":pct} percent steering, right +pct, left -pct<br>
 - Gear shift<br>
 {"sft":bool} Gear shift, high true, low false<br>
+#### Computer control using velocity and angle
+The mode must be "cv":
+-{"cv":[velocity, steer]}
+Velocity in meters per second<br>
+Steering in radian angles (+-40 degrees)
+
 ### Status messages to computer
 ## Throttle bidir half duplex serial messages
 The Throttle interface between the RC receiver and the ESC controller is a bidirectional UART serial interface at 155200 baud. The RC receiver sends control signals to the ESC. The ESC responds with telemetry data to the RC receiver.<br>

@@ -362,7 +362,7 @@ class NavNode(Node):
                 if killSwitchActive :
                     # Cancel goal and wait when kill switch status changes to active
                     if killSwitchChange :
-                        # self.nav.cancelTask()
+                        self.cancelNav2Task()
                         self.cd_sub_state = 0
                 else : # Execute when kill switch is not active
                     # check for nav complete or navigate time finished and try again
@@ -381,15 +381,20 @@ class NavNode(Node):
                     else :
                         self.get_logger().info(f"{func} Get new cone placement and navigate some more {state=}")
                         # self.nav.cancelTask()
+                        self.cancelNav2Task()
                         self.cd_sub_state = 0
 
         else :
             self.get_logger().info(f"{func} lost cone {state=}")
             # self.nav.cancelTask()
+            self.cancelNav2Task()
             next_state = 0
 
         return next_state
 
+    def cancelNav2Task(self) :
+        if not self.nav.isTaskComplete() :
+            self.nav.cancelTask()
 
     #state 2 - get closer to cone
     def get_closer_to_cone(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
@@ -492,11 +497,11 @@ class NavNode(Node):
             self.get_logger().info(f"{func} lost cone {state=}")
             next_state = 0
         elif x > 1.5*self.cd_closer_dist :
-            self.get_logger().info(f"{func} cone is too far {d=:.3f} {a=:.3f} {x=:.3f} {y=:.3f} {state=}")
-            self.tts("State 3: The cone is too far at distance {d:.3f} meters")
+            self.get_logger().info(f"{func} cone is too far {d=:.3f} {d_tof=:.3f} {a=:.3f} {x=:.3f} {y=:.3f} {state=}")
+            self.tts(f"State 3: The cone is too far at distance {d:.3f} meters")
             next_state = 0 # restart by looking for the cone
         elif (x > self.cd_touch_dist) and (d_tof > self.cd_touch_dist) :
-            self.get_logger().info(f"{func} approaching cone to touch {d=:.3f} {a=:.3f} {x=:.3f} {y=:.3f} {fc_ob_dist=:.3f} {fl_ob_dist=:.3f} {fr_ob_dist=:.3f} {state=}")
+            self.get_logger().info(f"{func} approaching cone to touch {d=:.3f} {d_tof=:.3f} {a=:.3f} {x=:.3f} {y=:.3f} {fc_ob_dist=:.3f} {fl_ob_dist=:.3f} {fr_ob_dist=:.3f} {state=}")
             msg.linear.x = (x/0.2)*self.cd_touch_lin_vel + 0.010
             # turn towards cone center
             # msg.angular.z =  (a/0.393)*msg.linear.x #self.cd_touch_ang_vel
@@ -507,8 +512,8 @@ class NavNode(Node):
             if fr_ob_dist < 0.2 :
                 msg.angular.z -= 4*(fr_ob_dist - 0.2) * msg.linear.x
         else : 
-            self.get_logger().info(f"{func} touched {d=:.3f} {d_tof=:.3f} {a=:.3f} {x=:.3f} {y=:.3f} {fc_ob_dist=:.3f} {fl_ob_dist=:.3f} {fr_ob_dist=:.3f} {state=}")
-            self.tts("State 3: Touched the cone")
+            self.get_logger().info(f"{func} touched {d=:.3f} {d_tof=:.3f} {d_tof=:.3f} {a=:.3f} {x=:.3f} {y=:.3f} {fc_ob_dist=:.3f} {fl_ob_dist=:.3f} {fr_ob_dist=:.3f} {state=}")
+            self.tts("State 3: The cone was touched")
             next_state = 4
 
         self.cmd_vel_publisher.publish(msg)
@@ -775,21 +780,28 @@ class NavNode(Node):
         end = np.int32(0)
         lastRay = np.float32(coneRanges[0])
         rayNum = np.int32(1)
+ 
+        coneMinDet:float = math.inf
+        coneIdxDet:int = 0
+        coneRaysDet:list = []
 
         # NOTE: 1st ray cant be start of cone
         for ray in coneRanges[1:] :
             # if np.math.isinf(ray) : ray = 100 
             if begin==0 :
                 # look for dist jump hi to lo to indicate possible start
-                if (ray<self.coneRayMax) and ((lastRay-ray)>self.diffJump) :
-                    # possible start of cone detect
-                    begin = rayNum
+                if (ray<self.coneRayMax) :
+                    if ((lastRay-ray)>self.diffJump) :
+                        # possible start of cone detect
+                        begin = rayNum
+                        # self.get_logger().info(f" possible start of cone detect {begin=}")
 
             elif (lastRay<self.coneRayMax) :
                 # look for dist jump lo to hi to indicate possible end
                 if((ray-lastRay)>self.diffJump) :
                     # possible end of cone detect
                     end = rayNum-1
+                    # self.get_logger().info(f" possible end of cone detect {end=}")
                     if False : #(end-begin) < rayMinCnt :
                         # number of rays too small for a cone, look for another cone
                         begin = np.int32(0)
@@ -822,20 +834,20 @@ class NavNode(Node):
                         minMaxValid =   ((coneMax - coneMin) < self.coneMinMaxDiffMax) \
                                     and ((coneMax - coneMin) > self.coneMinMaxDiffMin) 
 
-                        # # validate num rays vs distance
-                        # numRaysMeas = (end-begin)+1+rayInfCount
-                        # numRaysCalc = np.arctan2(coneRadius,coneMin+coneRadius) # dist to cone center
-                        # numRaysCalc *= 2/angle_increment
-                        # numRaysDiff = np.abs(numRaysMeas-numRaysCalc)
-                        # if True : #(numRaysDiff)  < 100 : #((numRaysCalc*rayCountScale)) :
-
                         if (minMaxValid and minRatioValid) :
                             # validated cone detection
-                            break
-                        else :
-                            # not valid cone, look for another
-                            begin = np.int32(0)
-                            end = np.int32(0)
+                            # self.get_logger().info(f" possible cone {coneMin=} {coneMax=} {coneRayIdxAtMin=} {coneRays=}")
+                            
+                            # keep the closest cone candidate 
+                            if coneMin<coneMinDet :
+                                coneMinDet = coneMin
+                                coneIdxDet = coneRayIdxAtMin
+                                coneRaysDet = coneRays
+
+
+                        # keep looking for more cone candidates
+                        begin = np.int32(0)
+                        end = np.int32(0)
 
             else :
                 # cone ray distance was too far, look for another cone
@@ -845,18 +857,28 @@ class NavNode(Node):
             lastRay = ray
             rayNum +=1
  
-        if (begin==0) or (end==0) :
+        # self.get_logger().info(f"{coneMinDet=} {coneIdxDet=} {coneRaysDet=}")
+
+    # if (begin==0) or (end==0) :
+        if math.isinf(coneMinDet) :
             # no cone detected
-            #self.get_logger().info(f"lidar_callback: No cone detected {coneRanges=}")
+            # self.get_logger().info(f"lidar_callback: No cone detected {coneRanges=}")
             # default for no cone detected
             self.cone_at_x_lidar = 0
             self.cone_at_y_lidar = 0
             self.cone_at_a_lidar = 0
             return
         
+        coneMin = coneMinDet
+        coneIdx = coneIdxDet
+        coneRays = coneRaysDet
+
+        # self.get_logger().info(f" {coneMin=} {coneIdx=} {coneRays=}")
+
         # find angle of detected cone in FOV in front of robot where cone is searched
         # middle of coneRanges[] data is 0 degrees
-        a = np.float32(angle_increment*(coneRayIdxAtMin-(np.size(coneRanges)/2)))
+        # a = np.float32(angle_increment*(coneRayIdxAtMin-(np.size(coneRanges)/2)))
+        a = np.float32(angle_increment*(coneIdx-(np.size(coneRanges)/2)))
 
         # convert to x,y coordinates relative to lidar "/oak-d_frame"
         d = np.float32(coneMin)

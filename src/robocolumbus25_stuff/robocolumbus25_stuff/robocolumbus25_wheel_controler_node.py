@@ -12,12 +12,12 @@ The wheel spacing is TBD
 """
 
 # from asyncio.windows_events import NULL
+from sympy import Ellipse
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Quaternion
-from sensor_msgs.msg import BatteryState
 from std_msgs.msg import String
 
 import math
@@ -62,22 +62,11 @@ class WheelControllerNode(Node):
 
     # Odometry from encoder or velocity
     odom_encoder = True
-
-    # timer for battery report when not LOW
-    bat_timer = 0
-    bat_per = 10.0
     
     def __init__(self):
         super().__init__('robocolumbus25_wheel_controler_node')
 
         self.cb_group = MutuallyExclusiveCallbackGroup()
-
-        # try:
-        #     self.ser = serial.Serial(self.serial_port, self.baudrate, timeout=1)
-        #     self.get_logger().info(f"Serial port {self.serial_port} opened.")
-        # except serial.SerialException as e:
-        #     self.get_logger().error(f"Failed to open serial port: {e}")
-        #     self.ser = None
 
         self.openSerialPort()
 
@@ -87,7 +76,6 @@ class WheelControllerNode(Node):
                                         , self.cmd_vel_callback, 10)
 
         self.wheel_odom_publisher = self.create_publisher(Odometry, 'wheel_odom', 10)
-        self.battery_status_msg_publisher = self.create_publisher(BatteryState, 'battery_status', 10)
 
         # Timer is used for serial port, has own call back group is serial processing takes time
         self.serialTimer = self.create_timer(0.010, self.serialTimerCallback
@@ -106,9 +94,9 @@ class WheelControllerNode(Node):
         self.ser.flush()
         time.sleep(5)  # engine controller seems to act weird if no delay
 
-        # Send zero velocity command to unstick battery status - worked!
-        cmd = {"cv":[0,0]}
-        self.sendJsonCmd(cmd)
+        # # Send zero velocity command to unstick battery status - worked!
+        # cmd = {"cv":[0,0]}
+        # self.sendJsonCmd(cmd)
 
         self.tts("Wheel Controller Node Started")
         self.get_logger().info(f"WheelControllerNode: Started node")
@@ -200,52 +188,11 @@ class WheelControllerNode(Node):
 
         if 'status' in data:
             status = data['status']
-            self.processStatusMsg(status)
+            self.processEngineStatusMsg(status)
         
-    def processStatusMsg(self, status) -> None :
-        if 'vbat' in status:
-            vbat = status['vbat']
-            self.processBatteryInfo(vbat)
-
+    def processEngineStatusMsg(self, status) -> None :
         json_msg = {"engine":{"status":status}}
         self.sendJsonMsg(json_msg)
-
-
-    lastVbat = -1
-
-    def processBatteryInfo(self, vbat) -> None :
-        # round to 1 decimal place
-        vbat = round(vbat, 1)
-
-        if vbat > 0 and vbat <= 11.1 :
-            self.get_logger().warning(f"Battery low {vbat=:.3f}")
-        elif (time.time_ns()*1e-9 - self.bat_timer) > self.bat_per :
-            self.get_logger().info(f"Battery {vbat=:.3f}")
-            self.bat_timer = time.time_ns()*1e-9
-
-        # Send /battery_state topic message
-        # TODO: add current and possibly cell voltages
-        bmsg = BatteryState()
-        bmsg.header.stamp = self.get_clock().now().to_msg()
-        bmsg.header.frame_id = "base_link"
-        bmsg.voltage = float(vbat)
-        bmsg.present = True
-        self.battery_status_msg_publisher.publish(bmsg)
-
-        # Send battery status to the speaker
-        if vbat!=self.lastVbat :
-            if vbat == 0.0 :
-                self.tts("No battery")
-            elif vbat>11.3 :
-                self.tts(f"Battery {vbat}")
-            elif vbat>11.0 :
-                self.tts(f"Battery low: {vbat}")
-            elif vbat == 11.0 :
-                self.tts(f"Warning! Battery {vbat}")
-            elif vbat<11.0 :
-                self.tts(f"DANGER! Battery {vbat}")
-        self.lastVbat = vbat
-
 
     # Process odom info from wheels to get /wheel_odom with velocity and pose
     def proc_wheel_odom_msg(self, odom) :
