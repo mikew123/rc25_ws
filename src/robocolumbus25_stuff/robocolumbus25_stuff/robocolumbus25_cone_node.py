@@ -171,7 +171,7 @@ class ConeNode(Node):
     lidarActive = False
     # Field of view pointing forward from Lidar 36 degree scan data 
     fovRad_lidar = 0.758 # 45 deg, +-22.5 degrees
-    coneMinRatioLimit = np.float32(0.250)
+    coneMinRatioLimit = np.float32(0.250*1.5)
     coneMinMaxDiffMax = np.float32(0.060)
     coneMinMaxDiffMin = np.float32(0.005)
     coneRadius        = np.float32(0.05) # 100mm diameter at Lidar scan height     
@@ -253,13 +253,17 @@ class ConeNode(Node):
                         numRays = end - begin
                         minCtr = coneRayIdxAtMin - begin
                         minRatio = math.fabs(0.5 - minCtr/numRays)
-                        minRatioValid = minRatio < self.coneMinRatioLimit
+                        minRatioValid:bool = minRatio < self.coneMinRatioLimit
 
                         # Validate min - max distance and cone radius
-                        minMaxValid =   ((coneMax - coneMin) < self.coneMinMaxDiffMax) \
+                        minMaxValid:bool =   ((coneMax - coneMin) < self.coneMinMaxDiffMax) \
                                     and ((coneMax - coneMin) > self.coneMinMaxDiffMin) 
 
-                        if (minMaxValid and minRatioValid) :
+                        # Validate the width of the detected object
+                        objWidth:float = 2*coneMin*math.sin((numRays*angle_increment)/2)
+                        objWidthValid:bool = math.fabs(1-(objWidth/0.100)) < 0.5
+
+                        if (minMaxValid and minRatioValid and objWidthValid) :
                             # validated cone detection
                             # self.get_logger().info(f" possible cone {coneMin=} {coneMax=} {coneRayIdxAtMin=} {coneRays=}")
                             
