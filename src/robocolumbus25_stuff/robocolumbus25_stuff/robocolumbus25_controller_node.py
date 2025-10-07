@@ -15,6 +15,9 @@ class ControllerNode(Node):
     Processes the json_msgs engine statuses
     '''
 
+    gotoConeFile = None
+    smTimerRateHz = 1.0
+
     def __init__(self):
         super().__init__('controller_node')
             
@@ -25,8 +28,61 @@ class ControllerNode(Node):
                 
         self.battery_status_msg_publisher = self.create_publisher(BatteryState, 'battery_status', 10)
 
+        try :
+            f = open("../sambashare/nav_files/navto_cone_coordinates.json")
+            self.gotoConeFile = f.read()
+            f.close()
+        except :
+            self.get_logger().info(f"No file found - navto_cone_coordinates.json")
+            pass
+
+        self.sm_timer = self.create_timer((1.0/self.smTimerRateHz), self.sm_timer_callback)
+
+
         self.tts("Controller Node Started")
         self.get_logger().info(f"ControllerNode Started")
+
+    sm_next_state = 0
+    nextConeNum = 1
+    requestNextCone = False
+
+    def sm_timer_callback(self) -> None :
+        state = self.sm_next_state
+        next_state = state
+
+        if state == 0 :
+            if self.requestNextCone :
+                self.requestNextCone = False
+                status = self.sendConeNavCoordinates(self.nextConeNum)
+                if status == True :
+                    self.nextConeNum +=1
+                    next_state = 0
+                else :
+                    next_state = 1
+
+        elif state == 1:
+            # DONE
+            self.tts("Successfully went to each cone")
+            pass
+
+        self.sm_next_state = next_state
+
+    def sendConeNavCoordinates(self, n:int) -> bool :
+        try :
+            self.get_logger().info(f"{self.gotoConeFile=}")
+            data = json.loads(self.gotoConeFile)
+            gotoxy = data["gotoxy"]
+            coneN = f"cone{n}"
+            cone = gotoxy[coneN]
+            x = cone["x"]
+            y = cone["y"]
+            self.get_logger().info(f"gotoxy {coneN} {x=} {y=}")
+            json_msg = {"nav":{"gotoxy":{"n":n, "x":x, "y":y}}}
+            self.sendJsonMsg(json_msg)
+            return True
+        except :
+            self.get_logger().info(f"Not valid {self.gotoConeFile=}")
+            return False
 
     def tts(self, tts) -> None:
         """
@@ -53,6 +109,12 @@ class ControllerNode(Node):
             if "status" in engine:
                 status = engine['status']
                 self.processEngineStatus(status)
+
+        if 'nav' in data :
+            nav = data['nav']
+            if "requestcone" in nav :
+                requestcone = nav["requestcone"]
+                self.requestNextCone = requestcone
 
     def processEngineStatus(self,status:String) -> None :
             # self.get_logger().info(f"processEngineStatus: {status=}")

@@ -36,7 +36,7 @@ class NavNode(Node):
     smTimerRateHz:float = 10.0
 
     tc_state = -1
-    tc_next_state = 1 # got straight to find cone state machine #0
+    tc_next_state = 0 # wait for cone location
 
     cd_timer:float = 0.0
     cd_state:int = 0
@@ -177,9 +177,30 @@ class NavNode(Node):
         #self.get_logger().info(f"json_msg_callback: {msg=}")
         data = json.loads(msg.data)
 
-        if 'kill' in data:
+        if 'kill' in data :
             kill:bool = data['kill']
             self.processKillSwStatus(kill)
+
+        if 'nav' in data :
+            nav = data['nav']
+            self.processNavMsg(nav)
+
+    coneXY:dict = None
+    coneNum:int = 0
+
+    def requestNextCone(self) :
+        self.tts("Requesting next cone location")
+        json_msg = {"nav": {"requestcone":True}}
+        self.sendJsonMsg(json_msg)
+
+    def processNavMsg(self, nav:dict) -> None :
+        self.get_logger().info(f"processNavMsg: {nav=}")
+        if "gotoxy" not in nav : return
+        gotoxy = nav["gotoxy"]
+        x = gotoxy["x"]
+        y = gotoxy["y"]
+        n = gotoxy["n"]
+        self.coneXY = {"n":n, "x":x, "y":y}
 
     def processKillSwStatus(self, kill:bool) -> None :
         if(kill != self.killSw) :
@@ -202,56 +223,60 @@ class NavNode(Node):
         self.tc_state = state
 
         if state == 0 :
-            # if stateChange :
-            #     # wait for navigator
-            #     # This does not work, it waits forever and send out messages like setting inital pose
-            #     self.get_logger().info(f"sm_timer_callback: Wait for Nav2 to be active")
-            #     initialPose = self.createPose(0,0,0,"map")
-            #     self.nav.setInitialPose(initialPose)
-            #     self.nav.waitUntilNav2Active()
-            #     self.get_logger().info(f"sm_timer_callback: Nav2 active now")
-            #     self.tts("Nav2 active")
-                
-
-            # Rviz 2DGoalPose can be used to move robot until a cone is detected
-            # get cone xy from camera detect
-            x:float = self.cone_at_x_cam
-            y:float = self.cone_at_y_cam
-            d:float = self.cone_at_d_cam
-            a:float = self.cone_at_a_cam
-
-            # This time out really does not do anything
-            t:int = self.cone_det_time_cam
-            to:int = self.cone_det_time_out_cam
-            dt:int = (time.time_ns()*1e-9) - t
-            # self.get_logger().info(f"{func} {dt=} {t=} {x=} {y=} ")
-            if dt>to and t>0:
-                self.get_logger().info(f"sm_timer: cone detection is stale {dt=:.3f} {x=:.3f} {y=:.3f} {d=:.3f}  {a=:.3f}")
-                d = 0
-
-
-            if d>0 :
-                self.get_logger().info(f"sm_timer: cone detected - cancel rviz nav {x=:.3f} {y=:.3f} {d=:.3f}  {a=:.3f}")
-                # cancel navigation initiated by rviz
-                # self.nav.cancelTask()
-                next_state = 1
-
-        # initialize at start point and wait for start command
-
-        # goto GPS coordinate
-
+            time.sleep(20)
+            next_state = 1
+            
         elif state == 1 :
+            self.coneXY = None
+            self.requestNextCone()
+            next_state = 2
+
+        elif state == 2 :
+            # wait for xy location from controller
+            if self.coneXY != None :
+
+                x = self.coneXY["x"]
+                y = self.coneXY["y"]
+                n = self.coneXY["n"]
+                #TODO: what angle?
+                a = 0.0
+
+                self.get_logger().info(f"Go to cone {n} location {x=} {y=}")
+                self.tts(f"Go to cone {n} location {x=} {y=}")
+
+                goto_pose = self.createPose(x,y,a,"map")
+                self.nav.goToPose(goto_pose)
+                next_state = 3
+        
+        elif state == 3 :
+        
+            #TODO: timeout + kill switch
+            if self.nav.isTaskComplete() :
+                result = self.nav.getResult()
+                if result == TaskResult.SUCCEEDED :
+                    self.tts("Navigate to cone location is successfull")
+                    next_state = 4
+                else :
+                    # try again
+                    self.tts("Attempt to navigate to cone location again")
+                    next_state = 2
+
+        elif state == 4 :
             # find cone and "touch" it
-            self.cd_sm()
-            pass
+            done = self.cd_sm()
+            if done : 
+                # go to next cone location
+                self.tts("goto cone succeeded - get another cone location ")
+                state = 1
 
         # set next GPS coordinate 
 
         self.tc_next_state = next_state
 
     # Executes in timer callback group, sensor callbacks are in parallel
-    def cd_sm(self) :
+    def cd_sm(self) -> bool:
         func = "cone_sm:"
+        done = False
 
         state_change:bool = False
         if self.cd_state != self.cd_last_state : 
@@ -288,10 +313,14 @@ class NavNode(Node):
 
         elif state == 6 :
             next_state = self.stop_after_touch(func,state,state_change,ks,ksc)
+            # touch cone success - get ready for next cone
+            done = True
+            next_state = 0
 
         self.cd_last_state = state
         self.cd_state = next_state
 
+        return done
 
     # state 0 - wait for camera cone detection
     def wait_for_cone_det(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
@@ -598,7 +627,7 @@ class NavNode(Node):
             self.tts("State 6: Stopping now")
 
         next_state = state
-
+        
         return next_state
     
     def get_cone_dist_from_robot(self, cx:float, cy:float) -> tuple:
