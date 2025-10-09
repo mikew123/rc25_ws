@@ -14,136 +14,279 @@
 #include <strings.h>
 #include <vl53l8cx.h>
 
-#define DEV_I2C Wire
+// Front and Rear TOF devices on seperate I2C interface
+#define DEV_I2C_F Wire
+#define DEV_I2C_R Wire1
+
 #define SerialPort Serial
-#define I2C_DEFAULT 0x29
-#define I2C_ADDR_C 0x2A
-#define I2C_ADDR_L 0x2B
-#define I2C_ADDR_R 0x2C
 
 #define SERIAL_HZ 1000000
-
-// Vl53l8cx power enable is not used
-#define PWREN_PIN -1
-#define SDA_PIN 0
-#define SCL_PIN 1
-
-#define SYNC_PIN 5 
-
-#define LPNC_PIN 6
-#define LPNL_PIN 7
-#define LPNR_PIN 8
-
-// 3.3V TOF regulator enable pin
-#define PWRN_PIN 2
-
 #define I2C_HZ 1000000
 #define SCAN_RATE_HZ 10
 
+#define I2C_DEFAULT 0x29
+
+#define I2C_ADDR_FC 0x2A
+#define I2C_ADDR_FL 0x2B
+#define I2C_ADDR_FR 0x2C
+
+// Uses different I2C bus so addresses can be used
+#define I2C_ADDR_RC 0x2A
+#define I2C_ADDR_RL 0x2B
+#define I2C_ADDR_RR 0x2C
+
+// RP2040 pin assignments
+#define SDA_F_PIN 0
+#define SCL_F_PIN 1
+#define PWRN_F_PIN 2 // 3.3V Front TOF regulator enable pin
+
+#define SYNC_PIN 5 
+
+#define LPN_FC_PIN 6
+#define LPN_FL_PIN 7
+#define LPN_FR_PIN 8
+
+#define SDA_R_PIN 14
+#define SCL_R_PIN 15
+
+#define LPN_RC_PIN 26
+#define LPN_RL_PIN 27
+#define LPN_RR_PIN 28
+
+#define PWRN_R_PIN 29 // 3.3V Rear TOF regulator enable pin
+
+
 // create CENTER, LEFT, RIGHT TOF instances
-VL53L8CX tof_fc(&DEV_I2C, -1, -1);
-VL53L8CX tof_fl(&DEV_I2C, -1, -1);
-VL53L8CX tof_fr(&DEV_I2C, -1, -1);
+VL53L8CX tof_fc(&DEV_I2C_F, -1, -1);
+VL53L8CX tof_fl(&DEV_I2C_F, -1, -1);
+VL53L8CX tof_fr(&DEV_I2C_F, -1, -1);
+
+VL53L8CX tof_rc(&DEV_I2C_R, -1, -1);
+VL53L8CX tof_rl(&DEV_I2C_R, -1, -1);
+VL53L8CX tof_rr(&DEV_I2C_R, -1, -1);
 
 void sendJson(String tof, uint32_t stamp, VL53L8CX_ResultsData *results);
-void getData(String tof);
-void setI2CAddresses();
-void configTofDevices();
-void startMeasurements();
 
-VL53L8CX_ResultsData results;
-uint8_t newDataReady = 0;
-uint8_t status;
+void getData_F(String tof);
 
-void setI2CAddresses() {
+void setI2CAddresses_F();
+void configTofDevices_F();
+void startMeasurements_F();
+
+VL53L8CX_ResultsData results_F;
+uint8_t newDataReady_F = 0;
+uint8_t status_F;
+
+void getData_R(String tof);
+
+void setI2CAddresses_R();
+void configTofDevices_R();
+void startMeasurements_R();
+
+VL53L8CX_ResultsData results_R;
+uint8_t newDataReady_R = 0;
+uint8_t status_R;
+
+void setI2CAddresses_F() {
   // Cycle power to I2C devices to set default I2C
-  pinMode(PWRN_PIN, OUTPUT);
-  digitalWrite(PWRN_PIN, LOW);
+  pinMode(PWRN_F_PIN, OUTPUT);
+  digitalWrite(PWRN_F_PIN, LOW);
   delay(100);
-  digitalWrite(PWRN_PIN, HIGH);
+  digitalWrite(PWRN_F_PIN, HIGH);
 
   // LPn pins disable I2C interface when LOW
-  pinMode(LPNC_PIN, OUTPUT);
-  pinMode(LPNL_PIN, OUTPUT);
-  pinMode(LPNR_PIN, OUTPUT);
+  pinMode(LPN_FC_PIN, OUTPUT);
+  pinMode(LPN_FL_PIN, OUTPUT);
+  pinMode(LPN_FR_PIN, OUTPUT);
   // Disable the 3 TOF devices on the I2C bus
-  digitalWrite(LPNC_PIN, LOW);
-  digitalWrite(LPNL_PIN, LOW);
-  digitalWrite(LPNR_PIN, LOW);
+  digitalWrite(LPN_FC_PIN, LOW);
+  digitalWrite(LPN_FL_PIN, LOW);
+  digitalWrite(LPN_FR_PIN, LOW);
 
-  digitalWrite(LPNC_PIN, HIGH);
+  digitalWrite(LPN_FC_PIN, HIGH);
   delay(10);
-  tof_fc.set_i2c_address(I2C_ADDR_C <<1);
-  digitalWrite(LPNL_PIN, HIGH);
+  tof_fc.set_i2c_address(I2C_ADDR_FC <<1);
+  digitalWrite(LPN_FL_PIN, HIGH);
   delay(10);
-  tof_fl.set_i2c_address(I2C_ADDR_L <<1);
-  digitalWrite(LPNR_PIN, HIGH);
+  tof_fl.set_i2c_address(I2C_ADDR_FL <<1);
+  digitalWrite(LPN_FR_PIN, HIGH);
   delay(10);
-  tof_fr.set_i2c_address(I2C_ADDR_R <<1);
+  tof_fr.set_i2c_address(I2C_ADDR_FR <<1);
 
 }
 
-void configTofDevice(String tof) {
+
+void configTofDevice_F(const char* tof) {
+  rp2040.wdt_reset();
+
   int status;
   do{
     // Configure VL53L8CX component.
-    // Serial.printf("VL53L8CX %s begin\n", tof.c_str());
-    if(tof=="tof_fc") tof_fc.begin();
-    if(tof=="tof_fl") tof_fl.begin();
-    if(tof=="tof_fr") tof_fr.begin();
-    
+    // Serial.printf("VL53L8CX %s begin\n", tof);
+    if(strncmp(tof,"tof_fc",6)) tof_fc.begin();
+    if(strncmp(tof,"tof_fl",6)) tof_fl.begin();
+    if(strncmp(tof,"tof_fr",6)) tof_fr.begin();
 
-    // Serial.printf("VL53L8CX %s init\n", tof.c_str());
-     if(tof=="tof_fc") status = tof_fc.init();
-     if(tof=="tof_fl") status = tof_fl.init();
-     if(tof=="tof_fr") status = tof_fr.init();
+    // Serial.printf("VL53L8CX %s init\n", tof);
+    if(strncmp(tof,"tof_fc",6)) status = tof_fc.init();
+    if(strncmp(tof,"tof_fl",6)) status = tof_fl.init();
+    if(strncmp(tof,"tof_fr",6)) status = tof_fr.init();
 
     if(status == 0) {
-      Serial.printf("VL53L8CX %s intialized OK\n", tof.c_str());
+      Serial.printf("VL53L8CX %s intialized OK\n", tof);
     } else {
-      Serial.printf("VL53L8CX %s failed to initialize - reboot: status=0x%02X\n", tof.c_str(), status);
+      Serial.printf("VL53L8CX %s failed to initialize - reboot: status=0x%02X\n", tof, status);
+      Serial.println(status,HEX);
+      Serial.flush();
+      delay(1000);
+      rp2040.reboot();
+    }
+  }while(status!=0);
+}
+
+void configTofDevices_F() {
+  configTofDevice_F("tof_fc");
+  configTofDevice_F("tof_fl");
+  configTofDevice_F("tof_fr");
+}
+
+void startMeasurement_F(const char* tof){
+  rp2040.wdt_reset();
+  int status = -1;
+  // Start Measurements
+  if(strncmp(tof,"tof_fc",6)) {
+    status = tof_fc.set_ranging_frequency_hz(SCAN_RATE_HZ);
+    status |= tof_fc.set_resolution(64);
+    status |= tof_fc.start_ranging();
+  }
+  if(strncmp(tof,"tof_fl",6)) {
+    status = tof_fl.set_ranging_frequency_hz(SCAN_RATE_HZ);
+    status |= tof_fl.set_resolution(64);
+    status |= tof_fl.start_ranging();
+  }
+  if(strncmp(tof,"tof_fr",6)) {
+    status = tof_fr.set_ranging_frequency_hz(SCAN_RATE_HZ);
+    status |= tof_fr.set_resolution(64);
+    status |= tof_fr.start_ranging();
+  }
+  Serial.printf("VL53L8CX %s range started status = 0x%02X\n", tof, status);
+  if(status != 0) {
+    delay(1000);
+    Serial.flush();
+    rp2040.reboot();
+  }
+}
+
+void startMeasurements_F(){
+  startMeasurement_F("tof_fc");
+  startMeasurement_F("tof_fl");
+  startMeasurement_F("tof_fr");
+}
+
+
+//****************************************************************
+// REAR TOF devices on 2nd CPU so I made seperate code 
+void setI2CAddresses_R() {
+  // Cycle power to I2C devices to set default I2C
+  pinMode(PWRN_R_PIN, OUTPUT);
+  digitalWrite(PWRN_R_PIN, LOW);
+  delay(100);
+  digitalWrite(PWRN_R_PIN, HIGH);
+
+  // LPn pins disable I2C interface when LOW
+  pinMode(LPN_RC_PIN, OUTPUT);
+  pinMode(LPN_RL_PIN, OUTPUT);
+  pinMode(LPN_RR_PIN, OUTPUT);
+  // Disable the 3 TOF devices on the I2C bus
+  digitalWrite(LPN_RC_PIN, LOW);
+  digitalWrite(LPN_RL_PIN, LOW);
+  digitalWrite(LPN_RR_PIN, LOW);
+
+  digitalWrite(LPN_RC_PIN, HIGH);
+  delay(10);
+  tof_rc.set_i2c_address(I2C_ADDR_RC <<1);
+  digitalWrite(LPN_RL_PIN, HIGH);
+  delay(10);
+  tof_rl.set_i2c_address(I2C_ADDR_RL <<1);
+  digitalWrite(LPN_RR_PIN, HIGH);
+  delay(10);
+  tof_rr.set_i2c_address(I2C_ADDR_RR <<1);
+
+}
+
+void configTofDevice_R(const char* tof) {
+  rp2040.wdt_reset();
+
+  int status = 0;
+  do{
+    // Configure VL53L8CX component.
+    // Serial.printf("VL53L8CX %s begin\n", tof);
+    if(strncmp(tof,"tof_rc",6)) tof_rc.begin();
+    if(strncmp(tof,"tof_rl",6)) tof_rl.begin();
+    if(strncmp(tof,"tof_rr",6)) tof_rr.begin();
+    
+
+    // Serial.printf("VL53L8CX %s init\n", tof);
+     if(strncmp(tof,"tof_rc",6)) status = tof_rc.init();
+     if(strncmp(tof,"tof_rl",6)) status = tof_rl.init();
+     if(strncmp(tof,"tof_rr",6)) status = tof_rr.init();
+
+    if(status == 0) {
+      Serial.printf("VL53L8CX %s intialized OK\n", tof);
+    } else {
+      Serial.printf("VL53L8CX %s failed to initialize - reboot: status=0x%02X\n", tof, status);
       Serial.println(status,HEX);
       rp2040.reboot();
     }
   }while(status!=0);
 }
 
-void configTofDevices() {
-  configTofDevice(String("tof_fc"));
-  configTofDevice(String("tof_fl"));
-  configTofDevice(String("tof_fr"));
+void configTofDevices_R() {
+  configTofDevice_R("tof_rc");
+  configTofDevice_R("tof_rl");
+  configTofDevice_R("tof_rr");
 }
 
-void startMeasurement(String tof){
+
+void startMeasurement_R(const char* tof){
   int status = -1;
   // Start Measurements
-  if(tof=="tof_fc") {
-    status = tof_fc.set_ranging_frequency_hz(SCAN_RATE_HZ);
-    status |= tof_fc.set_resolution(64);
-    status |= tof_fc.start_ranging();
+  if(strncmp(tof,"tof_rc",6)) {
+    status = tof_rc.set_ranging_frequency_hz(SCAN_RATE_HZ);
+    status |= tof_rc.set_resolution(64);
+    status |= tof_rc.start_ranging();
   }
-  if(tof=="tof_fl") {
-    status = tof_fl.set_ranging_frequency_hz(SCAN_RATE_HZ);
-    status |= tof_fl.set_resolution(64);
-    status |= tof_fl.start_ranging();
+  if(strncmp(tof,"tof_rl",6)) {
+    status = tof_rl.set_ranging_frequency_hz(SCAN_RATE_HZ);
+    status |= tof_rl.set_resolution(64);
+    status |= tof_rl.start_ranging();
   }
-  if(tof=="tof_fr") {
-    status = tof_fr.set_ranging_frequency_hz(SCAN_RATE_HZ);
-    status |= tof_fr.set_resolution(64);
-    status |= tof_fr.start_ranging();
+  if(strncmp(tof,"tof_rr",6)) {
+    status = tof_rr.set_ranging_frequency_hz(SCAN_RATE_HZ);
+    status |= tof_rr.set_resolution(64);
+    status |= tof_rr.start_ranging();
   }
-  Serial.printf("VL53L8CX %s range started status = 0x%02X\n", tof.c_str(), status);
+  Serial.printf("VL53L8CX %s range started status = 0x%02X\n", tof, status);
   if(status != 0) {
+    delay(1000);
     Serial.flush();
     rp2040.reboot();
   }
 }
 
-void startMeasurements(){
-  startMeasurement(String("tof_fc"));
-  startMeasurement(String("tof_fl"));
-  startMeasurement(String("tof_fr"));
+void startMeasurements_R(){
+  startMeasurement_R("tof_rc");
+  startMeasurement_R("tof_rl");
+  startMeasurement_R("tof_rr");
 }
+
+
+//*************************************************************************
+// CPU core 0 setup and loop
+
+// Setup core0 then core1
+bool setup0_done = false;
+bool setup1_done = false;
 
 void setup() {
   // Initialize serial for output.
@@ -151,17 +294,26 @@ void setup() {
   delay(1000);
 
   // enable the RP2040 watchdog timer for startup issues
-  rp2040.wdt_begin(83000); // 8.3 max second timer
+  // Only 1 watchdog for both cores - not ideal an issue in 1 core may not be timedout
+  rp2040.wdt_begin(83000); // 8.3 sec max timer
 
   // Initialize I2C bus.
-  DEV_I2C.setSDA(SDA_PIN);
-  DEV_I2C.setSCL(SCL_PIN);
-  DEV_I2C.setClock(I2C_HZ);
-  DEV_I2C.begin();
+  DEV_I2C_F.setSDA(SDA_F_PIN);
+  DEV_I2C_F.setSCL(SCL_F_PIN);
+  DEV_I2C_F.setClock(I2C_HZ);
+  DEV_I2C_F.begin();
 
-  setI2CAddresses();
-  configTofDevices();
-  startMeasurements();
+  setI2CAddresses_F();
+  configTofDevices_F();
+  startMeasurements_F();
+
+  // enable the RP2040 watchdog timer that is reset when TOF data is received
+  // rp2040.wdt_begin(1000); // 1 second timer
+
+  setup0_done = true;
+
+  // Waiting for 2nd core to finish setup()
+  while(!setup1_done) delay(10);
 
   // enable the RP2040 watchdog timer that is reset when TOF data is received
   rp2040.wdt_begin(1000); // 1 second timer
@@ -169,9 +321,37 @@ void setup() {
 
 void loop(void) {
   getJsonMsgs();
-  getData(String("tof_fc"));
-  getData(String("tof_fl"));
-  getData(String("tof_fr"));
+  getData_F("tof_fc");
+  getData_F("tof_fl");
+  getData_F("tof_fr");
+}
+
+
+//*************************************************************************
+// CPU core 1 setup and loop
+// The 2nd core is used for one of the TOF sensor clusters
+void setup1() {
+  // Wait for main setup to get ready for 2nd core
+  while(!setup0_done) delay(10);
+
+  // Initialize I2C bus.
+  DEV_I2C_R.setSDA(SDA_R_PIN);
+  DEV_I2C_R.setSCL(SCL_R_PIN);
+  DEV_I2C_R.setClock(I2C_HZ);
+  DEV_I2C_R.begin();
+
+  setI2CAddresses_R();
+  configTofDevices_R();
+  startMeasurements_R();
+
+  setup1_done = true;
+}
+
+void loop1() {
+  delay(10);
+  // getData_R("tof_rc");
+  // getData_R("tof_rl");
+  // getData_R("tof_rr");
 }
 
 
@@ -215,29 +395,58 @@ void jsonParse(const char *jsonStr) {
 * I2C TOF code
 *********************************************************/
 
-void getData(String tof) {
-  if(tof=="tof_fc") {
-    status = tof_fc.check_data_ready(&newDataReady);
-    if ((!status) && (newDataReady != 0)) {
-      status = tof_fc.get_ranging_data(&results);
+// Front sensors
+void getData_F(const char* tof) {
+  if(strncmp(tof,"tof_fc",6)) {
+    status_F = tof_fc.check_data_ready(&newDataReady_F);
+    if ((!status_F) && (newDataReady_F != 0)) {
+      status_F = tof_fc.get_ranging_data(&results_F);
       uint32_t stamp = millis();
-      sendJson(tof, stamp, &results);
+      sendJson(tof, stamp, &results_F);
     }
   }
-  if(tof=="tof_fl") {
-    status = tof_fl.check_data_ready(&newDataReady);
-    if ((!status) && (newDataReady != 0)) {
-      status = tof_fl.get_ranging_data(&results);
+  if(strncmp(tof,"tof_fl",6)) {
+    status_F = tof_fl.check_data_ready(&newDataReady_F);
+    if ((!status_F) && (newDataReady_F != 0)) {
+      status_F = tof_fl.get_ranging_data(&results_F);
       uint32_t stamp = millis();
-      sendJson(tof, stamp, &results);
+      sendJson(tof, stamp, &results_F);
     }
   }
-  if(tof=="tof_fr") {
-    status = tof_fr.check_data_ready(&newDataReady);
-    if ((!status) && (newDataReady != 0)) {
-      status = tof_fr.get_ranging_data(&results);
+  if(strncmp(tof,"tof_fr",6)) {
+    status_F = tof_fr.check_data_ready(&newDataReady_F);
+    if ((!status_F) && (newDataReady_F != 0)) {
+      status_F = tof_fr.get_ranging_data(&results_F);
       uint32_t stamp = millis();
-      sendJson(tof, stamp, &results);
+      sendJson(tof, stamp, &results_F);
+    }
+  }
+}
+
+// Rear sensors
+void getData_R(const char* tof) {
+  if(strncmp(tof,"tof_rc",6)) {
+    status_R = tof_rc.check_data_ready(&newDataReady_R);
+    if ((!status_R) && (newDataReady_R != 0)) {
+      status_R = tof_rc.get_ranging_data(&results_R);
+      uint32_t stamp = millis();
+      sendJson(tof, stamp, &results_R);
+    }
+  }
+  if(strncmp(tof,"tof_rl",6)) {
+    status_R = tof_rl.check_data_ready(&newDataReady_R);
+    if ((!status_R) && (newDataReady_R != 0)) {
+      status_R = tof_rl.get_ranging_data(&results_R);
+      uint32_t stamp = millis();
+      sendJson(tof, stamp, &results_R);
+    }
+  }
+  if(strncmp(tof,"tof_rr",6)) {
+    status_R = tof_rr.check_data_ready(&newDataReady_R);
+    if ((!status_R) && (newDataReady_R != 0)) {
+      status_R = tof_rr.get_ranging_data(&results_R);
+      uint32_t stamp = millis();
+      sendJson(tof, stamp, &results_R);
     }
   }
 }
@@ -258,7 +467,9 @@ void sendJson(String tof, uint32_t stamp, VL53L8CX_ResultsData *results) {
   int idx;
   int dist;
 
+
   // reset watchdog for hung I2C bus
+  // TODO: be able to detect either bus hung
   rp2040.wdt_reset();
 
   // TODO: pre-process for valid data
