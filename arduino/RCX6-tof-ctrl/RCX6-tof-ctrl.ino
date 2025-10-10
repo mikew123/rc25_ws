@@ -14,6 +14,9 @@
 #include <strings.h>
 #include <vl53l8cx.h>
 
+#include <atomic>
+#include <algorithm>
+
 // Front and Rear TOF devices on seperate I2C interface
 #define DEV_I2C_F Wire
 #define DEV_I2C_R Wire1
@@ -65,7 +68,8 @@ VL53L8CX tof_rc(&DEV_I2C_R, -1, -1);
 VL53L8CX tof_rl(&DEV_I2C_R, -1, -1);
 VL53L8CX tof_rr(&DEV_I2C_R, -1, -1);
 
-void sendJson(String tof, uint32_t stamp, VL53L8CX_ResultsData *results);
+void sendJson_F(String tof, uint32_t stamp, VL53L8CX_ResultsData *results);
+void sendJson_R(const char* tof, uint32_t stamp, VL53L8CX_ResultsData *results);
 
 void getData_F(String tof);
 
@@ -86,6 +90,15 @@ void startMeasurements_R();
 VL53L8CX_ResultsData results_R;
 uint8_t newDataReady_R = 0;
 uint8_t status_R;
+
+// print  string queue
+// serial TX string buffer size
+#define SERTXSTR_SIZE 10
+
+char g_serialStrings[SERTXSTR_SIZE][5000];
+volatile int g_serialStringWrIdx = 0;
+volatile int g_serialStringRdIdx = 0;
+volatile std::atomic<int16_t> g_serialStringCnt = 0;
 
 void setI2CAddresses_F() {
   // Cycle power to I2C devices to set default I2C
@@ -324,6 +337,7 @@ void loop(void) {
   getData_F("tof_fc");
   getData_F("tof_fl");
   getData_F("tof_fr");
+  serialTx(); // messages from 2nd core
 }
 
 
@@ -349,11 +363,37 @@ void setup1() {
 
 void loop1() {
   delay(10);
-  // getData_R("tof_rc");
-  // getData_R("tof_rl");
-  // getData_R("tof_rr");
+  getData_R("tof_rc");
+  getData_R("tof_rl");
+  getData_R("tof_rr");
 }
 
+// send queue strings from 2nd core to USB serial port
+void serialTx() {
+  if(g_serialStringCnt == 0) return;
+  rp2040.wdt_reset();
+  Serial.println(g_serialStrings[g_serialStringRdIdx]);
+  g_serialStringRdIdx++;
+  if(g_serialStringRdIdx>=SERTXSTR_SIZE) g_serialStringRdIdx = 0;
+
+  //************* ATOMIC VARIABLE PROTECTION ***************
+  g_serialStringCnt--;
+  //*************************************************
+}
+
+// 2nd core uses this queue to send strings over serial interface
+void sendSerialTxString(char* str) {
+  if(g_serialStringCnt >= SERTXSTR_SIZE) return;
+//  g_serialStrings[g_serialStringWrIdx] = str;
+  strcpy(g_serialStrings[g_serialStringWrIdx], str);
+  g_serialStringWrIdx++;
+  if(g_serialStringWrIdx>=SERTXSTR_SIZE) g_serialStringWrIdx = 0;
+
+  //************* ATOMIC VARIABLE PROTECTION ***************
+  g_serialStringCnt++;
+  //*************************************************
+
+}
 
 /********************************************************
 * USB serial JSON code
@@ -402,7 +442,7 @@ void getData_F(const char* tof) {
     if ((!status_F) && (newDataReady_F != 0)) {
       status_F = tof_fc.get_ranging_data(&results_F);
       uint32_t stamp = millis();
-      sendJson(tof, stamp, &results_F);
+      sendJson_F(tof, stamp, &results_F);
     }
   }
   if(strncmp(tof,"tof_fl",6)) {
@@ -410,7 +450,7 @@ void getData_F(const char* tof) {
     if ((!status_F) && (newDataReady_F != 0)) {
       status_F = tof_fl.get_ranging_data(&results_F);
       uint32_t stamp = millis();
-      sendJson(tof, stamp, &results_F);
+      sendJson_F(tof, stamp, &results_F);
     }
   }
   if(strncmp(tof,"tof_fr",6)) {
@@ -418,19 +458,20 @@ void getData_F(const char* tof) {
     if ((!status_F) && (newDataReady_F != 0)) {
       status_F = tof_fr.get_ranging_data(&results_F);
       uint32_t stamp = millis();
-      sendJson(tof, stamp, &results_F);
+      sendJson_F(tof, stamp, &results_F);
     }
   }
 }
 
 // Rear sensors
 void getData_R(const char* tof) {
+
   if(strncmp(tof,"tof_rc",6)) {
     status_R = tof_rc.check_data_ready(&newDataReady_R);
     if ((!status_R) && (newDataReady_R != 0)) {
       status_R = tof_rc.get_ranging_data(&results_R);
       uint32_t stamp = millis();
-      sendJson(tof, stamp, &results_R);
+      sendJson_R(tof, stamp, &results_R);
     }
   }
   if(strncmp(tof,"tof_rl",6)) {
@@ -438,7 +479,7 @@ void getData_R(const char* tof) {
     if ((!status_R) && (newDataReady_R != 0)) {
       status_R = tof_rl.get_ranging_data(&results_R);
       uint32_t stamp = millis();
-      sendJson(tof, stamp, &results_R);
+      sendJson_R(tof, stamp, &results_R);
     }
   }
   if(strncmp(tof,"tof_rr",6)) {
@@ -446,7 +487,7 @@ void getData_R(const char* tof) {
     if ((!status_R) && (newDataReady_R != 0)) {
       status_R = tof_rr.get_ranging_data(&results_R);
       uint32_t stamp = millis();
-      sendJson(tof, stamp, &results_R);
+      sendJson_R(tof, stamp, &results_R);
     }
   }
 }
@@ -459,7 +500,7 @@ int getDist(int idx, VL53L8CX_ResultsData *results) {
   return(dist);
 }
 
-void sendJson(String tof, uint32_t stamp, VL53L8CX_ResultsData *results) {
+void sendJson_F(String tof, uint32_t stamp, VL53L8CX_ResultsData *results) {
   int row;
   int col;
   int rowIdx;
@@ -493,4 +534,90 @@ void sendJson(String tof, uint32_t stamp, VL53L8CX_ResultsData *results) {
     if (row < 7) Serial.print(",");
   }
   Serial.println("]}}");
+}
+
+// Custom int to string conversion for core2
+char* citoa(int num, char* str, int base)
+{
+    int i = 0;
+    bool isNegative = false;
+
+    /* Handle 0 explicitly, otherwise empty string is
+     * printed for 0 */
+    if (num == 0) {
+        str[i++] = '0';
+        str[i] = '\0';
+        return str;
+    }
+
+    // In standard itoa(), negative numbers are handled
+    // only with base 10. Otherwise numbers are
+    // considered unsigned.
+    if (num < 0 && base == 10) {
+        isNegative = true;
+        num = -num;
+    }
+
+    // Process individual digits
+    while (num != 0) {
+        int rem = num % base;
+        str[i++] = (rem > 9) ? (rem - 10) + 'a' : rem + '0';
+        num = num / base;
+    }
+
+    // If number is negative, append '-'
+    if (isNegative)
+        str[i++] = '-';
+
+    str[i] = '\0'; // Append string terminator
+
+    // Reverse the string
+    std::reverse(str, &str[i]);
+
+    return str;
+}
+
+// char string array for tof data
+char str_R[1000];
+
+char str[100];
+
+void sendJson_R(const char* tof, uint32_t stamp, VL53L8CX_ResultsData *results) {
+  int row;
+  int col;
+  int rowIdx;
+  int colIdx;
+  int idx;
+  int dist;
+
+  // reset watchdog for hung I2C bus
+  // TODO: be able to detect either bus hung
+  // rp2040.wdt_reset();
+
+  
+  // TODO: pre-process for valid data
+  // Output JSON
+  strcpy(str_R, ""); // null string
+  strcat(str_R, "{\"");
+  strcat(str_R, tof);
+  strcat(str_R, "\":{\"stamp\":");
+  strcat(str_R, citoa(stamp,str,10));
+  strcat(str_R, ",\"dist\":[");
+
+  for (row = 0; row < 8; row++) {
+    rowIdx = (7-row)*1;
+    strcat(str_R, "[");
+    for (col = 0; col < 8; col++) {
+      colIdx = (7-col)*8;
+      idx = rowIdx + colIdx;
+      dist = getDist(idx, results);
+      strcat(str_R, citoa(dist,str,10));
+      if (col < 7) strcat(str_R, ",");
+    }
+    strcat(str_R, "]");
+    if (row < 7) strcat(str_R, ",");
+  }
+  strcat(str_R, "]}}");
+
+  sendSerialTxString(str_R);
 }
