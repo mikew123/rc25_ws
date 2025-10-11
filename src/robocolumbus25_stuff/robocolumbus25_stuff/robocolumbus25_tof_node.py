@@ -46,6 +46,10 @@ class TofNode(Node):
         self.tof_fc_pcd_publisher = self.create_publisher(PointCloud2, 'tof_fc', 10)
         self.tof_fl_pcd_publisher = self.create_publisher(PointCloud2, 'tof_fl', 10)
         self.tof_fr_pcd_publisher = self.create_publisher(PointCloud2, 'tof_fr', 10)
+        self.tof_rc_pcd_publisher = self.create_publisher(PointCloud2, 'tof_rc', 10)
+        self.tof_rl_pcd_publisher = self.create_publisher(PointCloud2, 'tof_rl', 10)
+        self.tof_rr_pcd_publisher = self.create_publisher(PointCloud2, 'tof_rr', 10)
+
         self.tof_fc_mid_publisher = self.create_publisher(Float32X8, 'tof_fc_mid', 10)
         self.tof_dist_publisher = self.create_publisher(TofDist, 'tof_dist', 10)
       
@@ -129,17 +133,28 @@ class TofNode(Node):
         received_data = self.getSerialData()
         if received_data == None : return
 
+        # self.get_logger().info(f"{received_data=}")
+
         try :
             unknown = True
             packet = json.loads(received_data)
             if "tof_fc" in packet :
                 tof_ab = "tof_fc"
                 unknown = False
-            if "tof_fl" in packet :
+            elif "tof_fl" in packet :
                 tof_ab = "tof_fl"
                 unknown = False
-            if "tof_fr" in packet :
+            elif "tof_fr" in packet :
                 tof_ab = "tof_fr"
+                unknown = False
+            elif "tof_rc" in packet :
+                tof_ab = "tof_rc"
+                unknown = False
+            elif "tof_rl" in packet :
+                tof_ab = "tof_rl"
+                unknown = False
+            elif "tof_rr" in packet :
+                tof_ab = "tof_rr"
                 unknown = False
 
             if unknown :
@@ -151,6 +166,7 @@ class TofNode(Node):
 
         # publish front center mid row point cloud    
         self.tof_pcd_publish(tof_ab, packet)
+        
         # publish raw data from sensors
         self.tof_sensor_publish(tof_ab, packet)
         
@@ -229,12 +245,21 @@ class TofNode(Node):
         if tof_ab == "tof_fc" :
             pcd = self.point_cloud(xyz0, 'tof_fc_link')
             self.tof_fc_pcd_publisher.publish(pcd)
-        if tof_ab == "tof_fl" :
+        elif tof_ab == "tof_fl" :
             pcd = self.point_cloud(xyz0, 'tof_fl_link')
             self.tof_fl_pcd_publisher.publish(pcd)
-        if tof_ab == "tof_fr" :
+        elif tof_ab == "tof_fr" :
             pcd = self.point_cloud(xyz0, 'tof_fr_link')
             self.tof_fr_pcd_publisher.publish(pcd)
+        elif tof_ab == "tof_rc" :
+            pcd = self.point_cloud(xyz0, 'tof_rc_link')
+            self.tof_rc_pcd_publisher.publish(pcd)
+        elif tof_ab == "tof_rl" :
+            pcd = self.point_cloud(xyz0, 'tof_rl_link')
+            self.tof_rl_pcd_publisher.publish(pcd)
+        elif tof_ab == "tof_rr" :
+            pcd = self.point_cloud(xyz0, 'tof_rr_link')
+            self.tof_rr_pcd_publisher.publish(pcd)
 
         if tof_ab == "tof_fc" :
             # Publish the mid row distances as Float32X8 message for nav node

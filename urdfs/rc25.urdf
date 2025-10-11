@@ -175,7 +175,7 @@
   </link>
 
 
-  <!-- 45 deg tof arrays are mounted at an angle -->
+  <!-- Front 45 deg tof arrays are mounted at 45 angle = FOV 135 -->
   <joint name="tof_fc_joint" type="fixed">
     <parent link="base_link"/>
     <child link="tof_fc_link"/>
@@ -221,13 +221,13 @@
     </visual>
   </link>
 
-<!--   <joint name="tofL5R_joint" type="fixed">
+  <!-- Rear 45 deg tof arrays are mounted at 45 angle = FOV 135-->
+  <joint name="tof_rc_joint" type="fixed">
     <parent link="base_link"/>
-    <child link="tofL5R_link"/>
-    <origin xyz="0.140 -0.060 0.030" rpy="0 0 -0.41"/>
+    <child link="tof_rc_link"/>
+    <origin xyz="-0.170 0 0.110" rpy="0 0 3.1415"/>
   </joint>
-
-  <link name="tofL5R_link">
+  <link name="tof_rc_link">
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
@@ -237,71 +237,36 @@
     </visual>
   </link>
 
-  <joint name="tofL4_joint" type="fixed">
+  <joint name="tof_rl_joint" type="fixed">
     <parent link="base_link"/>
-    <child link="tofL4_link"/>
-    <origin xyz="0.100 0 0.030" rpy="0 0 0"/>
+    <child link="tof_rl_link"/>
+    <origin xyz="-0.170 0 0.110" rpy="0 0 -2.356"/>
   </joint>
-
-  <link name="tofL4_link">
+  <link name="tof_rl_link">
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <box size="0.005 0.025 0.025"/>
+        <cylinder length="0.030" radius="0.020"/>
       </geometry>
       <material name="red"/>
     </visual>
   </link>
 
-  <joint name="tofRC_joint" type="fixed">
+  <joint name="tof_rr_joint" type="fixed">
     <parent link="base_link"/>
-    <child link="tofRC_link"/>
-    <origin xyz="-0.040 0 0.085" rpy="0 0 3.1416"/>
+    <child link="tof_rr_link"/>
+    <origin xyz="-0.170 0 0.110" rpy="0 0.08 2.356"/>
   </joint>
-
-  <link name="tofRC_link">
+  <link name="tof_rr_link">
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-        <geometry>
-          <cylinder length="0.005" radius="0.015"/>
-        </geometry>
+      <geometry>
+        <cylinder length="0.030" radius="0.020"/>
+      </geometry>
       <material name="red"/>
     </visual>
   </link>
 
-
-  <joint name="tofRL_joint" type="fixed">
-    <parent link="base_link"/>
-    <child link="tofRL_link"/>
-    <origin xyz="-0.040 0 0.085" rpy="0 0 2.3"/>
-  </joint>
-
-  <link name="tofRL_link">
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-        <geometry>
-          <cylinder length="0.005" radius="0.015"/>
-        </geometry>
-      <material name="red"/>
-    </visual>
-  </link>
-
-  <joint name="tofRR_joint" type="fixed">
-    <parent link="base_link"/>
-    <child link="tofRR_link"/>
-    <origin xyz="-0.040 0 0.085" rpy="0 0 -2.3"/>
-  </joint>
-
-  <link name="tofRR_link">
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-        <geometry>
-          <cylinder length="0.005" radius="0.015"/>
-        </geometry>
-      <material name="red"/>
-    </visual>
-  </link>
- -->
 
  <!--
   <joint name="wheel_left_joint" type="continuous">
