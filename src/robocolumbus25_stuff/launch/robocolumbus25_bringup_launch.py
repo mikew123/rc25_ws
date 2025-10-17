@@ -49,6 +49,8 @@ def generate_launch_description():
             launch_arguments={
                 'params_file': 'config/rc25_params.yaml',
                 "map": "maps/2000x2000_empty_map.yaml",
+                # "use_localization" : "False",
+                "use_localization" : "True",
             }.items()
         ),
 
@@ -147,15 +149,49 @@ def generate_launch_description():
             executable='joy_linux_node',
             name='joy_linux'
         ),
+
+        #######################################
+        # Localization
   
+        # Fuse wheel odom and imu data
+        # Generate odom -> base_footprint TF
         launch_ros.actions.Node(
             package='robot_localization',
             executable='ekf_node',
-            name='efk_odom',
-            parameters=[
-                'config/efk_config.yaml'
-            ]
+            name='efk_local',
+            parameters=['config/efk_local_config.yaml'],
+            # output topic
+            remappings=[("odometry/filtered", "odometry/local")],
         ),
+
+        # Fuse GPS wheel odom and imu data
+        # Generate map -> odom TF
+        launch_ros.actions.Node(
+            package='robot_localization',
+            executable='ekf_node',
+            name='efk_global',
+            parameters=['config/efk_global_config.yaml'],
+            # output topic
+            remappings=[("odometry/filtered", "odometry/global")],
+        ),
+
+        # Transform GPS lat/lon to map coordinates
+        launch_ros.actions.Node(
+            package='robot_localization',
+            executable='navsat_transform_node',
+            name='navsat_transform',
+            parameters=['config/navsat_transform_config.yaml'],
+            remappings=[
+                # input topics
+                ("imu/data", "imu"),
+                ("gps/fix", "gps_nav"),
+                ("odometry/filtered", "odometry/global"),
+                # output topics
+                ("gps/filtered", "gps/filtered"),
+                ("odometry/gps", "odometry/gps"),
+            ],
+        ),
+
 
         ### This did not function well, the cmd line launch was added to .bashrc -> works
         # # Bring up rosapi and rosbridge to allow access from visual code and foxglove

@@ -302,6 +302,7 @@ void procGps() {
   jsonObject["gps"]["lon"] = myGNSS.getLongitude();
   jsonObject["gps"]["alt"] = myGNSS.getAltitude();
   jsonObject["gps"]["siv"] = myGNSS.getSIV();
+  jsonObject["gps"]["status"] = myGNSS.getGnssFixOk();
   // Serial.println(jsonObject);
   sendSerialTxString(JSON.stringify(jsonObject));
 }

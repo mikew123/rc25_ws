@@ -7,7 +7,7 @@ import time
 import tf_transformations
 
 from rclpy.node import Node
-from std_msgs.msg import String, Int32, Float32MultiArray
+from std_msgs.msg import String, Int32, Float32, Float32MultiArray
 from sensor_msgs.msg import Imu
 from sensor_msgs.msg import NavSatFix
 from geometry_msgs.msg import Pose
@@ -56,7 +56,7 @@ class ImuGpsNode(Node):
         self.imu_msg_publisher = self.create_publisher(Imu, 'imu', 10)
         self.gps_nav_publisher = self.create_publisher(NavSatFix, 'gps_nav', 10)
         self.gps_pose_publisher = self.create_publisher(Pose, 'gps_pose', 10)
-        self.cmp_azi_publisher = self.create_publisher(Int32, 'cmp_azi', 10)
+        self.cmp_azi_publisher = self.create_publisher(Float32, 'cmp_azi', 10)
 
         self.gps_nav_subscription = self.create_subscription(NavSatFix,"gps_nav"
                                         , self.gps_nav_subscription_callback, 10)
@@ -200,13 +200,14 @@ class ImuGpsNode(Node):
     # Process Compass data
     def cmpPublish(self, cmpJsonPacket) -> None:        
         #self.get_logger().info(f"cmpPublish : {cmpJsonPacket=}")
-        msg = Int32()
-        msg.data = cmpJsonPacket.get("azi")
-        self.cmp_azi_publisher.publish(msg)
-        
+        # msg = Int32()
+        # msg.data = cmpJsonPacket.get("azi")
+        # self.cmp_azi_publisher.publish(msg)
+        pass
+
     # Process GPS data
     def gpsPublish(self, gpsJsonPacket) -> None:        
-        #self.get_logger().info(f"gpsPublish : {gpsJsonPacket=}")
+        # self.get_logger().info(f"gpsPublish : {gpsJsonPacket=}")
 
         msg = NavSatFix();
 
@@ -218,17 +219,30 @@ class ImuGpsNode(Node):
 
         # TODO: status fields
         # put num sat in view into status field service
-        msg.status.service = gpsJsonPacket.get("siv")
-
-        msg.latitude  = 1e-7*gpsJsonPacket.get("lat")
-        msg.longitude = 1e-7*gpsJsonPacket.get("lon")
-        msg.altitude  = 1e-3*gpsJsonPacket.get("alt") # mm to Meters
+        status = gpsJsonPacket.get("status")
+        siv = gpsJsonPacket.get("siv")
+        # 5 satelites is pretty stable
+        if (status==True) and (siv>=5):
+            # Satelite fix is OK
+            msg.status.status = 0
+            # setting servive to satelites in view since we dont know which sat are used
+            msg.status.service = siv
+            msg.latitude  = 1e-7*gpsJsonPacket.get("lat")
+            msg.longitude = 1e-7*gpsJsonPacket.get("lon")
+            msg.altitude  = 1e-3*gpsJsonPacket.get("alt") # mm to Meters
+        else :
+            # Not a valid satelite fix
+            msg.status.status = -1
+            msg.status.service = siv
+            msg.latitude  = math.nan
+            msg.longitude = math.nan
+            msg.altitude  = math.nan
 
         self.gps_nav_publisher.publish(msg)
 
     # Process IMU data
     def imuPublish(self, imuJsonPacket) :        
-        #self.get_logger().info(f"imuPublish : {imuJsonPacket=}")
+        # self.get_logger().info(f"imuPublish : {imuJsonPacket=}")
 
         # TODO: collect lacc, rvel, rvec packets with same seq# and publish imu message
         try :
@@ -245,7 +259,10 @@ class ImuGpsNode(Node):
                 laccSeq = self.laccJsonPacket.get("seq")
                 rvelSeq = self.rvelJsonPacket.get("seq")
                 rvecSeq = self.rvecJsonPacket.get("seq")
-                if laccSeq==rvelSeq and rvelSeq==rvecSeq :
+
+                # seq numbers are not clustered properly to have the same seq# for each data type
+                # This seems to work better when this is the only node running
+                if True : #laccSeq==rvelSeq and rvelSeq==rvecSeq :
                     #self.get_logger().info(f"{laccSeq=} {rvelSeq=} {rvecSeq=}")
                     msg = Imu()
 
@@ -272,6 +289,22 @@ class ImuGpsNode(Node):
                     msg.linear_acceleration.z = float(self.laccJsonPacket.get("z"))
 
                     self.imu_msg_publisher.publish(msg)
+
+                    # wait for 3 new packets
+                    self.rvecJsonPacket = None
+                    self.rvelJsonPacket = None
+                    self.laccJsonPacket = None
+
+
+                    # Publish the yaw headings from IMU orientation
+                    (_,_,rad) =  tf_transformations.euler_from_quaternion([
+                                            msg.orientation.x,
+                                            msg.orientation.y,
+                                            msg.orientation.z,
+                                            msg.orientation.w])
+                    yaw = Float32()
+                    yaw.data = rad
+                    self.cmp_azi_publisher.publish(yaw)
 
         except Exception as ex:
             self.get_logger().error(f"imuPublish json exception : {ex}")

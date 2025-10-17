@@ -2,11 +2,16 @@ import rclpy
 import os
 import json
 import time
+import yaml
+
+from pathlib import Path
+from pprint import pprint, pformat
 
 from rclpy.node import Node
 from std_msgs.msg import String
 from rclpy.executors import MultiThreadedExecutor
 from sensor_msgs.msg import BatteryState
+
 
 class ControllerNode(Node):
     '''
@@ -14,8 +19,10 @@ class ControllerNode(Node):
     Uses files in ~/sambashare
     Processes the json_msgs engine statuses
     '''
+    # YAML file with cone locations
+    conesFile = "~/sambashare/nav_files/navto_cones.yml"
+    coneLocations = None
 
-    gotoConeFile = None
     smTimerRateHz = 1.0
 
     def __init__(self):
@@ -28,61 +35,113 @@ class ControllerNode(Node):
                 
         self.battery_status_msg_publisher = self.create_publisher(BatteryState, 'battery_status', 10)
 
-        try :
-            f = open("../sambashare/nav_files/navto_cone_coordinates.json")
-            self.gotoConeFile = f.read()
-            f.close()
-        except :
-            self.get_logger().info(f"No file found - navto_cone_coordinates.json")
-            pass
+        self.readConesFile(self.conesFile)
 
         self.sm_timer = self.create_timer((1.0/self.smTimerRateHz), self.sm_timer_callback)
 
-
         self.tts("Controller Node Started")
         self.get_logger().info(f"ControllerNode Started")
+
+    def readConesFile(self, file) :
+        '''
+        Read yaml file with cone locations and if gps is enable for localization
+        save as dict self.conesLocations
+        Examples :
+        # cone location in relative meters x,y
+        # gps is not used for localization
+        gps : false
+        cones :
+            cone1 :
+                x : 10.0
+                y : 0.0
+            cone2 :
+                x : 0.0
+                y : -6.0
+        # cone location in absolute lat,lon
+        # gps is used for localization
+        gps : false
+        cones :
+            cone1 :
+                lat : 10.0
+                lon : 0.0
+            cone2 :
+                lat : 0.0
+                lon : -6.0
+        '''
+
+        path = Path(file).expanduser()
+        if not path.exists():
+            self.get_logger().info(f"YAML file not found: {path}")
+            return
+        try:
+            with path.open("r", encoding="utf-8") as f:
+                doc = yaml.safe_load(f)
+        except Exception as e:
+            self.get_logger().info(f"Failed to read/parse YAML: {e}")
+            return
+
+        if not doc:
+            self.get_logger().info("YAML file is empty")
+            return
+
+        self.coneLocations = doc
+
+        self.get_logger().info("readConesFile : \n"+pformat(self.coneLocations))
+
+        gps = self.coneLocations["gps"]
+        self.get_logger().info(f"{gps=}")
 
     sm_next_state = 0
     nextConeNum = 1
     requestNextCone = False
 
     def sm_timer_callback(self) -> None :
+        if self.coneLocations == None : return
+
         state = self.sm_next_state
         next_state = state
 
         if state == 0 :
             if self.requestNextCone :
                 self.requestNextCone = False
+                self.get_logger().info(f"Getting requested cone {self.nextConeNum} location ")
+                self.tts(f"Getting requested cone {self.nextConeNum} location ")
                 status = self.sendConeNavCoordinates(self.nextConeNum)
                 if status == True :
                     self.nextConeNum +=1
                     next_state = 0
                 else :
+                    self.tts("Sent all cone locations")
                     next_state = 1
 
         elif state == 1:
             # DONE
-            self.tts("Successfully went to each cone")
             pass
 
         self.sm_next_state = next_state
 
     def sendConeNavCoordinates(self, n:int) -> bool :
         try :
-            self.get_logger().info(f"{self.gotoConeFile=}")
-            data = json.loads(self.gotoConeFile)
-            gotoxy = data["gotoxy"]
+            data = self.coneLocations
+            cones = data["cones"]
             coneN = f"cone{n}"
-            cone = gotoxy[coneN]
-            x = cone["x"]
-            y = cone["y"]
-            self.get_logger().info(f"gotoxy {coneN} {x=} {y=}")
-            json_msg = {"nav":{"gotoxy":{"n":n, "x":x, "y":y}}}
-            self.sendJsonMsg(json_msg)
-            return True
+            coneLocation = cones[coneN]
+            if "x" in coneLocation :
+                x = coneLocation["x"]
+                y = coneLocation["y"]
+            elif "lat" in coneLocation :
+                lat = coneLocation["lat"]
+                lon = coneLocation["lon"]
         except :
             self.get_logger().info(f"Not valid {self.gotoConeFile=}")
+            self.tts(f"Could not find cone {n} location in the file")
             return False
+
+        self.get_logger().info(f"gotoxy {coneN} {x=} {y=}")
+        json_msg = {"nav":{"gotoxy":{"n":n, "x":x, "y":y}}}
+        self.sendJsonMsg(json_msg)
+        self.tts(f"Sent {coneN} location to nav node")
+        return True
 
     def tts(self, tts) -> None:
         """

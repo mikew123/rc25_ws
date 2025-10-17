@@ -492,23 +492,28 @@ collision_monitor:
     polygons: ["PolygonStop", "PolygonSlow"]
     PolygonStop:
       type: "polygon"
-      points: "[[0.35, 0.2], [0.35, -0.2], [-0.35, -0.2], [-0.35, 0.2]]"
+      points: "[[0.35, 0.2], [0.35, -0.2], [-0.45, -0.2], [-0.45, 0.2]]"
       action_type: "stop"
       min_points: 4  # max_points: 3 for Humble
       visualize: True
       polygon_pub_topic: "polygon_stop"
     PolygonSlow:
       type: "polygon"
-      points: "[[0.45, 0.3], [0.45, -0.3], [-0.45, -0.3], [-0.45, 0.3]]"
+      points: "[[0.45, 0.3], [0.45, -0.3], [-0.55, -0.3], [-0.55, 0.3]]"
       action_type: "slowdown"
       min_points: 4  # max_points: 3 for Humble
       slowdown_ratio: 0.3
       visualize: True
       polygon_pub_topic: "polygon_slowdown"
-    observation_sources: ["scan"]
+    observation_sources: ["scan", "tof_rc"]
     scan:
       type: "scan"
       topic: "scan"
+    tof_rc:
+      type: "pointcloud"
+      topic: "/tof_rc"
+      min_height: 0.1
+      max_height: 1.0
 
 docking_server:
   ros__parameters:

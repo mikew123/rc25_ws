@@ -218,6 +218,7 @@ class NavNode(Node):
         if self.tc_state!= next_state :
             stateChange = True
             self.get_logger().info(f"sm_timer_callback: state change to {next_state}")
+            self.tts(f"sm timer {next_state=}")
 
         state = next_state
         self.tc_state = state
@@ -234,10 +235,10 @@ class NavNode(Node):
         elif state == 2 :
             # wait for xy location from controller
             if self.coneXY != None :
-
                 x = self.coneXY["x"]
                 y = self.coneXY["y"]
                 n = self.coneXY["n"]
+                
                 #TODO: what angle?
                 a = 0.0
 
@@ -260,14 +261,19 @@ class NavNode(Node):
                     # try again
                     self.tts("Attempt to navigate to cone location again")
                     next_state = 2
+            else :
+                result = self.nav.getFeedback()
+                #self.get_logger().info(f"gotoPose {result=}")
+                
 
         elif state == 4 :
             # find cone and "touch" it
             done = self.cd_sm()
             if done : 
-                # go to next cone location
-                self.tts("goto cone succeeded - get another cone location ")
-                state = 1
+                #go request next cone location
+                self.get_logger().info(f"tc: done - touch cone succeeded - get another cone location")
+                self.tts("touch cone succeeded - get another cone location ")
+                next_state = 1
 
         # set next GPS coordinate 
 
@@ -599,7 +605,7 @@ class NavNode(Node):
             if not killSwitchActive :
                 # issue a backup navigation command with obstical avoidance
                 self.nav.backup(backup_dist=dist, backup_speed=vel
-                    , time_allowance=10) #, disable_collision_checks=True) # non-blocking
+                    , time_allowance=10) #, disable_collision_checks=False) # non-blocking
                 self.cd_sub_timer = cur_time
                 self.cd_sub_state = 1
 
@@ -630,6 +636,9 @@ class NavNode(Node):
         
         return next_state
     
+
+    #***************************************************************************
+
     def get_cone_dist_from_robot(self, cx:float, cy:float) -> tuple:
         """
         return (cone_dist, cone_angle, robot_x, robot_y, robot_angle).
