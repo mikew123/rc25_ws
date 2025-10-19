@@ -89,19 +89,12 @@ efk_local :
     #         roll_vel, pitch_vel, yaw_vel,
     #         x_accel , y_accel  , z_accel]
 
-    # use velocities (twist)
+    # use only x velocity mesured by shaft encoder, only reliable sensor
     odom0_config: [false, false, false,
-                  false, false, false,
-                  true,  true,  true,
-                  false, false, true,
-                  false, false, false]
-
-    # # use pose absolute
-    # odom0_config: [true, true, false,
-    #               false, false, true,
-    #               false,  false,  false,
-    #               false, false, false,
-    #               false, false, false]
+                   false, false, false,
+                   true,  false, false,
+                   false, false, false,
+                   false, false, false]
 
     # If you have high-frequency data or are running with a low frequency parameter value, then you may want to increase
     # the size of the subscription queue so that more measurements are fused.
@@ -148,12 +141,13 @@ efk_local :
     #         roll_vel, pitch_vel, yaw_vel,
     #         x_accel , y_accel  , z_accel]
 
-    # use absolute yaw (when differential = false)
+    # use absolute yaw (when differential = false) - needs calibration at startup
+    # use x and z acceleration and yaw_vel
     imu0_config: [false, false, false,
                   false, false, true,
                   false, false, false,
-                  false, false, false,
-                  false, false, false ]
+                  false, false, true,
+                  true, false, true ]
 
     imu0_nodelay: false
     imu0_differential: false # The compass seems very absolute stable
