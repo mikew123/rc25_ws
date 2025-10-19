@@ -334,9 +334,9 @@ void json_SH2_GYROSCOPE_CALIBRATED(sh2_SensorValue_t sensorValue) {
   JSONVar jsonObject;
   jsonObject["imu"]["rvel"]["seq"]  = sensorValue.sequence;
   jsonObject["imu"]["rvel"]["stat"] = sensorValue.status;
-  jsonObject["imu"]["rvel"]["x"]    = sensorValue.un.gyroscope.z;
-  jsonObject["imu"]["rvel"]["y"]    = sensorValue.un.gyroscope.y;
-  jsonObject["imu"]["rvel"]["z"]    = sensorValue.un.gyroscope.x;
+  jsonObject["imu"]["rvel"]["x"]    = -1*sensorValue.un.gyroscope.y;
+  jsonObject["imu"]["rvel"]["y"]    = sensorValue.un.gyroscope.x;
+  jsonObject["imu"]["rvel"]["z"]    = sensorValue.un.gyroscope.z;
   Serial.println(jsonObject);
 }
 
@@ -344,8 +344,8 @@ void json_SH2_LINEAR_ACCELERATION(sh2_SensorValue_t sensorValue) {
   JSONVar jsonObject;
   jsonObject["imu"]["lacc"]["seq"] = sensorValue.sequence;
   jsonObject["imu"]["lacc"]["stat"] = sensorValue.status;
-  jsonObject["imu"]["lacc"]["x"] = sensorValue.un.linearAcceleration.x;
-  jsonObject["imu"]["lacc"]["y"] = sensorValue.un.linearAcceleration.y;
+  jsonObject["imu"]["lacc"]["x"] = -1*sensorValue.un.linearAcceleration.y;
+  jsonObject["imu"]["lacc"]["y"] = sensorValue.un.linearAcceleration.x;
   jsonObject["imu"]["lacc"]["z"] = sensorValue.un.linearAcceleration.z;
   Serial.println(jsonObject);
 }

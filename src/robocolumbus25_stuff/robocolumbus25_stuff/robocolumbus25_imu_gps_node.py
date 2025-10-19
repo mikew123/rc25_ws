@@ -273,10 +273,25 @@ class ImuGpsNode(Node):
                     msg.header.frame_id = "imu_link"
 
                     #self.get_logger().info(f"imuPublish : {self.rvecJsonPacket=}")
-                    msg.orientation.x = float(self.rvecJsonPacket.get("i"))
-                    msg.orientation.y = float(self.rvecJsonPacket.get("j"))
-                    msg.orientation.z = float(self.rvecJsonPacket.get("k"))
-                    msg.orientation.w = float(self.rvecJsonPacket.get("real"))
+                    x = float(self.rvecJsonPacket.get("i"))
+                    y = float(self.rvecJsonPacket.get("j"))
+                    z = float(self.rvecJsonPacket.get("k"))
+                    w = float(self.rvecJsonPacket.get("real"))
+
+                    # adjust yaw by -90 degrees: left-multiply q by q_rot = [0,0,s,c]
+                    # use plain Python floats (faster than numpy for single scalar ops)
+                    s = -0.7071067811865476  # -sqrt(2)/2
+                    c =  0.7071067811865476  #  sqrt(2)/2
+
+                    qx = c * x - s * y
+                    qy = c * y + s * x
+                    qz = c * z + s * w
+                    qw = c * w - s * z
+
+                    msg.orientation.x = qx
+                    msg.orientation.y = qy
+                    msg.orientation.z = qz
+                    msg.orientation.w = qw
 
                     #self.get_logger().info(f"imuPublish : {self.rvelJsonPacket=}")
                     msg.angular_velocity.x =  float(self.rvelJsonPacket.get("x"))
