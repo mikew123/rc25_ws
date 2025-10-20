@@ -1,4 +1,6 @@
 from ctypes.wintypes import PMSG
+
+from numpy import int32
 import rclpy
 import json
 import serial
@@ -16,6 +18,8 @@ from geometry_msgs.msg import Quaternion
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+
+from rc25_interfaces.msg import ImuCal
 
 class ImuGpsNode(Node):
     '''
@@ -54,6 +58,7 @@ class ImuGpsNode(Node):
 
         self.imu_test_publisher = self.create_publisher(String, 'imu_test', 10)
         self.imu_msg_publisher = self.create_publisher(Imu, 'imu', 10)
+        self.imu_cal_publisher = self.create_publisher(ImuCal, 'imu/cal', 10)
         self.gps_nav_publisher = self.create_publisher(NavSatFix, 'gps_nav', 10)
         self.gps_pose_publisher = self.create_publisher(Pose, 'gps_pose', 10)
         self.cmp_azi_publisher = self.create_publisher(Float32, 'cmp_azi', 10)
@@ -241,11 +246,16 @@ class ImuGpsNode(Node):
         self.gps_nav_publisher.publish(msg)
 
     # Process IMU data
+    imuCalRvel = -1
+    imuCalRvec = -1
+    imuCalLacc = -1
+
     def imuPublish(self, imuJsonPacket) :        
         # self.get_logger().info(f"imuPublish : {imuJsonPacket=}")
 
         # TODO: collect lacc, rvel, rvec packets with same seq# and publish imu message
         try :
+
             if "lacc" in imuJsonPacket :
                 self.laccJsonPacket = imuJsonPacket.get("lacc")
             elif "rvel" in imuJsonPacket :
@@ -253,12 +263,13 @@ class ImuGpsNode(Node):
             elif "rvec" in imuJsonPacket :
                 self.rvecJsonPacket = imuJsonPacket.get("rvec")
             else :
-                self.get_logger().error("")
+                self.get_logger().error("IMU json does not have lacc, rvel or rvec")
 
+            # process all 3 imu data sets when next set is available
             if self.laccJsonPacket!=None and  self.rvelJsonPacket!=None and  self.rvecJsonPacket!=None :
-                laccSeq = self.laccJsonPacket.get("seq")
-                rvelSeq = self.rvelJsonPacket.get("seq")
-                rvecSeq = self.rvecJsonPacket.get("seq")
+                # laccSeq = self.laccJsonPacket.get("seq")
+                # rvelSeq = self.rvelJsonPacket.get("seq")
+                # rvecSeq = self.rvecJsonPacket.get("seq")
 
                 # seq numbers are not clustered properly to have the same seq# for each data type
                 # This seems to work better when this is the only node running
@@ -283,10 +294,10 @@ class ImuGpsNode(Node):
                     s = -0.7071067811865476  # -sqrt(2)/2
                     c =  0.7071067811865476  #  sqrt(2)/2
 
-                    qx = c * x - s * y
-                    qy = c * y + s * x
-                    qz = c * z + s * w
-                    qw = c * w - s * z
+                    qx = x #c * x - s * y
+                    qy = y #c * y + s * x
+                    qz = z #c * z + s * w
+                    qw = w #c * w - s * z
 
                     msg.orientation.x = qx
                     msg.orientation.y = qy
@@ -304,6 +315,27 @@ class ImuGpsNode(Node):
                     msg.linear_acceleration.z = float(self.laccJsonPacket.get("z"))
 
                     self.imu_msg_publisher.publish(msg)
+
+                    # get calibration statuses
+                    imuCalRvel = int(self.rvelJsonPacket.get("stat"))
+                    imuCalRvec = int(self.rvecJsonPacket.get("stat"))
+                    imuCalLacc = int(self.laccJsonPacket.get("stat"))
+
+                    imuCalMsg = ImuCal()
+                    imuCalMsg.rvel = imuCalRvel
+                    imuCalMsg.rvec = imuCalRvec
+                    imuCalMsg.lacc = imuCalLacc
+                    self.imu_cal_publisher.publish(imuCalMsg)
+
+                    if self.imuCalRvel != imuCalRvel :
+                        self.tts(f"IMU rotation velocity cal {imuCalRvel}")
+                        self.imuCalRvel = imuCalRvel
+                    if self.imuCalRvec != imuCalRvec :
+                        self.tts(f"IMU rotation vector cal {imuCalRvec}")
+                        self.imuCalRvec = imuCalRvec
+                    if self.imuCalLacc != imuCalLacc :
+                        self.tts(f"IMU linear accelleration cal {imuCalLacc}")
+                        self.imuCalLacc = imuCalLacc
 
                     # wait for 3 new packets
                     self.rvecJsonPacket = None

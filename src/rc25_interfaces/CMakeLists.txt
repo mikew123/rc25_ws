@@ -16,6 +16,7 @@ find_package(rosidl_default_generators REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Float32X8.msg"
   "msg/TofDist.msg"
+  "msg/ImuCal.msg"
 )
 
 if(BUILD_TESTING)
