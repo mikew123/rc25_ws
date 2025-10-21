@@ -289,20 +289,16 @@ class ImuGpsNode(Node):
                     z = float(self.rvecJsonPacket.get("k"))
                     w = float(self.rvecJsonPacket.get("real"))
 
-                    # adjust yaw by -90 degrees: left-multiply q by q_rot = [0,0,s,c]
-                    # use plain Python floats (faster than numpy for single scalar ops)
-                    s = -0.7071067811865476  # -sqrt(2)/2
-                    c =  0.7071067811865476  #  sqrt(2)/2
-
-                    qx = x #c * x - s * y
-                    qy = y #c * y + s * x
-                    qz = z #c * z + s * w
-                    qw = w #c * w - s * z
+                    # adjust by 90 deg = pi/2 (1.5708)
+                    (ex,ey,ez) =  tf_transformations.euler_from_quaternion([x,y,z,w])
+                    ez += math.pi/2
+                    (qx,qy,qz,qw) = tf_transformations.quaternion_from_euler(ex,ey,ez)
 
                     msg.orientation.x = qx
                     msg.orientation.y = qy
                     msg.orientation.z = qz
                     msg.orientation.w = qw
+
 
                     #self.get_logger().info(f"imuPublish : {self.rvelJsonPacket=}")
                     msg.angular_velocity.x =  float(self.rvelJsonPacket.get("x"))
@@ -327,30 +323,24 @@ class ImuGpsNode(Node):
                     imuCalMsg.lacc = imuCalLacc
                     self.imu_cal_publisher.publish(imuCalMsg)
 
-                    if self.imuCalRvel != imuCalRvel :
-                        self.tts(f"IMU rotation velocity cal {imuCalRvel}")
-                        self.imuCalRvel = imuCalRvel
+                    # if self.imuCalRvel != imuCalRvel :
+                    #     self.tts(f"IMU rotation velocity cal {imuCalRvel}")
+                    #     self.imuCalRvel = imuCalRvel
                     if self.imuCalRvec != imuCalRvec :
-                        self.tts(f"IMU rotation vector cal {imuCalRvec}")
+                        self.tts(f"IMU calibration {imuCalRvec}")
                         self.imuCalRvec = imuCalRvec
-                    if self.imuCalLacc != imuCalLacc :
-                        self.tts(f"IMU linear accelleration cal {imuCalLacc}")
-                        self.imuCalLacc = imuCalLacc
+                    # if self.imuCalLacc != imuCalLacc :
+                    #     self.tts(f"IMU linear accelleration cal {imuCalLacc}")
+                    #     self.imuCalLacc = imuCalLacc
 
                     # wait for 3 new packets
                     self.rvecJsonPacket = None
                     self.rvelJsonPacket = None
                     self.laccJsonPacket = None
 
-
-                    # Publish the yaw headings from IMU orientation
-                    (_,_,rad) =  tf_transformations.euler_from_quaternion([
-                                            msg.orientation.x,
-                                            msg.orientation.y,
-                                            msg.orientation.z,
-                                            msg.orientation.w])
+                    #publish /cmp_azi = yaw (azimuth)
                     yaw = Float32()
-                    yaw.data = rad
+                    yaw.data = ez
                     self.cmp_azi_publisher.publish(yaw)
 
         except Exception as ex:
