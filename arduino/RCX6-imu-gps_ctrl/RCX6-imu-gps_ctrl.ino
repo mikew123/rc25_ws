@@ -94,9 +94,9 @@ void setReports(void) {
     Serial.print("Could not enable report SH2_LINEAR_ACCELERATION 0x");
     Serial.println(SH2_LINEAR_ACCELERATION,HEX);
   }
-  if (! bno08x.enableReport(SH2_ARVR_STABILIZED_RV, period)) { //0x28
-    Serial.print("Could not enable report SH2_ARVR_STABILIZED_RV 0x");
-    Serial.println(SH2_ARVR_STABILIZED_RV,HEX);
+  if (! bno08x.enableReport(SH2_ROTATION_VECTOR, period)) { //0x28
+    Serial.print("Could not enable report SH2_ROTATION_VECTOR 0x");
+    Serial.println(SH2_ROTATION_VECTOR,HEX);
   }
 }
 
@@ -323,8 +323,8 @@ void procImu(void) {
       case SH2_LINEAR_ACCELERATION:  //0x04
         json_SH2_LINEAR_ACCELERATION(sensorValue);
         break;
-      case SH2_ARVR_STABILIZED_RV:   // 0x28
-        json_SH2_ARVR_STABILIZED_RV(sensorValue);
+      case SH2_ROTATION_VECTOR:   // 0x28
+        json_SH2_ROTATION_VECTOR(sensorValue);
         break;
     }
   }
@@ -350,14 +350,14 @@ void json_SH2_LINEAR_ACCELERATION(sh2_SensorValue_t sensorValue) {
   Serial.println(jsonObject);
 }
 
-void json_SH2_ARVR_STABILIZED_RV(sh2_SensorValue_t sensorValue) {
+void json_SH2_ROTATION_VECTOR(sh2_SensorValue_t sensorValue) {
   JSONVar jsonObject;
   jsonObject["imu"]["rvec"]["seq"] = sensorValue.sequence;
   jsonObject["imu"]["rvec"]["stat"] = sensorValue.status;
-  jsonObject["imu"]["rvec"]["i"] = sensorValue.un.arvrStabilizedRV.i;
-  jsonObject["imu"]["rvec"]["j"] = sensorValue.un.arvrStabilizedRV.j;
-  jsonObject["imu"]["rvec"]["k"] = sensorValue.un.arvrStabilizedRV.k;
-  jsonObject["imu"]["rvec"]["real"] = sensorValue.un.arvrStabilizedRV.real;
+  jsonObject["imu"]["rvec"]["i"] = sensorValue.un.rotationVector.i;
+  jsonObject["imu"]["rvec"]["j"] = sensorValue.un.rotationVector.j;
+  jsonObject["imu"]["rvec"]["k"] = sensorValue.un.rotationVector.k;
+  jsonObject["imu"]["rvec"]["real"] = sensorValue.un.rotationVector.real;
   Serial.println(jsonObject);
 }
 ///////////////////////////////////////////
