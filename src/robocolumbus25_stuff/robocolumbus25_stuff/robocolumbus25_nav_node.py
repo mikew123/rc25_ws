@@ -71,18 +71,6 @@ class NavNode(Node):
     tof_fc_dist_max = 1.5
     tof_fov = 0.785 
 
-    # # Lidar cone detection parameters
-    # coneMinRatioLimit = np.float32(0.250)
-    # coneMinMaxDiffMax = np.float32(0.060)
-    # coneMinMaxDiffMin = np.float32(0.005)
-    # coneRadius        = np.float32(0.05) # 100mm diameter at Lidar scan height     
-    # diffJump          = np.float32(0.15)
-    # coneRayMax        = np.float32(2.5)
-
-    # rayCountScale = np.float32(1.20) # 20 percent
-    # rayInfCount = np.int32(10) # allow 10 infinities which reduce ray counts
-    # rayMinCnt = np.int32(10) # minimum number of ray counts in cone detect
-
     # GLOBAL variables 
 
     # for cone navigation and approach (state=1,2)
@@ -138,8 +126,6 @@ class NavNode(Node):
                                             , self.tof_fc_mid_subscription_callback, 10)
         self.tof_dist_subscription = self.create_subscription(TofDist, '/tof_dist'
                                             , self.tof_dist_subscription_callback, 10)
-        # self.lidar_subscription = self.create_subscription(LaserScan,"/scan" 
-        #                                     , self.lidar_subscription_callback, 10)
 
         # Message topic to/from all nodes for general messaging Json formated string
         self.json_msg_publisher = self.create_publisher(String, "/json_msg", 10)
@@ -866,152 +852,6 @@ class NavNode(Node):
         self.cone_at_a_tof_fc = a
 
         # self.get_logger().info(f"tof_fc_callback: {x=:.3f} {y=:.3f} {a=:.3f} {d=:.3f} ")
-
-
-    # lidarActive = False
-
-    # # Cone detection from Lidar LaserScan data
-    # def lidar_subscription_callback(self, msg: LaserScan) -> None:
-    #     #self.get_logger().info(f"cone_det_cam_subscription_callback: {msg=}")
-
-    #     if not self.lidarActive :
-    #         self.lidarActive = True
-    #         self.tts("Lidar is active")
-   
-    #     angle_min       = np.float32(msg.angle_min)
-    #     angle_max       = np.float32(msg.angle_max)
-    #     angle_increment = np.float32(msg.angle_increment)
-    #     # self.get_logger().info(f"lidar_callback: {angle_min=:.3f} {angle_max:.3f} {angle_increment=:.3f}")
-
-    #     # get Lidar scan data within determined field of view for cone detection
-    #     len = np.int32((angle_max-angle_min)/angle_increment)
-    #     pfov = np.int32(self.fovRad/angle_increment)
-    #     dmin = np.int32(len/2 - pfov/2)
-    #     dmax = np.int32(len/2 + pfov/2)
-    #     coneRanges =  np.float32(msg.ranges[dmin:dmax])
-    #     # self.get_logger().info(f"{coneRanges=}")
-
-
-    #     begin = np.int32(0)
-    #     end = np.int32(0)
-    #     lastRay = np.float32(coneRanges[0])
-    #     rayNum = np.int32(1)
- 
-    #     coneMinDet:float = math.inf
-    #     coneIdxDet:int = 0
-    #     coneRaysDet:list = []
-
-    #     # NOTE: 1st ray cant be start of cone
-    #     for ray in coneRanges[1:] :
-    #         # if np.math.isinf(ray) : ray = 100 
-    #         if begin==0 :
-    #             # look for dist jump hi to lo to indicate possible start
-    #             if (ray<self.coneRayMax) :
-    #                 if ((lastRay-ray)>self.diffJump) :
-    #                     # possible start of cone detect
-    #                     begin = rayNum
-    #                     # self.get_logger().info(f" possible start of cone detect {begin=}")
-
-    #         elif (lastRay<self.coneRayMax) :
-    #             # look for dist jump lo to hi to indicate possible end
-    #             if((ray-lastRay)>self.diffJump) :
-    #                 # possible end of cone detect
-    #                 end = rayNum-1
-    #                 # self.get_logger().info(f" possible end of cone detect {end=}")
-    #                 if False : #(end-begin) < rayMinCnt :
-    #                     # number of rays too small for a cone, look for another cone
-    #                     begin = np.int32(0)
-    #                     end = np.int32(0)
-
-    #                 else :
-    #                     coneRays = coneRanges[begin:end]
-    #                     coneMin = np.min(coneRays)
-    #                     coneMax = np.max(coneRays)
-    #                     # find ray number at center of minimums
-    #                     idx = begin
-    #                     cnt = np.int32(0)
-    #                     coneRayIdxAtMin = np.int32(0)
-    #                     for ray in coneRays :
-    #                         if ray == coneMin :
-    #                             coneRayIdxAtMin += idx
-    #                             cnt +=1
-    #                         idx +=1
-
-    #                     # get min position as avg of all min positions
-    #                     coneRayIdxAtMin = np.int32(coneRayIdxAtMin/cnt)
-
-    #                     # validate if cone is near center of range of rays
-    #                     numRays = end - begin
-    #                     minCtr = coneRayIdxAtMin - begin
-    #                     minRatio = math.fabs(0.5 - minCtr/numRays)
-    #                     minRatioValid = minRatio < self.coneMinRatioLimit
-
-    #                     # Validate min - max distance and cone radius
-    #                     minMaxValid =   ((coneMax - coneMin) < self.coneMinMaxDiffMax) \
-    #                                 and ((coneMax - coneMin) > self.coneMinMaxDiffMin) 
-
-    #                     if (minMaxValid and minRatioValid) :
-    #                         # validated cone detection
-    #                         # self.get_logger().info(f" possible cone {coneMin=} {coneMax=} {coneRayIdxAtMin=} {coneRays=}")
-                            
-    #                         # keep the closest cone candidate 
-    #                         if coneMin<coneMinDet :
-    #                             coneMinDet = coneMin
-    #                             coneIdxDet = coneRayIdxAtMin
-    #                             coneRaysDet = coneRays
-
-
-    #                     # keep looking for more cone candidates
-    #                     begin = np.int32(0)
-    #                     end = np.int32(0)
-
-    #         else :
-    #             # cone ray distance was too far, look for another cone
-    #             begin = np.int32(0)
-    #             end = np.int32(0)
-
-    #         lastRay = ray
-    #         rayNum +=1
- 
-    #     # self.get_logger().info(f"{coneMinDet=} {coneIdxDet=} {coneRaysDet=}")
-
-    # # if (begin==0) or (end==0) :
-    #     if math.isinf(coneMinDet) :
-    #         # no cone detected
-    #         # self.get_logger().info(f"lidar_callback: No cone detected {coneRanges=}")
-    #         # default for no cone detected
-    #         self.cone_at_x_lidar = 0
-    #         self.cone_at_y_lidar = 0
-    #         self.cone_at_a_lidar = 0
-    #         return
-        
-    #     coneMin = coneMinDet
-    #     coneIdx = coneIdxDet
-    #     coneRays = coneRaysDet
-
-    #     # self.get_logger().info(f" {coneMin=} {coneIdx=} {coneRays=}")
-
-    #     # find angle of detected cone in FOV in front of robot where cone is searched
-    #     # middle of coneRanges[] data is 0 degrees
-    #     # a = np.float32(angle_increment*(coneRayIdxAtMin-(np.size(coneRanges)/2)))
-    #     a = np.float32(angle_increment*(coneIdx-(np.size(coneRanges)/2)))
-
-    #     # convert to x,y coordinates relative to lidar "/oak-d_frame"
-    #     d = np.float32(coneMin)
-    #     x = d*np.cos(a)
-    #     y = d*np.sin(a)
-
-    #     # self.get_logger().info(f"lidar_callback: {x=} {y=} {a=} {d=} {coneMax=} {minRatio=}")
-
-    #     coneRays -= d # normalize data, zero is closest
-    #     np.set_printoptions(precision=3, suppress=True)
-    #     # self.get_logger().info(f"lidar_callback: {x=} {y=} {d=}  {a=} {pfov=} {coneRayIdxAtMin=} {coneRays=}")
-    #     np.set_printoptions(precision=3, suppress=True)
-    #     # transform coordinates to "/tof_fc_link" which is considered front of robot
-    #     self.cone_at_x_lidar = x - 0.400 # crude transformation not TF, Lidar is 0.400 behind tof sensor
-    #     self.cone_at_y_lidar = y
-    #     self.cone_at_d_lidar = d
-    #     self.cone_at_a_lidar = a
         
         
 
