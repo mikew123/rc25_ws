@@ -57,37 +57,57 @@ class Robocolumbus25TeleopNode(Node):
         pass
 
     # Get button commands from Joy message
-    def joy_callback(self, msg):
+    buttonsLast = [0]*10
+    axesLast = [0]*10
+
+    def joy_callback(self, msg:Joy):
         cmd_vel = Twist()
 
-        # get controller values
-        axes1 = msg.axes[1] # throttle
-        axes3 = msg.axes[3] # steer
+        axes = [0.0]*10
+        buttons = [0]*10
 
-        if axes1==0.0 and axes3==0.0 :
-            if self.cmd_vel_zero == False :
-                return
-            self.cmd_vel_zero = True
-        else :
-            self.cmd_vel_zero = False
+        # get controller axes and button values
+        for i in range(0,8):
+            axes[i] = msg.axes[i]
+        for i in range(0,10):
+            buttons[i] = msg.buttons[i]
 
-        linearX  = axes1 * self.maxLinearX
-        steerAngleRad = axes3 * self.maxSteerAngleRad
 
-        # Basic steering calculation wheel angle to angular velocity
-        if math.fabs(linearX) < 0.01 :
-            linearX = 0.0
-            angularZ = 0.0
-        else :
-            angularZ = math.tan(steerAngleRad) * linearX / self.wheelBase
+        # Send /cmd_vel to move robot
+        if not(axes[1]==0.0 and axes[3]==0.0) :
+            throttle = axes[1]
+            steer = axes[3]
 
-        # self.get_logger().info(f"{axes1=:.3f} {axes3=:.3f} : {linearX=:.3f} {angularZ=:.3f} {steerAngleRad=:.3f}")
+            linearX  = throttle * self.maxLinearX
+            steerAngleRad = steer * self.maxSteerAngleRad
 
-        # Publish /cmd_vel
-        cmd_vel.linear.x = linearX
-        cmd_vel.angular.z = angularZ
-        self.cmd_vel_publisher.publish(cmd_vel)
+            # Basic steering calculation wheel angle to angular velocity
+            if math.fabs(linearX) < 0.01 :
+                linearX = 0.0
+                angularZ = 0.0
+            else :
+                angularZ = math.tan(steerAngleRad) * linearX / self.wheelBase
+
+            # self.get_logger().info(f"{throttle=:.3f} {steer=:.3f} : {linearX=:.3f} {angularZ=:.3f} {steerAngleRad=:.3f}")
+
+            # Publish /cmd_vel
+            cmd_vel.linear.x = linearX
+            cmd_vel.angular.z = angularZ
+            self.cmd_vel_publisher.publish(cmd_vel)
   
+        # Publish buttons
+        if buttons != self.buttonsLast :
+            json_msg = {"buttons":buttons}
+            self.sendJsonMsg(json_msg)
+
+        # save axes and buttons values
+        for i in range(0,8):
+            self.axesLast[i] = axes[i]
+        for i in range(0,10):
+            self.buttonsLast[i] = buttons[i]
+
+        # self.get_logger().info(f"{buttons=} {self.buttonsLast=} {axes=} {self.axesLast=}")
+
     def destroy_node(self):
         self.get_logger().info("destroy_node")
         if hasattr(self, 'ser') and self.ser and self.ser.is_open:
