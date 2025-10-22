@@ -119,6 +119,10 @@ class NavNode(Node):
     killSw:bool = False
     cd_killSwChange:bool = False
 
+    wayPoint:dict = None
+    wayPointNum:int = 0
+    coneWayPoint:bool = False
+
     def  __init__(self, nav: BasicNavigator):
         super().__init__('robocolumbus25_nav_node')
         self.nav = nav
@@ -185,22 +189,19 @@ class NavNode(Node):
             nav = data['nav']
             self.processNavMsg(nav)
 
-    coneXY:dict = None
-    coneNum:int = 0
-
     def requestNextCone(self) :
-        self.tts("Requesting next cone location")
-        json_msg = {"nav": {"requestcone":True}}
+        self.tts("Requesting next way point location")
+        json_msg = {"nav": {"request_waypoint":True}}
         self.sendJsonMsg(json_msg)
 
     def processNavMsg(self, nav:dict) -> None :
         self.get_logger().info(f"processNavMsg: {nav=}")
-        if "gotoxy" not in nav : return
-        gotoxy = nav["gotoxy"]
-        x = gotoxy["x"]
-        y = gotoxy["y"]
-        n = gotoxy["n"]
-        self.coneXY = {"n":n, "x":x, "y":y}
+        if "waypoint" in nav :
+            waypoint = nav["waypoint"]
+            self.wayPoint = waypoint
+            self.wayPointNum +=1
+        else :
+            self.wayPoint = None
 
     def processKillSwStatus(self, kill:bool) -> None :
         if(kill != self.killSw) :
@@ -228,26 +229,29 @@ class NavNode(Node):
             next_state = 1
             
         elif state == 1 :
-            self.coneXY = None
+            self.wayPoint = None
             self.requestNextCone()
             next_state = 2
 
         elif state == 2 :
-            # wait for xy location from controller
-            if self.coneXY != None :
-                x = self.coneXY["x"]
-                y = self.coneXY["y"]
-                n = self.coneXY["n"]
-                
-                #TODO: what angle?
-                a = 0.0
+            # wait for waypoint location from controller
+            if self.wayPoint != None :
+                if "x" in self.wayPoint :
+                    # map based XY location
+                    x = self.wayPoint["x"]
+                    y = self.wayPoint["y"]
+                    self.coneWayPoint = self.wayPoint["cone"]
+                    
+                    #TODO: what angle?
+                    a = 0.0
 
-                self.get_logger().info(f"Go to cone {n} location {x=} {y=}")
-                self.tts(f"Go to cone {n} location {x=} {y=}")
+                    self.get_logger().info(f"Go to way point location {x=} {y=}")
+                    self.tts(f"Go to waypoint location {x=} {y=}")
 
-                goto_pose = self.createPose(x,y,a,"map")
-                self.nav.goToPose(goto_pose)
-                next_state = 3
+                    goto_pose = self.createPose(x,y,a,"map")
+                    self.nav.goToPose(goto_pose)
+
+                    next_state = 3
         
         elif state == 3 :
         
@@ -255,11 +259,16 @@ class NavNode(Node):
             if self.nav.isTaskComplete() :
                 result = self.nav.getResult()
                 if result == TaskResult.SUCCEEDED :
-                    self.tts("Navigate to cone location is successfull")
-                    next_state = 4
+                    self.tts("Navigate to way point location is successfull")
+                    if self.coneWayPoint :
+                        # Find cone close to the way point
+                        next_state = 4
+                    else :
+                        # No cone is at the way point
+                        next_state = 1
                 else :
                     # try again
-                    self.tts("Attempt to navigate to cone location again")
+                    self.tts("Attempt to navigate to way point location again")
                     next_state = 2
             else :
                 result = self.nav.getFeedback()
