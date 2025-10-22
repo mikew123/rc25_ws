@@ -35,8 +35,6 @@ class NavNode(Node):
     # Timer for state machine
     smTimerRateHz:float = 10.0
 
-    tc_state = -1
-    tc_next_state = 0 # wait for cone location
 
     cd_timer:float = 0.0
     cd_state:int = 0
@@ -210,6 +208,14 @@ class NavNode(Node):
         self.killSw = kill
 
     # Timer based state machine for cone navigation
+    T_INIT_WAIT, T_CAL_IMU, T_WAIT_GO, T_REQ_WP, T_WAIT_REQ, T_NAV_WP, T_GOTO_CONE = range(7)
+    tc_state = -1
+    tc_next_state = T_INIT_WAIT
+
+    gpsLocalization = False
+    calImu = False
+    navGo = False
+
     def sm_timer_callback(self):
 
         # need a main state machine
@@ -219,23 +225,45 @@ class NavNode(Node):
         if self.tc_state!= next_state :
             stateChange = True
             self.get_logger().info(f"sm_timer_callback: state change to {next_state}")
-            self.tts(f"sm timer {next_state=}")
+            self.tts(f"Nav timer {next_state=}")
 
         state = next_state
         self.tc_state = state
 
-        if state == 0 :
+        if state == self.T_INIT_WAIT :
+            self.tts("wait for nav 2")
             time.sleep(20)
-            next_state = 1
+            if self.gpsLocalization :
+                next_state = self.T_CAL_IMU
+            else :
+                next_state = self.T_WAIT_GO
+
+        if state == self.T_CAL_IMU :
+            # Calibrate IMU when requested
+            status = self.calImu()
+            if status :
+                #  calibration complete
+                next_state = self.T_WAIT_GO
+
+        if state == self.T_WAIT_GO :
+            # Wait for go command
+            status = self.waitGo()
+            if status :
+                next_state = self.T_REQ_WP
             
-        elif state == 1 :
+        elif state == self.T_REQ_WP :
             self.wayPoint = None
             self.requestNextCone()
-            next_state = 2
+            next_state = self.T_WAIT_REQ
 
-        elif state == 2 :
+        elif state == self.T_WAIT_REQ :
             # wait for waypoint location from controller
             if self.wayPoint != None :
+                next_state = self.T_NAV_WP
+        
+        elif state == self.T_NAV_WP :
+            if stateChange :
+                # execute goto cone once
                 if "x" in self.wayPoint :
                     # map based XY location
                     x = self.wayPoint["x"]
@@ -251,10 +279,10 @@ class NavNode(Node):
                     goto_pose = self.createPose(x,y,a,"map")
                     self.nav.goToPose(goto_pose)
 
-                    next_state = 3
-        
-        elif state == 3 :
-        
+                else :
+                    # invalid waypoint, request next
+                    next_state = self.T_REQ_WP
+
             #TODO: timeout + kill switch
             if self.nav.isTaskComplete() :
                 result = self.nav.getResult()
@@ -262,32 +290,46 @@ class NavNode(Node):
                     self.tts("Navigate to way point location is successfull")
                     if self.coneWayPoint :
                         # Find cone close to the way point
-                        next_state = 4
+                        next_state = self.T_GOTO_CONE
                     else :
                         # No cone is at the way point
-                        next_state = 1
+                        next_state = self.T_REQ_WP
                 else :
                     # try again
                     self.tts("Attempt to navigate to way point location again")
-                    next_state = 2
+                    next_state = self.T_WAIT_REQ
             else :
                 result = self.nav.getFeedback()
                 #self.get_logger().info(f"gotoPose {result=}")
                 
 
-        elif state == 4 :
+        elif state == self.T_GOTO_CONE :
             # find cone and "touch" it
             done = self.cd_sm()
             if done : 
                 #go request next cone location
                 self.get_logger().info(f"tc: done - touch cone succeeded - get another cone location")
                 self.tts("touch cone succeeded - get another cone location ")
-                next_state = 1
+                next_state = self.T_REQ_WP
 
         # set next GPS coordinate 
 
         self.tc_next_state = next_state
 
+    def calImu(self) -> bool :
+        '''
+        Calibrate the IMU by moving robot
+        Wait for cal button to be pressed
+        '''
+        return True
+
+    def waitGo(self) -> bool :
+        '''
+        Wait to start navigation 
+        Wait for navigate button to be pressed
+        '''
+        return True
+   
     # Executes in timer callback group, sensor callbacks are in parallel
     def cd_sm(self) -> bool:
         func = "cone_sm:"
