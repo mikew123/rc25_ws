@@ -173,21 +173,6 @@ class NavNode(Node):
             nav = data['nav']
             self.processNavMsg(nav)
 
-        if 'buttons' in data :
-            buttons = data['buttons']
-            self.processJsonButtonsMsg(buttons)
-
-    buttonsLast = [0]*10
-    buttonCalImu = False
-    buttonGoNav = False
-    def processJsonButtonsMsg(self, buttons) -> None :
-        if (buttons[5]==True) and (self.buttonsLast[5]==False) :
-            self.buttonCalImu = True
-        if (buttons[4]==True) and (self.buttonsLast[4]==False) :
-            self.buttonGoNav = True
-
-        self.buttonsLast = buttons
-
     def requestNextCone(self) :
         self.tts("Requesting next way point location")
         json_msg = {"nav": {"request_waypoint":True}}
@@ -198,8 +183,14 @@ class NavNode(Node):
         if "waypoint" in nav :
             self.wayPoint = nav["waypoint"]
             self.wayPointNum +=1
-        else :
-            self.wayPoint = None
+        if "buttonCalImu" in nav :
+            if (self.buttonCalImu==False) and (nav["buttonCalImu"]==True):
+                self.buttonCalImu = True
+        if "buttonGoNav" in nav :
+            if (self.buttonGoNav==False) and (nav["buttonGoNav"]==True):
+                self.buttonGoNav = True
+        # else :
+        #     self.wayPoint = None
 
         if "gps_localization" in nav :
             self.gpsLocalization = nav["gps_localization"]
@@ -335,7 +326,9 @@ class NavNode(Node):
         '''
         Calibrate the IMU by moving robot
         Wait for cal button to be pressed
+        Return True when IMU calibration is complete
         '''
+
         state = self.next_calImuState
         stateChange = False
         next_state = state # default
@@ -345,14 +338,19 @@ class NavNode(Node):
             stateChange = True
         self.calImuState = state
 
-        if stateChange :
-            self.tts(f"Calibrate IMU {state=}")
-
         if state == self.CAL_IMU_WAIT_BUTT :
-            if self.buttonCalImu :
+            if stateChange :
+                self.buttonCalImu = False
+                #TODO: message periodically till pressed
+                self.tts(f"Press button to start IMU calbration")
+
+            if self.buttonCalImu == True :
                 next_state = self.CAL_IMU_DONE
 
         elif state == self.CAL_IMU_DONE :
+            if stateChange :
+                self.tts(f"IMU calbration is complete")
+                
             next_state = self.CAL_IMU_WAIT_BUTT
             returnVal = True
 
@@ -364,16 +362,47 @@ class NavNode(Node):
         
         return returnVal
 
+    NAV_GO_WAIT_BUTT, NAV_GO_BUTT_PRESSED = range(2)
+    navGoState = -1
+    next_navGoState = NAV_GO_WAIT_BUTT
+
     def waitGo(self) -> bool :
         '''
         Wait to start navigation 
         Wait for navigate button to be pressed
+        Return True when button is pressed
         '''
-        if self.buttonGoNav :
-            return True
-        else :
-            return False
-   
+
+        state = self.next_navGoState
+        stateChange = False
+        next_state = state # default
+        returnVal = False
+
+        if state != self.navGoState :
+            stateChange = True
+        self.navGoState = state
+
+        if state == self.NAV_GO_WAIT_BUTT :
+            if stateChange :
+                self.buttonGoNav = False
+                #TODO: message periodically till pressed
+                self.tts(f"Press button to start navigation")
+
+            if self.buttonGoNav==True :
+                next_state = self.NAV_GO_BUTT_PRESSED
+
+        if state == self.NAV_GO_BUTT_PRESSED :
+            if stateChange :
+                self.tts(f"Navigation is starting")
+
+            if self.buttonGoNav==True :
+                next_state = self.NAV_GO_WAIT_BUTT
+                returnVal = True
+
+        self.next_navGoState = next_state
+
+        return returnVal
+    
     # Executes in timer callback group, sensor callbacks are in parallel
     def cd_sm(self) -> bool:
         func = "cone_sm:"

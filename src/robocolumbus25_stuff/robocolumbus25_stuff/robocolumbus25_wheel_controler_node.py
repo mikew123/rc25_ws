@@ -189,11 +189,15 @@ class WheelControllerNode(Node):
         if 'status' in data:
             status = data['status']
             self.processEngineStatusMsg(status)
-        
-    def processEngineStatusMsg(self, status) -> None :
-        json_msg = {"engine":{"status":status}}
-        self.sendJsonMsg(json_msg)
+    
+    engineStatus_last = ""
 
+    def processEngineStatusMsg(self, status) -> None :
+        if status != self.engineStatus_last :
+            json_msg = {"engine":{"status":status}}
+            self.sendJsonMsg(json_msg)
+        self.engineStatus_last = status
+        
     # Process odom info from wheels to get /wheel_odom with velocity and pose
     def proc_wheel_odom_msg(self, odom) :
         #self.get_logger().info(f"proc_wheel_odom_msg {odom=}")
