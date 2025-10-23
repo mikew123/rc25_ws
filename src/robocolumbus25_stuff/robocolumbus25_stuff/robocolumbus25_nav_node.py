@@ -173,6 +173,21 @@ class NavNode(Node):
             nav = data['nav']
             self.processNavMsg(nav)
 
+        if 'buttons' in data :
+            buttons = data['buttons']
+            self.processJsonButtonsMsg(buttons)
+
+    buttonsLast = [0]*10
+    buttonCalImu = False
+    buttonGoNav = False
+    def processJsonButtonsMsg(self, buttons) -> None :
+        if (buttons[5]==True) and (self.buttonsLast[5]==False) :
+            self.buttonCalImu = True
+        if (buttons[4]==True) and (self.buttonsLast[4]==False) :
+            self.buttonGoNav = True
+
+        self.buttonsLast = buttons
+
     def requestNextCone(self) :
         self.tts("Requesting next way point location")
         json_msg = {"nav": {"request_waypoint":True}}
@@ -181,16 +196,19 @@ class NavNode(Node):
     def processNavMsg(self, nav:dict) -> None :
         self.get_logger().info(f"processNavMsg: {nav=}")
         if "waypoint" in nav :
-            waypoint = nav["waypoint"]
-            self.wayPoint = waypoint
+            self.wayPoint = nav["waypoint"]
             self.wayPointNum +=1
         else :
             self.wayPoint = None
 
+        if "gps_localization" in nav :
+            self.gpsLocalization = nav["gps_localization"]
+
+
     def processKillSwStatus(self, kill:bool) -> None :
         if(kill != self.killSw) :
             self.cd_killSwChange = True
-            self.get_logger().info(f"json_msg_callback: kill switch is {kill}")
+            self.get_logger().info(f"processKillSwStatus: kill switch is {kill}")
         self.killSw = kill
 
     # Timer based state machine for cone navigation
@@ -198,7 +216,7 @@ class NavNode(Node):
     tc_state = -1
     tc_next_state = T_INIT_WAIT
 
-    gpsLocalization = False
+    gpsLocalization = None
     calImu = False
     navGo = False
 
@@ -219,10 +237,17 @@ class NavNode(Node):
         if state == self.T_INIT_WAIT :
             self.tts("wait for nav 2")
             time.sleep(20)
-            if self.gpsLocalization :
-                next_state = self.T_CAL_IMU
-            else :
-                next_state = self.T_WAIT_GO
+
+            if self.gpsLocalization == None :
+                jsonMsg = {"nav":{"request_gps_localization":True}}
+                self.sendJsonMsg(jsonMsg)
+            time.sleep(1)
+
+            if self.gpsLocalization != None :
+                if self.gpsLocalization :
+                    next_state = self.T_CAL_IMU
+                else :
+                    next_state = self.T_WAIT_GO
 
         if state == self.T_CAL_IMU :
             # Calibrate IMU when requested
@@ -302,19 +327,52 @@ class NavNode(Node):
 
         self.tc_next_state = next_state
 
+    CAL_IMU_WAIT_BUTT, CAL_IMU_DONE = range(2)
+    calImuState = -1
+    next_calImuState = CAL_IMU_WAIT_BUTT
+
     def calImu(self) -> bool :
         '''
         Calibrate the IMU by moving robot
         Wait for cal button to be pressed
         '''
-        return True
+        state = self.next_calImuState
+        stateChange = False
+        next_state = state # default
+        returnVal = False
+
+        if state != self.calImuState :
+            stateChange = True
+        self.calImuState = state
+
+        if stateChange :
+            self.tts(f"Calibrate IMU {state=}")
+
+        if state == self.CAL_IMU_WAIT_BUTT :
+            if self.buttonCalImu :
+                next_state = self.CAL_IMU_DONE
+
+        elif state == self.CAL_IMU_DONE :
+            next_state = self.CAL_IMU_WAIT_BUTT
+            returnVal = True
+
+        else :
+            next_state = self.CAL_IMU_WAIT_BUTT
+            returnVal = True #TODO: ???
+
+        self.next_calImuState = next_state
+        
+        return returnVal
 
     def waitGo(self) -> bool :
         '''
         Wait to start navigation 
         Wait for navigate button to be pressed
         '''
-        return True
+        if self.buttonGoNav :
+            return True
+        else :
+            return False
    
     # Executes in timer callback group, sensor callbacks are in parallel
     def cd_sm(self) -> bool:

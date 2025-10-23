@@ -98,7 +98,6 @@ class ControllerNode(Node):
         self.gpsLocalization = self.waypoints["config"]["gps_localization"]
         self.get_logger().info(f"GPS localization enabled = {self.gpsLocalization}")
 
-
     def sm_timer_callback(self) -> None :
         if self.waypoints == None : return
 
@@ -136,6 +135,7 @@ class ControllerNode(Node):
             self.tts(f"Could not find waypoint {n} location in the file")
             return False
 
+        
         self.get_logger().info(f"Sending {waypointN=}")
         json_msg = {"nav":{"waypoint":waypointN}}
         self.sendJsonMsg(json_msg)
@@ -173,6 +173,9 @@ class ControllerNode(Node):
             if "request_waypoint" in nav :
                 request_waypoint = nav["request_waypoint"]
                 self.requestNextWaypoint = request_waypoint
+            if "request_gps_localization" in nav :
+                jsonMsg = {"nav":{"gps_localization":self.gpsLocalization}}
+                self.sendJsonMsg(jsonMsg)
 
     def processEngineStatus(self,status:String) -> None :
             # self.get_logger().info(f"processEngineStatus: {status=}")
