@@ -326,9 +326,13 @@ class ImuGpsNode(Node):
                     # if self.imuCalRvel != imuCalRvel :
                     #     self.tts(f"IMU rotation velocity cal {imuCalRvel}")
                     #     self.imuCalRvel = imuCalRvel
+
                     if self.imuCalRvec != imuCalRvec :
-                        self.tts(f"IMU calibration {imuCalRvec}")
                         self.imuCalRvec = imuCalRvec
+                        self.tts(f"IMU calibration status {imuCalRvec}")
+                        jsonMsg = {"nav":{"imu_cal_status":imuCalRvec}}
+                        self.sendJsonMsg(jsonMsg)
+
                     # if self.imuCalLacc != imuCalLacc :
                     #     self.tts(f"IMU linear accelleration cal {imuCalLacc}")
                     #     self.imuCalLacc = imuCalLacc

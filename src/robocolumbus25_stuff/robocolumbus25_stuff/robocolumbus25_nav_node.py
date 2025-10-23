@@ -178,14 +178,19 @@ class NavNode(Node):
         json_msg = {"nav": {"request_waypoint":True}}
         self.sendJsonMsg(json_msg)
 
+    buttonCalImu = False
+    buttonGoNav = False
+
     def processNavMsg(self, nav:dict) -> None :
         self.get_logger().info(f"processNavMsg: {nav=}")
         if "waypoint" in nav :
             self.wayPoint = nav["waypoint"]
             self.wayPointNum +=1
+
         if "buttonCalImu" in nav :
             if (self.buttonCalImu==False) and (nav["buttonCalImu"]==True):
                 self.buttonCalImu = True
+
         if "buttonGoNav" in nav :
             if (self.buttonGoNav==False) and (nav["buttonGoNav"]==True):
                 self.buttonGoNav = True
@@ -194,6 +199,9 @@ class NavNode(Node):
 
         if "gps_localization" in nav :
             self.gpsLocalization = nav["gps_localization"]
+
+        if "imu_cal_status" in nav :
+            self.imuCalStatus = nav["imu_cal_status"]
 
 
     def processKillSwStatus(self, kill:bool) -> None :
@@ -208,6 +216,7 @@ class NavNode(Node):
     tc_next_state = T_INIT_WAIT
 
     gpsLocalization = None
+    imuCalStatus = False
     calImu = False
     navGo = False
 
@@ -318,7 +327,7 @@ class NavNode(Node):
 
         self.tc_next_state = next_state
 
-    CAL_IMU_WAIT_BUTT, CAL_IMU_DONE = range(2)
+    CAL_IMU_WAIT_BUTT, CAL_IMU, CAL_IMU_DONE = range(3)
     calImuState = -1
     next_calImuState = CAL_IMU_WAIT_BUTT
 
@@ -345,18 +354,27 @@ class NavNode(Node):
                 self.tts(f"Press button to start IMU calbration")
 
             if self.buttonCalImu == True :
+                next_state = self.CAL_IMU
+
+        elif state == self.CAL_IMU :
+            if stateChange :
+                self.tts(f"IMU is calibrating")
+
+            status = self.drivePattern(stateChange, 0, 0.5, 2.0, 0.5)
+            if status==True :
                 next_state = self.CAL_IMU_DONE
 
         elif state == self.CAL_IMU_DONE :
             if stateChange :
                 self.tts(f"IMU calbration is complete")
-                
+            
             next_state = self.CAL_IMU_WAIT_BUTT
             returnVal = True
 
         else :
+            #TODO: invalid state ???
             next_state = self.CAL_IMU_WAIT_BUTT
-            returnVal = True #TODO: ???
+            returnVal = True
 
         self.next_calImuState = next_state
         
@@ -403,6 +421,73 @@ class NavNode(Node):
 
         return returnVal
     
+    DP_FWD_RIGHT, DP_REV_LEFT, DP_PAUSE = range(3)
+    dpState = -1
+    next_dpState = DP_FWD_RIGHT
+    dpStopTime = 0.0
+    dpPauseNextState = -1
+    dpCount = 0
+
+    def drivePattern(self, init:bool, numMoves:int=0, speed:float=0.1, driveT:float=5.0, pauseT:float=1.0) -> bool :
+        '''
+        Drive in a "star" like pattern fwd-left/rev-right or similar<br>
+            init resets drive pattern count<
+            numMoves>0 is the number of FWD_RIGHT,REV_LEFT movements (cone search)
+            numMoves=0 moves until the IMU is calibrated
+            speed (m/s) is the speed while moving (NOTE: speed<0 reverses FWD/REV)
+            driveT (sec) is the time while moving
+            pauseT (sec) is the time paused between movements
+            return=True when finished
+        '''
+        
+        state = self.next_dpState
+        stateChange = False
+        next_state = state # default
+        returnVal = False
+
+        if state != self.dpState :
+            stateChange = True
+        self.dpState = state
+
+        if init :
+            self.dpCount = 0
+
+        if state == self.DP_FWD_RIGHT :
+            if stateChange==True :
+                self.dpStopTime = time.monotonic() + math.fabs(driveT)
+
+            if self.dpStopTime >= time.monotonic() :
+                self.dpPauseNextState = self.DP_REV_LEFT
+                next_state = self.DP_PAUSE
+
+        elif state == self.DP_REV_LEFT :
+            if stateChange==True :
+                self.dpStopTime = time.monotonic() + math.fabs(driveT)
+
+            if self.dpStopTime >= time.monotonic() :
+                self.dpPauseNextState = self.DP_FWD_RIGHT
+                next_state = self.DP_PAUSE
+
+        elif state == self.DP_PAUSE :
+            if stateChange==True :
+                self.dpCount +=1
+                self.dpStopTime = time.monotonic() + math.fabs(pauseT)
+
+            if self.dpStopTime >= time.monotonic() :
+                next_state = self.dpPauseNextState
+
+        
+        if numMoves>0 :
+            if self.dpCount>numMoves:
+                returnVal = True
+        else :
+            if self.imuCalStatus == 3 :
+                returnVal = True
+
+        self.next_dpState = next_state
+
+        return returnVal
+
     # Executes in timer callback group, sensor callbacks are in parallel
     def cd_sm(self) -> bool:
         func = "cone_sm:"
