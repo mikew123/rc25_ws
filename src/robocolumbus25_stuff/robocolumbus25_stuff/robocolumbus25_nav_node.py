@@ -180,6 +180,8 @@ class NavNode(Node):
 
     buttonCalImu = False
     buttonGoNav = False
+    buttonCalImuTrig = False
+    buttonGoNavTrig = False
 
     def processNavMsg(self, nav:dict) -> None :
         self.get_logger().info(f"processNavMsg: {nav=}")
@@ -188,12 +190,16 @@ class NavNode(Node):
             self.wayPointNum +=1
 
         if "buttonCalImu" in nav :
-            if (self.buttonCalImu==False) and (nav["buttonCalImu"]==True):
-                self.buttonCalImu = True
+            buttonCalImu = nav["buttonCalImu"]
+            if (self.buttonCalImu==False) and (buttonCalImu==True):
+                self.buttonCalImuTrig = True
+            self.buttonCalImu = buttonCalImu
 
         if "buttonGoNav" in nav :
-            if (self.buttonGoNav==False) and (nav["buttonGoNav"]==True):
-                self.buttonGoNav = True
+            buttonGoNav = nav["buttonGoNav"]
+            if (self.buttonGoNav==False) and (buttonGoNav==True):
+                self.buttonGoNavTrig = True
+            self.buttonGoNav = buttonGoNav
         # else :
         #     self.wayPoint = None
 
@@ -349,11 +355,11 @@ class NavNode(Node):
 
         if state == self.CAL_IMU_WAIT_BUTT :
             if stateChange :
-                self.buttonCalImu = False
+                self.buttonCalImuTrig = False
                 #TODO: message periodically till pressed
                 self.tts(f"Press button to start IMU calbration")
 
-            if self.buttonCalImu == True :
+            if self.buttonCalImuTrig == True :
                 next_state = self.CAL_IMU
 
         elif state == self.CAL_IMU :
@@ -402,18 +408,18 @@ class NavNode(Node):
 
         if state == self.NAV_GO_WAIT_BUTT :
             if stateChange :
-                self.buttonGoNav = False
+                self.buttonGoNavTrig = False
                 #TODO: message periodically till pressed
                 self.tts(f"Press button to start navigation")
 
-            if self.buttonGoNav==True :
+            if self.buttonGoNavTrig==True :
                 next_state = self.NAV_GO_BUTT_PRESSED
 
         if state == self.NAV_GO_BUTT_PRESSED :
             if stateChange :
                 self.tts(f"Navigation is starting")
 
-            if self.buttonGoNav==True :
+            if self.buttonGoNavTrig==True :
                 next_state = self.NAV_GO_WAIT_BUTT
                 returnVal = True
 
@@ -428,17 +434,20 @@ class NavNode(Node):
     dpPauseNextState = -1
     dpCount = 0
 
-    def drivePattern(self, init:bool, numMoves:int=0, speed:float=0.1, driveT:float=5.0, pauseT:float=1.0) -> bool :
+    def drivePattern(self, init:bool, numMoves:int=0, speed:float=0.5, driveT:float=2.0, pauseT:float=0.5) -> bool :
         '''
-        Drive in a "star" like pattern fwd-left/rev-right or similar<br>
-            init resets drive pattern count<
+        Drive in a "star" like pattern fwd-left/rev-right or similar
+            init resets drive pattern count
             numMoves>0 is the number of FWD_RIGHT,REV_LEFT movements (cone search)
-            numMoves=0 moves until the IMU is calibrated
+            numMoves=0 moves until the IMU is calibrated AND cal button is released 
             speed (m/s) is the speed while moving (NOTE: speed<0 reverses FWD/REV)
             driveT (sec) is the time while moving
             pauseT (sec) is the time paused between movements
             return=True when finished
         '''
+
+        # /cmd_vel message to drive robot
+        msg = Twist()
         
         state = self.next_dpState
         stateChange = False
@@ -456,7 +465,10 @@ class NavNode(Node):
             if stateChange==True :
                 self.dpStopTime = time.monotonic() + math.fabs(driveT)
 
-            if self.dpStopTime >= time.monotonic() :
+            msg.linear.x  = speed
+            msg.angular.z = -2*speed
+
+            if time.monotonic() >= self.dpStopTime :
                 self.dpPauseNextState = self.DP_REV_LEFT
                 next_state = self.DP_PAUSE
 
@@ -464,7 +476,10 @@ class NavNode(Node):
             if stateChange==True :
                 self.dpStopTime = time.monotonic() + math.fabs(driveT)
 
-            if self.dpStopTime >= time.monotonic() :
+            msg.linear.x  = -speed
+            msg.angular.z = -2*speed
+
+            if time.monotonic() >= self.dpStopTime :
                 self.dpPauseNextState = self.DP_FWD_RIGHT
                 next_state = self.DP_PAUSE
 
@@ -473,16 +488,27 @@ class NavNode(Node):
                 self.dpCount +=1
                 self.dpStopTime = time.monotonic() + math.fabs(pauseT)
 
-            if self.dpStopTime >= time.monotonic() :
+            msg.linear.x  = 0.0
+            msg.angular.z = 0.0
+
+            if time.monotonic() >= self.dpStopTime :
                 next_state = self.dpPauseNextState
 
-        
+        # detrmine when to stop driving pattern
         if numMoves>0 :
             if self.dpCount>numMoves:
+                msg.linear.x  = 0.0
+                msg.angular.z = 0.0
                 returnVal = True
         else :
-            if self.imuCalStatus == 3 :
+            # continue calibration pattern until both calibrated and button released
+            if (self.buttonCalImu==False) and (self.imuCalStatus==3) :
+                msg.linear.x  = 0.0
+                msg.angular.z = 0.0
                 returnVal = True
+
+        # drive robot command
+        self.cmd_vel_publisher.publish(msg)
 
         self.next_dpState = next_state
 

@@ -95,14 +95,16 @@ class Robocolumbus25TeleopNode(Node):
             cmd_vel.angular.z = angularZ
             self.cmd_vel_publisher.publish(cmd_vel)
   
-        # Publish buttons
-        if buttons != self.buttonsLast :
-            if (buttons[5]==True) and (self.buttonsLast[5]==False) :
-                json_msg = {"nav":{"buttonCalImu":buttons[5]}}
-                self.sendJsonMsg(json_msg)
-            if (buttons[4]==True) and (self.buttonsLast[4]==False) :
-                json_msg = {"nav":{"buttonGoNav":buttons[4]}}
-                self.sendJsonMsg(json_msg)
+        # Publish buttons when chage occurs
+        if buttons[4] != self.buttonsLast[4] :
+            b:bool = (buttons[4]==1)
+            json_msg = {"nav":{"buttonGoNav":b}}
+            self.sendJsonMsg(json_msg)
+
+        if buttons[5] != self.buttonsLast[5] :
+            b:bool = (buttons[5]==1)
+            json_msg = {"nav":{"buttonCalImu":b}}
+            self.sendJsonMsg(json_msg)
 
         # save axes and buttons values
         for i in range(0,8):
