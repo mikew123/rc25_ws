@@ -292,6 +292,9 @@ class ImuGpsNode(Node):
                     # adjust by 90 deg = pi/2 (1.5708)
                     (ex,ey,ez) =  tf_transformations.euler_from_quaternion([x,y,z,w])
                     ez += math.pi/2
+                    # limit yaw to +-pi
+                    if ez>+math.pi : ez -= 2*math.pi
+                    if ez<-math.pi : ez += 2*math.pi
                     (qx,qy,qz,qw) = tf_transformations.quaternion_from_euler(ex,ey,ez)
 
                     msg.orientation.x = qx
