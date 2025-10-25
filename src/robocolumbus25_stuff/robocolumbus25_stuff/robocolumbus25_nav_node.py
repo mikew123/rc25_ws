@@ -563,11 +563,14 @@ class NavNode(Node):
 
         return done
 
-    # state 0 - wait for camera cone detection
+    wcScanInit = False
+
+    # state 0 - wait for camera cone detection    
     def wait_for_cone_det(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} wait for cone detection {state=}")
             self.tts("State 0")
+            self.wcScanInit = True
             # self.nav.cancelTask()
 
         # get cone xy from camera detect
@@ -590,9 +593,28 @@ class NavNode(Node):
         next_state:int = state
 
         if x!=0 :
+            # A cone has been detected
             self.get_logger().info(f"{func} cone detected at {x=:.3f} {y=:.3f}  {state=} {killSwitchActive=}")
+            #stop movement
+            msg = Twist()
+            self.cmd_vel_publisher(msg)
+            self.wcScanInit = True
+
             if not killSwitchActive : 
                 next_state = 1
+        else :
+            # slowly scan for cone
+            if not killSwitchActive :
+                if self.wcScanInit == False :
+                    self.ttts("Scaning for for a cone")
+
+                status = self.drivePattern(self.wcScanInit, 10, 0.25, 5.0, 1.0)
+                self.wcScanInit = False
+                if status:
+                    # drive pattern completed - init drive pattern on the next cycle
+                    #TODO: move before scanning again - add more states?
+                    self.wcScanInit = True
+                
         return next_state
 
     #state 1 - use camera to locate cone and get close
