@@ -48,7 +48,7 @@ bt_navigator:
     bt_loop_duration: 10
     default_server_timeout: 50 #20
     wait_for_service_timeout: 1000
-    action_server_result_timeout: 900.0
+    action_server_result_timeout: 60.0 #900.0
     navigators: ["navigate_to_pose", "navigate_through_poses"]
     navigate_to_pose:
       plugin: "nav2_bt_navigator::NavigateToPoseNavigator"
@@ -79,8 +79,8 @@ controller_server:
     goal_checker:
       stateful: True
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.25
-      yaw_goal_tolerance: 0.25
+      xy_goal_tolerance: 1.0 #0.25
+      yaw_goal_tolerance: 3.14 #0.25
       
     FollowPath:
       plugin: "nav2_mppi_controller::MPPIController"
