@@ -98,12 +98,12 @@ efk_local :
 
     # If you have high-frequency data or are running with a low frequency parameter value, then you may want to increase
     # the size of the subscription queue so that more measurements are fused.
-    odom0_queue_size: 2
+    odom0_queue_size: 5 #2
 
     # [ADVANCED] Large messages in ROS can exhibit strange behavior when they arrive at a high frequency. This is a result
     # of Nagle's algorithm. This option tells the ROS subscriber to use the tcpNoDelay option, which disables Nagle's
     # algorithm.
-    odom0_nodelay: false
+    odom0_nodelay: true #false
 
     # [ADVANCED] When measuring one pose variable with two sensors, a situation can arise in which both sensors under-
     # report their covariances. This can lead to the filter rapidly jumping back and forth between each measurement as they
@@ -144,13 +144,13 @@ efk_local :
     # use absolute yaw (when differential = false) - needs calibration at startup
     # use x and z acceleration and yaw_vel
     imu0_config: [false, false, false,
-                  false, false, true,
+                  false, false, false,
                   false, false, false,
                   false, false, true,
-                  true, false, true ]
+                  false, false, false ]
 
-    imu0_nodelay: false
-    imu0_differential: false # The compass seems very absolute stable
+    imu0_nodelay: true #false
+    imu0_differential: false
     imu0_relative: false
     imu0_queue_size: 5
     # imu0_pose_rejection_threshold: 0.8                 # Note the difference in parameter names

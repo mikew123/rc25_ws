@@ -1,3 +1,4 @@
+from sympy import true
 import rclpy
 import math
 import time
@@ -184,7 +185,7 @@ class NavNode(Node):
     buttonGoNavTrig = False
 
     def processNavMsg(self, nav:dict) -> None :
-        self.get_logger().info(f"processNavMsg: {nav=}")
+        # self.get_logger().info(f"processNavMsg: {nav=}")
         if "waypoint" in nav :
             self.wayPoint = nav["waypoint"]
             self.wayPointNum +=1
@@ -341,8 +342,11 @@ class NavNode(Node):
         '''
         Calibrate the IMU by moving robot
         Wait for cal button to be pressed
-        Return True when IMU calibration is complete
+        Return True when IMU calibration is complete (status 3)
         '''
+
+        # check for calibration status 3 (complete)
+        # if self.imuCalStatus==3 : return true
 
         state = self.next_calImuState
         stateChange = False
@@ -494,7 +498,7 @@ class NavNode(Node):
             if time.monotonic() >= self.dpStopTime :
                 next_state = self.dpPauseNextState
 
-        # detrmine when to stop driving pattern
+        # determine when to stop driving pattern
         if numMoves>0 :
             if self.dpCount>numMoves:
                 msg.linear.x  = 0.0
@@ -1192,10 +1196,10 @@ def main(args=None):
     rclpy.init(args=args)
 
     nav = BasicNavigator()
-    node = NavNode(nav)
-
     # wait never returns
     # nav.waitUntilNav2Active()
+
+    node = NavNode(nav)
 
     # rclpy.spin(node)
     # node.destroy_node()

@@ -18,6 +18,7 @@ from geometry_msgs.msg import Quaternion
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+from rclpy.duration import Duration
 
 from rc25_interfaces.msg import ImuCal
 
@@ -56,7 +57,7 @@ class ImuGpsNode(Node):
             
         self.openSerialPort()
 
-        self.imu_test_publisher = self.create_publisher(String, 'imu_test', 10)
+        # self.imu_test_publisher = self.create_publisher(String, 'imu_test', 10)
         self.imu_msg_publisher = self.create_publisher(Imu, 'imu', 10)
         self.imu_cal_publisher = self.create_publisher(ImuCal, 'imu/cal', 10)
         self.gps_nav_publisher = self.create_publisher(NavSatFix, 'gps_nav', 10)
@@ -249,9 +250,13 @@ class ImuGpsNode(Node):
     imuCalRvel = -1
     imuCalRvec = -1
     imuCalLacc = -1
+    imuCalTimer = 0
+    imuCalTimerInterval = 1.0
 
     def imuPublish(self, imuJsonPacket) :        
         # self.get_logger().info(f"imuPublish : {imuJsonPacket=}")
+
+        timeSec = time.monotonic()
 
         # TODO: collect lacc, rvel, rvec packets with same seq# and publish imu message
         try :
@@ -275,22 +280,29 @@ class ImuGpsNode(Node):
                 # This seems to work better when this is the only node running
                 if True : #laccSeq==rvelSeq and rvelSeq==rvecSeq :
                     #self.get_logger().info(f"{laccSeq=} {rvelSeq=} {rvecSeq=}")
-                    msg = Imu()
 
+                    ############################################################
+                    # IMU
+                    msg = Imu()
                     # NOTE: should we use the imu timestamp to get better accuracy?
-                    msg.header.stamp = self.get_clock().now().to_msg()
+                    t = self.get_clock().now()
+                    # Offset the perceived imu delay - doesnt seem to work
+                    # t = t - Duration(seconds=2.0)
+                    msg.header.stamp = t.to_msg()
                     # The IMU is located at the centroid of the rear differential 
                     # and aligned XY so no offest is needed
                     msg.header.frame_id = "imu_link"
 
+                    ######################
+                    # IMU Rotation vectors - compass
                     #self.get_logger().info(f"imuPublish : {self.rvecJsonPacket=}")
-                    x = float(self.rvecJsonPacket.get("i"))
-                    y = float(self.rvecJsonPacket.get("j"))
-                    z = float(self.rvecJsonPacket.get("k"))
-                    w = float(self.rvecJsonPacket.get("real"))
+                    i = float(self.rvecJsonPacket.get("i"))
+                    j = float(self.rvecJsonPacket.get("j"))
+                    k = float(self.rvecJsonPacket.get("k"))
+                    real = float(self.rvecJsonPacket.get("real"))
 
                     # adjust by 90 deg = pi/2 (1.5708)
-                    (ex,ey,ez) =  tf_transformations.euler_from_quaternion([x,y,z,w])
+                    (ex,ey,ez) =  tf_transformations.euler_from_quaternion([i,j,k,real])
                     ez += math.pi/2
                     # limit yaw to +-pi
                     if ez>+math.pi : ez -= 2*math.pi
@@ -302,12 +314,15 @@ class ImuGpsNode(Node):
                     msg.orientation.z = qz
                     msg.orientation.w = qw
 
-
+                    #########################
+                    # IMU Rotational velocities
                     #self.get_logger().info(f"imuPublish : {self.rvelJsonPacket=}")
                     msg.angular_velocity.x =  float(self.rvelJsonPacket.get("x"))
                     msg.angular_velocity.y =  float(self.rvelJsonPacket.get("y"))
                     msg.angular_velocity.z =  float(self.rvelJsonPacket.get("z"))
 
+                    ###########################
+                    # IMU Linear accelerations
                     #self.get_logger().info(f"imuPublish : {self.laccJsonPacket=}")
                     msg.linear_acceleration.x = float(self.laccJsonPacket.get("x"))
                     msg.linear_acceleration.y = float(self.laccJsonPacket.get("y"))
@@ -315,6 +330,8 @@ class ImuGpsNode(Node):
 
                     self.imu_msg_publisher.publish(msg)
 
+
+                    ######################################################################
                     # get calibration statuses
                     imuCalRvel = int(self.rvelJsonPacket.get("stat"))
                     imuCalRvec = int(self.rvecJsonPacket.get("stat"))
@@ -326,25 +343,23 @@ class ImuGpsNode(Node):
                     imuCalMsg.lacc = imuCalLacc
                     self.imu_cal_publisher.publish(imuCalMsg)
 
-                    # if self.imuCalRvel != imuCalRvel :
-                    #     self.tts(f"IMU rotation velocity cal {imuCalRvel}")
-                    #     self.imuCalRvel = imuCalRvel
-
-                    if self.imuCalRvec != imuCalRvec :
+                    if (self.imuCalRvec != imuCalRvec) :
                         self.imuCalRvec = imuCalRvec
                         self.tts(f"IMU calibration status {imuCalRvec}")
                         jsonMsg = {"nav":{"imu_cal_status":imuCalRvec}}
                         self.sendJsonMsg(jsonMsg)
 
-                    # if self.imuCalLacc != imuCalLacc :
-                    #     self.tts(f"IMU linear accelleration cal {imuCalLacc}")
-                    #     self.imuCalLacc = imuCalLacc
+                    if (timeSec > self.imuCalTimer) :
+                        self.imuCalTimer = timeSec + self.imuCalTimerInterval
+                        jsonMsg = {"nav":{"imu_cal_status":imuCalRvec}}
+                        self.sendJsonMsg(jsonMsg)
 
                     # wait for 3 new packets
                     self.rvecJsonPacket = None
                     self.rvelJsonPacket = None
                     self.laccJsonPacket = None
 
+                    #######################################################
                     #publish /cmp_azi = yaw (azimuth)
                     yaw = Float32()
                     yaw.data = ez
@@ -354,11 +369,6 @@ class ImuGpsNode(Node):
             self.get_logger().error(f"imuPublish json exception : {ex}")
             return
 
-
-        # imuJsonStr = json.dumps(imuJsonPacket)
-        # msg = String()
-        # msg.data = imuJsonStr
-        # self.imu_test_publisher.publish(msg)
     
     def destroy_node(self):
         self.get_logger().info("destroy_node")
