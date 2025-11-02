@@ -43,7 +43,7 @@ class ControllerNode(Node):
                                         , self.json_msg_callback, 10)
                 
         self.battery_status_msg_publisher = self.create_publisher(BatteryState, 'battery_status', 10)
-        self.initialpose_msg_publisher = self.create_publisher(PoseWithCovarianceStamped, 'initialpose', 10)
+        self.set_pose_msg_publisher = self.create_publisher(PoseWithCovarianceStamped, 'set_pose', 10)
 
         self.readWaypointsFile(self.waypointsFile)
 
@@ -146,24 +146,24 @@ class ControllerNode(Node):
         data = self.waypoints
         try :
             config = data["config"]
-            initialpose = data["initialpose"]
+            set_pose = data["set_pose"]
         except :
             self.get_logger().error(f"Yaml waypoints file does not have the requested config or pose: {self.waypoints=}")
-            self.tts(f"Could not find config or pose in waypoints")
+            self.tts(f"Could not find config or set_pose in waypoint file")
             return False
 
         #TODO process lat,lon
         x=0.0
         y=0.0
         rad=0.0
-        if ("x" in initialpose) and ("y" in initialpose) :
-            x = initialpose["x"]
-            y = initialpose["y"]
-        if ("deg" in initialpose) :
-            deg = initialpose["deg"]
+        if ("x" in set_pose) and ("y" in set_pose) :
+            x = set_pose["x"]
+            y = set_pose["y"]
+        if ("deg" in set_pose) :
+            deg = set_pose["deg"]
             rad = deg/180.0 * math.pi
-        if ("rad" in initialpose) :
-            rad = initialpose["rad"]
+        if ("rad" in set_pose) :
+            rad = set_pose["rad"]
 
         pose = PoseWithCovarianceStamped()
         pose.header.frame_id="map"
@@ -173,9 +173,9 @@ class ControllerNode(Node):
         pose.pose.pose.orientation.y,
         pose.pose.pose.orientation.z,
         pose.pose.pose.orientation.w) = tf_transformations.quaternion_from_euler(0.0,0.0,float(rad))
-        self.initialpose_msg_publisher.publish(pose)
+        self.set_pose_msg_publisher.publish(pose)
         
-        self.get_logger().info(f"Sending initialpose from waypoint file {pose=}")
+        self.get_logger().info(f"Sending set_pose from waypoint file {pose=}")
 
         return True
     
