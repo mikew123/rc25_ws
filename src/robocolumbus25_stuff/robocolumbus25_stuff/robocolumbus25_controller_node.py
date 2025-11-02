@@ -1,8 +1,9 @@
 import rclpy
-import os
 import json
 import time
 import yaml
+import math
+import tf_transformations
 
 from pathlib import Path
 from pprint import pprint, pformat
@@ -11,7 +12,7 @@ from rclpy.node import Node
 from std_msgs.msg import String
 from rclpy.executors import MultiThreadedExecutor
 from sensor_msgs.msg import BatteryState
-
+from geometry_msgs.msg import PoseWithCovarianceStamped
 
 class ControllerNode(Node):
     '''
@@ -42,6 +43,7 @@ class ControllerNode(Node):
                                         , self.json_msg_callback, 10)
                 
         self.battery_status_msg_publisher = self.create_publisher(BatteryState, 'battery_status', 10)
+        self.initialpose_msg_publisher = self.create_publisher(PoseWithCovarianceStamped, 'initialpose', 10)
 
         self.readWaypointsFile(self.waypointsFile)
 
@@ -59,17 +61,22 @@ class ControllerNode(Node):
         # waypoint with cone location in ROS map related meters x,y
         # gps is not used for localization
             config :
-            gps_localization : false
-            waypoints :
-            1 :
-                cone : true
-                x : 10.0
+                gps_localization : false
+                num_waypoints : 1
+            initial_pose :
+                x : 0.0
                 y : 0.0
+                deg : 180
+            waypoints :
+                1 :
+                    cone : true
+                    x : 10.0
+                    y : 0.0
         # waypoint location in absolute lat,lon
         # gps is used for localization
             config :
-            gps_localization : true
-            waypoints :
+                gps_localization : true
+                waypoints :
             1 :
                 cone : false
                 lat : 12345678
@@ -109,10 +116,15 @@ class ControllerNode(Node):
         if state == 0 :
             if self.requestNextWaypoint :
                 self.requestNextWaypoint = False
-                self.get_logger().info(f"Getting requested next waypoint {self.nextWaypointNum}")
-                self.tts(f"Getting requested way point {self.nextWaypointNum}")
-                status = self.sendWaypointToNav(self.nextWaypointNum)
-                if (status == True) and (self.nextWaypointNum < numWaypoints ):
+                n = self.nextWaypointNum
+                if n == 1 :
+                    # First waypoint - setup nav
+                    self.setupNav()
+
+                self.get_logger().info(f"Getting requested next waypoint {n}")
+                self.tts(f"Getting requested way point {n}")
+                status = self.sendWaypointToNav(n)
+                if (status == True) and (n < numWaypoints ):
                     self.nextWaypointNum +=1
                     next_state = 0
                 else :
@@ -125,13 +137,55 @@ class ControllerNode(Node):
 
         self.sm_next_state = next_state
 
-    def sendWaypointToNav(self, n:int) -> bool :
+    def setupNav(self) -> bool :
+        '''
+        Set up navigation using info in waypoints file
+        returns True if setup OK
+        '''
+        
+        data = self.waypoints
         try :
-            data = self.waypoints
+            config = data["config"]
+            initialpose = data["initialpose"]
+        except :
+            self.get_logger().error(f"Yaml waypoints file does not have the requested config or pose: {self.waypoints=}")
+            self.tts(f"Could not find config or pose in waypoints")
+            return False
+
+        #TODO process lat,lon
+        x=0.0
+        y=0.0
+        rad=0.0
+        if ("x" in initialpose) and ("y" in initialpose) :
+            x = initialpose["x"]
+            y = initialpose["y"]
+        if ("deg" in initialpose) :
+            deg = initialpose["deg"]
+            rad = deg/180.0 * math.pi
+        if ("rad" in initialpose) :
+            rad = initialpose["rad"]
+
+        pose = PoseWithCovarianceStamped()
+        pose.header.frame_id="map"
+        pose.pose.pose.position.x = x
+        pose.pose.pose.position.y = y
+        (pose.pose.pose.orientation.x,
+        pose.pose.pose.orientation.y,
+        pose.pose.pose.orientation.z,
+        pose.pose.pose.orientation.w) = tf_transformations.quaternion_from_euler(0.0,0.0,float(rad))
+        self.initialpose_msg_publisher.publish(pose)
+        
+        self.get_logger().info(f"Sending initialpose from waypoint file {pose=}")
+
+        return True
+    
+    def sendWaypointToNav(self, n:int) -> bool :
+        data = self.waypoints
+        try :
             waypoints = data["waypoints"]
             waypointN = waypoints[n]
         except :
-            self.get_logger().info(f"Yaml does not have the requested waypoint {n}: {self.gotoConeFile=}")
+            self.get_logger().error(f"Yaml does not have the requested waypoint {n}: {self.waypoints=}")
             self.tts(f"Could not find waypoint {n} location in the file")
             return False
 

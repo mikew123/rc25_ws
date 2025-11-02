@@ -54,6 +54,18 @@ def generate_launch_description():
             }.items()
         ),
 
+        # IncludeLaunchDescription(
+        #     PythonLaunchDescriptionSource(
+        #         'src/robocolumbus25_stuff/launch/noamcl_nav2_launch.py'
+        #     ),
+        #     launch_arguments={
+        #         'params_file': 'config/rc25_params.yaml',
+        #         "map": "maps/2000x2000_empty_map.yaml",
+        #         "use_localization" : "False",
+        #         # "use_localization" : "True",
+        #     }.items()
+        # ),
+
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 '../sllidar_ros2/launch/sllidar_s3_launch.py'
