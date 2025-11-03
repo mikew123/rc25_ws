@@ -144,7 +144,7 @@ efk_local :
     # use absolute yaw (when differential = false) - needs calibration at startup
     # use x and z acceleration and yaw_vel
     imu0_config: [false, false, false,
-                  false, false, false,
+                  false, false, true,
                   false, false, false,
                   false, false, true,
                   false, false, false ]

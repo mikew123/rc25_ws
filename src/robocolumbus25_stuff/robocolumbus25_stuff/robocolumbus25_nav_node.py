@@ -204,8 +204,8 @@ class NavNode(Node):
         # else :
         #     self.wayPoint = None
 
-        if "gps_localization" in nav :
-            self.gpsLocalization = nav["gps_localization"]
+        if "config" in nav :
+            self.wpConfig = nav["config"]
 
         if "imu_cal_status" in nav :
             self.imuCalStatus = nav["imu_cal_status"]
@@ -222,7 +222,7 @@ class NavNode(Node):
     tc_state = -1
     tc_next_state = T_INIT_WAIT
 
-    gpsLocalization = None
+    wpConfig = None
     imuCalStatus = False
     calImu = False
     navGo = False
@@ -245,19 +245,21 @@ class NavNode(Node):
             self.tts("wait for nav 2")
             time.sleep(20)
 
-            if self.gpsLocalization == None :
-                jsonMsg = {"nav":{"request_gps_localization":True}}
+            if self.wpConfig == None :
+                jsonMsg = {"nav":{"request_waypoint_config":True}}
                 self.sendJsonMsg(jsonMsg)
             time.sleep(1)
 
-            if self.gpsLocalization != None :
-                if self.gpsLocalization :
-                    next_state = self.T_CAL_IMU
-                else :
-                    next_state = self.T_WAIT_GO
-
+            # calibrate compass if used
+            if self.wpConfig != None :
+                config = self.wpConfig
+                next_state = self.T_WAIT_GO
+                if "compass" in config :
+                    if config["compass"] :
+                        next_state = self.T_CAL_IMU
+                    
         if state == self.T_CAL_IMU :
-            # Calibrate IMU when requested
+            # Calibrate IMU when compass is used
             status = self.calImu()
             if status :
                 #  calibration complete

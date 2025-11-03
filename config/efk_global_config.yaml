@@ -91,7 +91,7 @@ efk_global :
 
     # odom is the efk local fusion of wheel (linear x) and imu (angular z)
     odom0_config: [false, false, false,
-                   false, false, false,
+                   false, false, true,
                    true,  false, false,
                    false, false, true,
                    false, false, false]

@@ -59,11 +59,12 @@ class ControllerNode(Node):
         Each waypoint has se;ection to look for cone or not (intermediate waypoint)
         Examples :
         # waypoint with cone location in ROS map related meters x,y
-        # gps is not used for localization
+        # dead recogning mode - compass and gps are not used
             config :
-                gps_localization : false
+                compass : false
+                gps : false
                 num_waypoints : 1
-            initial_pose :
+            set_pose :
                 x : 0.0
                 y : 0.0
                 deg : 180
@@ -75,8 +76,13 @@ class ControllerNode(Node):
         # waypoint location in absolute lat,lon
         # gps is used for localization
             config :
-                gps_localization : true
-                waypoints :
+                compass : true
+                gps : true
+            # set_pose :
+            #     x : 0.0
+            #     y : 0.0
+            #     deg : 180
+            waypoints :
             1 :
                 cone : false
                 lat : 12345678
@@ -102,8 +108,6 @@ class ControllerNode(Node):
 
         self.get_logger().info("read waypoints File : \n"+pformat(self.waypoints))
 
-        self.gpsLocalization = self.waypoints["config"]["gps_localization"]
-        self.get_logger().info(f"GPS localization enabled = {self.gpsLocalization}")
 
     def sm_timer_callback(self) -> None :
         if self.waypoints == None : return
@@ -144,38 +148,50 @@ class ControllerNode(Node):
         '''
         
         data = self.waypoints
-        try :
+        config = None
+        set_pose = None
+        set_datum = None
+        if "config" in data :
             config = data["config"]
+        if "set_pose" in data :
             set_pose = data["set_pose"]
-        except :
-            self.get_logger().error(f"Yaml waypoints file does not have the requested config or pose: {self.waypoints=}")
-            self.tts(f"Could not find config or set_pose in waypoint file")
-            return False
+        if "set_datum" in data :
+            set_datum = data["set_datum"]
 
-        #TODO process lat,lon
-        x=0.0
-        y=0.0
-        rad=0.0
-        if ("x" in set_pose) and ("y" in set_pose) :
-            x = set_pose["x"]
-            y = set_pose["y"]
-        if ("deg" in set_pose) :
-            deg = set_pose["deg"]
-            rad = deg/180.0 * math.pi
-        if ("rad" in set_pose) :
-            rad = set_pose["rad"]
+        if set_pose != None :
+            x=0.0
+            y=0.0
+            rad=0.0
+            if ("x" in set_pose) and ("y" in set_pose) :
+                x = set_pose["x"]
+                y = set_pose["y"]
+            if ("deg" in set_pose) :
+                deg = set_pose["deg"]
+                rad = deg/180.0 * math.pi
+            if ("rad" in set_pose) :
+                rad = set_pose["rad"]
 
-        pose = PoseWithCovarianceStamped()
-        pose.header.frame_id="map"
-        pose.pose.pose.position.x = x
-        pose.pose.pose.position.y = y
-        (pose.pose.pose.orientation.x,
-        pose.pose.pose.orientation.y,
-        pose.pose.pose.orientation.z,
-        pose.pose.pose.orientation.w) = tf_transformations.quaternion_from_euler(0.0,0.0,float(rad))
-        self.set_pose_msg_publisher.publish(pose)
-        
-        self.get_logger().info(f"Sending set_pose from waypoint file {pose=}")
+            pose = PoseWithCovarianceStamped()
+            pose.header.frame_id="map"
+            pose.pose.pose.position.x = x
+            pose.pose.pose.position.y = y
+            (pose.pose.pose.orientation.x,
+            pose.pose.pose.orientation.y,
+            pose.pose.pose.orientation.z,
+            pose.pose.pose.orientation.w) = tf_transformations.quaternion_from_euler(0.0,0.0,float(rad))
+            self.set_pose_msg_publisher.publish(pose)
+            
+            self.get_logger().info(f"Sending set_pose from waypoint file {pose=}")
+
+        if set_datum != None :
+            pass
+
+        # configure navigation nodes parameters
+        if config != None :
+            if "compass" in config :
+                pass
+            if "gps" in config :
+                pass
 
         return True
     
@@ -227,8 +243,8 @@ class ControllerNode(Node):
             if "request_waypoint" in nav :
                 request_waypoint = nav["request_waypoint"]
                 self.requestNextWaypoint = request_waypoint
-            if "request_gps_localization" in nav :
-                jsonMsg = {"nav":{"gps_localization":self.gpsLocalization}}
+            if "request_waypoint_config" in nav :
+                jsonMsg = {"nav":{"config":self.waypoints["config"]}}
                 self.sendJsonMsg(jsonMsg)
 
     def processEngineStatus(self,status:String) -> None :
