@@ -26,6 +26,10 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 
+from rcl_interfaces.srv import SetParameters
+from rcl_interfaces.msg import Parameter, ParameterType
+from rclpy.client import Client
+
 class NavNode(Node):
     '''
     Navigate to cones
@@ -116,6 +120,10 @@ class NavNode(Node):
 
         self.cb_group = MutuallyExclusiveCallbackGroup()
 
+        self.controller_server_set_param_svc = self.create_client(SetParameters, '/controller_server/set_parameters')
+        while not self.controller_server_set_param_svc.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('/controller_server/set_parameters service not available, waiting again...')
+
         self.cmd_vel_publisher = self.create_publisher(Twist, '/cmd_vel', 10)
 
         self.cone_point_cam_subscription = self.create_subscription(PointStamped, '/cone_point_cam'
@@ -149,6 +157,41 @@ class NavNode(Node):
         self.tts("RC25 Navigation Node Started")
         self.get_logger().info(f"NavNode Started")
 
+    def send_set_param_request(self, svc: Client, name, value) -> None:
+        """
+        Set a parameter using the given param service
+        command line example:
+        cli -> ros2 param set /local_costmap/local_costmap obstacle_layer.enabled False
+        """
+    
+        while not svc.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('send_set_param_request: service not available, waiting again...')
+
+        req = SetParameters.Request()
+        self.callback_set_param_done = False
+
+        param = Parameter()
+        param.name = name
+        param.value.type = None
+        if isinstance(value, bool) :
+            param.value.type = ParameterType.PARAMETER_BOOL
+            param.value.bool_value = value
+        elif isinstance(value, list) :
+            if isinstance(value[0], bool) :
+                param.value.type = ParameterType.PARAMETER_BOOL_ARRAY
+                param.value.bool_array_value = value
+        elif isinstance(value, float) :
+            param.value.type = ParameterType.PARAMETER_DOUBLE
+            param.value.double_value = value
+                
+        if param.value.type == None :
+            self.get_logger().info(f"send_set_param_request: unsupported variable type {value=}")
+            return
+
+        req.parameters.append(param)
+
+        self.get_logger().info(f"send_set_param_request: Sending {name=} {value=}")
+        future = svc.call_async(req)
 
     def tts(self, tts) -> None:
         """
@@ -253,9 +296,12 @@ class NavNode(Node):
             # calibrate compass if used
             if self.wpConfig != None :
                 config = self.wpConfig
-                next_state = self.T_WAIT_GO
+                next_state = self.T_WAIT_GO # default
                 if "compass" in config :
-                    if config["compass"] :
+                    if config["compass"] == True :
+                        next_state = self.T_CAL_IMU
+                if "gps" in config :
+                    if config["gps"] == True :
                         next_state = self.T_CAL_IMU
                     
         if state == self.T_CAL_IMU :
@@ -283,12 +329,22 @@ class NavNode(Node):
         
         elif state == self.T_NAV_WP :
             if stateChange :
-                # execute goto cone once
-                if "x" in self.wayPoint :
+                # change goal tolerance to 1M when going to waypoint
+                self.send_set_param_request(self.controller_server_set_param_svc,
+                            "goal_checker.xy_goal_tolerance", 1.0)
+                pass
+            
+                # execute goto waypoint once
+                x = 0.0 # default
+                y = 0.0
+                self.coneWayPoint = False # default
+                if "cone" in self.wayPoint :
+                    self.coneWayPoint = self.wayPoint["cone"]
+
+                if ("x" in self.wayPoint) and ("y" in self.wayPoint) :
                     # map based XY location
                     x = self.wayPoint["x"]
                     y = self.wayPoint["y"]
-                    self.coneWayPoint = self.wayPoint["cone"]
                     
                     #TODO: what angle?
                     a = 0.0
@@ -324,6 +380,12 @@ class NavNode(Node):
                 
 
         elif state == self.T_GOTO_CONE :
+            if stateChange :
+                # change goal tolerance to 0.25M when approaching cone
+                self.send_set_param_request(self.controller_server_set_param_svc,
+                            "goal_checker.xy_goal_tolerance", 0.25)
+                pass 
+
             # find cone and "touch" it
             done = self.cd_sm()
             if done : 
@@ -346,7 +408,7 @@ class NavNode(Node):
         Wait for cal button to be pressed
         Return True when IMU calibration is complete (status 3)
         '''
-
+        #TODO: avoid obsticals
         # check for calibration status 3 (complete)
         # if self.imuCalStatus==3 : return true
 
@@ -541,7 +603,7 @@ class NavNode(Node):
             self.cd_timer = time.time_ns()*1e-9
 
         if state == 0 :
-            next_state = self.wait_for_cone_det(func,state,state_change,ks,ksc)
+            next_state = self.search_for_cone(func,state,state_change,ks,ksc)
 
         elif state == 1 :
             next_state = self.nav_to_cone(func,state,state_change,ks,ksc)
@@ -571,8 +633,8 @@ class NavNode(Node):
 
     wcScanInit = False
 
-    # state 0 - wait for camera cone detection    
-    def wait_for_cone_det(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
+    # state 0 - search for cone using camera  detection    
+    def search_for_cone(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} wait for cone detection {state=}")
             self.tts("State 0")
@@ -598,12 +660,12 @@ class NavNode(Node):
         killSwitchActive:bool  = ks
         next_state:int = state
 
-        if x!=0 :
+        if x!=0 and y<0.10 and y>-0.10:
             # A cone has been detected
             self.get_logger().info(f"{func} cone detected at {x=:.3f} {y=:.3f}  {state=} {killSwitchActive=}")
             #stop movement
             msg = Twist()
-            self.cmd_vel_publisher(msg)
+            self.cmd_vel_publisher.publish(msg)
             self.wcScanInit = True
 
             if not killSwitchActive : 
@@ -611,8 +673,8 @@ class NavNode(Node):
         else :
             # slowly scan for cone
             if not killSwitchActive :
-                if self.wcScanInit == False :
-                    self.ttts("Scaning for for a cone")
+                # if self.wcScanInit == False :
+                #     self.tts("Scaning for a cone")
 
                 status = self.drivePattern(self.wcScanInit, 10, 0.25, 5.0, 1.0)
                 self.wcScanInit = False

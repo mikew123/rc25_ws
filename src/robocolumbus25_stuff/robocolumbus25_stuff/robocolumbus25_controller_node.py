@@ -182,15 +182,16 @@ class ControllerNode(Node):
 
         self.get_logger().info("read waypoints File : \n"+pformat(self.waypoints))
 
-
+    sm_last_state = -1
     def sm_timer_callback(self) -> None :
         if self.waypoints == None : return
 
         numWaypoints = self.waypoints["config"]["num_waypoints"]
 
+        
         state = self.sm_next_state
         next_state = state
-
+        stateChange = state != self.sm_last_state
         if state == 0 :
             if self.requestNextWaypoint :
                 # execute once
@@ -211,10 +212,11 @@ class ControllerNode(Node):
                     next_state = 1
 
         elif state == 1:
-            # DONE
-            pass
+            if stateChange :
+                self.tts(f"No more waypoints are available - DONE")
 
         self.sm_next_state = next_state
+        self.sm_last_state = state
 
     #        [x_pos   , y_pos    , z_pos,
     #         roll    , pitch    , yaw,
