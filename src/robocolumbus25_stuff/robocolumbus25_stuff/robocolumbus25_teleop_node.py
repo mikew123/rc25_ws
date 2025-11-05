@@ -98,12 +98,12 @@ class Robocolumbus25TeleopNode(Node):
         # Publish buttons when chage occurs
         if buttons[4] != self.buttonsLast[4] :
             b:bool = (buttons[4]==1)
-            json_msg = {"nav":{"buttonGoNav":b}}
+            json_msg = {"nav":{"buttonKill":b}}
             self.sendJsonMsg(json_msg)
 
         if buttons[5] != self.buttonsLast[5] :
             b:bool = (buttons[5]==1)
-            json_msg = {"nav":{"buttonCalImu":b}}
+            json_msg = {"nav":{"buttonDo":b}}
             self.sendJsonMsg(json_msg)
 
         # save axes and buttons values

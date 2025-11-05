@@ -236,10 +236,10 @@ class NavNode(Node):
         json_msg = {"nav": {"request_waypoint":True}}
         self.sendJsonMsg(json_msg)
 
-    buttonCalImu = False
-    buttonGoNav = False
-    buttonCalImuTrig = False
-    buttonGoNavTrig = False
+    buttonDo = False
+    buttonKill = False
+    buttonDoTrig = False
+    buttonKillTrig = False
 
     def processNavMsg(self, nav:dict) -> None :
         # self.get_logger().info(f"processNavMsg: {nav=}")
@@ -247,17 +247,17 @@ class NavNode(Node):
             self.wayPoint = nav["waypoint"]
             self.wayPointNum +=1
 
-        if "buttonCalImu" in nav :
-            buttonCalImu = nav["buttonCalImu"]
-            if (self.buttonCalImu==False) and (buttonCalImu==True):
-                self.buttonCalImuTrig = True
-            self.buttonCalImu = buttonCalImu
+        if "buttonDo" in nav :
+            buttonDo = nav["buttonDo"]
+            if (self.buttonDo==False) and (buttonDo==True):
+                self.buttonDoTrig = True
+            self.buttonDo = buttonDo
 
-        if "buttonGoNav" in nav :
-            buttonGoNav = nav["buttonGoNav"]
-            if (self.buttonGoNav==False) and (buttonGoNav==True):
-                self.buttonGoNavTrig = True
-            self.buttonGoNav = buttonGoNav
+        if "buttonKill" in nav :
+            buttonKill = nav["buttonKill"]
+            if (self.buttonKill==False) and (buttonKill==True):
+                self.buttonKillTrig = True
+            self.buttonKill = buttonKill
         # else :
         #     self.wayPoint = None
 
@@ -291,23 +291,50 @@ class NavNode(Node):
     #     x_vel   , y_vel    , z_vel,
     #     roll_vel, pitch_vel, yaw_vel,
     #     x_accel , y_accel  , z_accel]
-    efk_global_odom1_config = [
+    # Enables GPS signals for map->odom tf
+    efk_global_odom1_config_gpsEn = [
         True,  True,  False, # lat,lon are used for x_pos,y_pos
         False, False, False,
         False, False, False,
         False, False, False,
         False, False, False 
                 ]
-    efk_global_odom0_config = [
+    # Disables GPS signals for map->odom tf
+    efk_global_odom1_config_gpsDis = [
+        False, False, False,
+        False, False, False,
+        False, False, False,
+        False, False, False,
+        False, False, False 
+                ]
+    # Enables IMU yaw (compass) from efk_local
+    efk_global_odom0_config_yawEn = [
         False, False, False,
         False, False, True, # compass yaw from efk_local is used
         True,  False, False,
         False, False, True,
         False, False, False
         ]
-    efk_local_imu0_config = [
+    # Disables IMU yaw (compass) from efk_local
+    efk_global_odom0_config_yawDis = [
+        False, False, False,
+        False, False, False,
+        True,  False, False,
+        False, False, True,
+        False, False, False
+        ]
+    # Enables IMU yaw (compass)
+    efk_local_imu0_config_yawEn = [
         False, False, False,
         False, False, True, # Compass IMU yaw is used
+        False, False, False,
+        False, False, True,
+        False, False, False 
+        ]
+    # Disables IMU yaw (compass)
+    efk_local_imu0_config_yawDis = [
+        False, False, False,
+        False, False, False,
         False, False, False,
         False, False, True,
         False, False, False 
@@ -334,21 +361,33 @@ class NavNode(Node):
                     self.send_set_param_request(self.efk_global_set_param_svc, 
                                 'publish_tf', True)
                     self.send_set_param_request(self.efk_global_set_param_svc, # GPS
-                                'odom1_config', self.efk_global_odom1_config)
+                                'odom1_config', self.efk_global_odom1_config_gpsEn)
                     self.send_set_param_request(self.efk_global_set_param_svc, # Compass
-                                'odom0_config', self.efk_global_odom0_config)
+                                'odom0_config', self.efk_global_odom0_config_yawEn)
                     self.send_set_param_request(self.efk_local_set_param_svc, # Compass
-                                'imu0_config', self.efk_local_imu0_config)
+                                'imu0_config', self.efk_local_imu0_config_yawEn)
 
             elif "compass" in config :
                 if config["compass"] == True:
                     self.send_set_param_request(self.efk_global_set_param_svc, # Compass
-                                'imu0_config', self.efk_local_imu0_config)
+                                'imu0_config', self.efk_local_imu0_config_yawEn)
+                    self.send_set_param_request(self.efk_local_set_param_svc, # Compass
+                                'imu0_config', self.efk_local_imu0_config_yawEn)
+                    
         elif state == self.T_GOTO_CONE :
             # configure navigation nodes parameters
             # change goal tolerance to 0.25M when approaching cone
             self.send_set_param_request(self.controller_server_set_param_svc,
                         "goal_checker.xy_goal_tolerance", 0.25)
+            # Set which sensors are fused in EFK modules
+            self.send_set_param_request(self.efk_global_set_param_svc, 
+                        'publish_tf', False)
+            self.send_set_param_request(self.efk_global_set_param_svc, # GPS
+                        'odom1_config', self.efk_global_odom1_config_gpsDis)
+            self.send_set_param_request(self.efk_global_set_param_svc, # Compass
+                        'odom0_config', self.efk_global_odom0_config_yawDis)
+            self.send_set_param_request(self.efk_local_set_param_svc, # Compass
+                        'imu0_config', self.efk_local_imu0_config_yawDis)
 
     def sm_timer_callback(self):
 
@@ -505,11 +544,11 @@ class NavNode(Node):
 
         if state == self.CAL_IMU_WAIT_BUTT :
             if stateChange :
-                self.buttonCalImuTrig = False
+                self.buttonDoTrig = False
                 #TODO: message periodically till pressed
                 self.tts(f"Press button to start IMU calbration")
 
-            if self.buttonCalImuTrig == True :
+            if self.buttonDoTrig == True :
                 next_state = self.CAL_IMU
 
         elif state == self.CAL_IMU :
@@ -558,18 +597,18 @@ class NavNode(Node):
 
         if state == self.NAV_GO_WAIT_BUTT :
             if stateChange :
-                self.buttonGoNavTrig = False
+                self.buttonDoTrig = False
                 #TODO: message periodically till pressed
                 self.tts(f"Press button to start navigation")
 
-            if self.buttonGoNavTrig==True :
+            if self.buttonDoTrig==True :
                 next_state = self.NAV_GO_BUTT_PRESSED
 
         if state == self.NAV_GO_BUTT_PRESSED :
             if stateChange :
                 self.tts(f"Navigation is starting")
 
-            if self.buttonGoNavTrig==True :
+            if self.buttonDoTrig==True :
                 next_state = self.NAV_GO_WAIT_BUTT
                 returnVal = True
 
@@ -652,7 +691,7 @@ class NavNode(Node):
                 returnVal = True
         else :
             # continue calibration pattern until both calibrated and button released
-            if (self.buttonCalImu==False) and (self.imuCalStatus==3) :
+            if (self.buttonDo==False) and (self.imuCalStatus==3) :
                 msg.linear.x  = 0.0
                 msg.angular.z = 0.0
                 returnVal = True
