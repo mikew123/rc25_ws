@@ -1,4 +1,3 @@
-from sympy import true
 import rclpy
 import math
 import time
@@ -124,6 +123,18 @@ class NavNode(Node):
         while not self.controller_server_set_param_svc.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('/controller_server/set_parameters service not available, waiting again...')
 
+        self.efk_global_set_param_svc = self.create_client(SetParameters, '/efk_global/set_parameters')
+        while not self.efk_global_set_param_svc.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('/efk_global/set_parameters service not available, waiting again...')
+
+        self.efk_local_set_param_svc = self.create_client(SetParameters, '/efk_local/set_parameters')
+        while not self.efk_local_set_param_svc.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('/efk_local/set_parameters service not available, waiting again...')
+
+        # #DEBUG
+        # self.send_set_param_request(self.controller_server_set_param_svc,
+        #             "goal_checker.xy_goal_tolerance", 0.1)
+            
         self.cmd_vel_publisher = self.create_publisher(Twist, '/cmd_vel', 10)
 
         self.cone_point_cam_subscription = self.create_subscription(PointStamped, '/cone_point_cam'
@@ -192,6 +203,9 @@ class NavNode(Node):
 
         self.get_logger().info(f"send_set_param_request: Sending {name=} {value=}")
         future = svc.call_async(req)
+
+        # delay a tiny bit since checking future complete does not seem to work!!!
+        time.sleep(0.1)
 
     def tts(self, tts) -> None:
         """
@@ -270,6 +284,72 @@ class NavNode(Node):
     calImu = False
     navGo = False
 
+
+    # EFK filter node sensor configurations
+    #    [x_pos   , y_pos    , z_pos,
+    #     roll    , pitch    , yaw,
+    #     x_vel   , y_vel    , z_vel,
+    #     roll_vel, pitch_vel, yaw_vel,
+    #     x_accel , y_accel  , z_accel]
+    efk_global_odom1_config = [
+        True,  True,  False, # lat,lon are used for x_pos,y_pos
+        False, False, False,
+        False, False, False,
+        False, False, False,
+        False, False, False 
+                ]
+    efk_global_odom0_config = [
+        False, False, False,
+        False, False, True, # compass yaw from efk_local is used
+        True,  False, False,
+        False, False, True,
+        False, False, False
+        ]
+    efk_local_imu0_config = [
+        False, False, False,
+        False, False, True, # Compass IMU yaw is used
+        False, False, False,
+        False, False, True,
+        False, False, False 
+        ]
+
+    def smTimerNav2Config(self, state:int) -> None :
+        # use config information from waypoints file
+        config = self.wpConfig
+        if config == None :
+            self.get_logger().error(f"smTimerNav2Config: No config information")
+            self.tts("ERROR: No config information")
+            return
+        
+        if state == self.T_NAV_WP :
+            # configure navigation nodes parameters
+            # change goal tolerance to 1M when going to waypoint
+            self.send_set_param_request(self.controller_server_set_param_svc,
+                        "goal_checker.xy_goal_tolerance", 1.0)
+            
+            # Set which sensors are fused in EFK modules
+            if "gps" in config :
+                if config["gps"] == True :
+                    # configure for both compass and gps
+                    self.send_set_param_request(self.efk_global_set_param_svc, 
+                                'publish_tf', True)
+                    self.send_set_param_request(self.efk_global_set_param_svc, # GPS
+                                'odom1_config', self.efk_global_odom1_config)
+                    self.send_set_param_request(self.efk_global_set_param_svc, # Compass
+                                'odom0_config', self.efk_global_odom0_config)
+                    self.send_set_param_request(self.efk_local_set_param_svc, # Compass
+                                'imu0_config', self.efk_local_imu0_config)
+
+            elif "compass" in config :
+                if config["compass"] == True:
+                    self.send_set_param_request(self.efk_global_set_param_svc, # Compass
+                                'imu0_config', self.efk_local_imu0_config)
+        elif state == self.T_GOTO_CONE :
+            # configure navigation nodes parameters
+            # change goal tolerance to 0.25M when approaching cone
+            self.send_set_param_request(self.controller_server_set_param_svc,
+                        "goal_checker.xy_goal_tolerance", 0.25)
+
     def sm_timer_callback(self):
 
         # need a main state machine
@@ -329,9 +409,10 @@ class NavNode(Node):
         
         elif state == self.T_NAV_WP :
             if stateChange :
-                # change goal tolerance to 1M when going to waypoint
-                self.send_set_param_request(self.controller_server_set_param_svc,
-                            "goal_checker.xy_goal_tolerance", 1.0)
+                self.smTimerNav2Config(state)
+                # # change goal tolerance to 1M when going to waypoint
+                # self.send_set_param_request(self.controller_server_set_param_svc,
+                #             "goal_checker.xy_goal_tolerance", 1.0)
                 pass
             
                 # execute goto waypoint once
@@ -381,9 +462,10 @@ class NavNode(Node):
 
         elif state == self.T_GOTO_CONE :
             if stateChange :
-                # change goal tolerance to 0.25M when approaching cone
-                self.send_set_param_request(self.controller_server_set_param_svc,
-                            "goal_checker.xy_goal_tolerance", 0.25)
+                self.smTimerNav2Config(state)
+                # # change goal tolerance to 0.25M when approaching cone
+                # self.send_set_param_request(self.controller_server_set_param_svc,
+                #             "goal_checker.xy_goal_tolerance", 0.25)
                 pass 
 
             # find cone and "touch" it

@@ -290,24 +290,24 @@ class ControllerNode(Node):
         if set_datum != None :
             pass
 
-        # configure navigation nodes parameters
-        if config != None :
-            if "gps" in config :
-                if config["gps"] == True :
-                    # configure for both compass and gps
-                    self.send_set_param_request(self.efk_global_set_param_svc, 
-                                                'publish_tf', True)
-                    self.send_set_param_request(self.efk_global_set_param_svc, # GPS
-                                                'odom1_config', self.efk_global_odom1_config)
-                    self.send_set_param_request(self.efk_global_set_param_svc, # Compass
-                                                'odom0_config', self.efk_global_odom0_config)
-                    self.send_set_param_request(self.efk_local_set_param_svc, # Compass
-                                                'imu0_config', self.efk_local_imu0_config)
+        # # configure navigation nodes parameters
+        # if config != None :
+        #     if "gps" in config :
+        #         if config["gps"] == True :
+        #             # configure for both compass and gps
+        #             self.send_set_param_request(self.efk_global_set_param_svc, 
+        #                                         'publish_tf', True)
+        #             self.send_set_param_request(self.efk_global_set_param_svc, # GPS
+        #                                         'odom1_config', self.efk_global_odom1_config)
+        #             self.send_set_param_request(self.efk_global_set_param_svc, # Compass
+        #                                         'odom0_config', self.efk_global_odom0_config)
+        #             self.send_set_param_request(self.efk_local_set_param_svc, # Compass
+        #                                         'imu0_config', self.efk_local_imu0_config)
 
-            elif "compass" in config :
-                if config["compass"] == True:
-                    self.send_set_param_request(self.efk_global_set_param_svc, # Compass
-                                                'imu0_config', self.efk_local_imu0_config)
+        #     elif "compass" in config :
+        #         if config["compass"] == True:
+        #             self.send_set_param_request(self.efk_global_set_param_svc, # Compass
+        #                                         'imu0_config', self.efk_local_imu0_config)
 
         return True
     
