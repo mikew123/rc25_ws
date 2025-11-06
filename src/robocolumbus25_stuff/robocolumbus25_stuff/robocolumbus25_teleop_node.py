@@ -95,7 +95,7 @@ class Robocolumbus25TeleopNode(Node):
             cmd_vel.angular.z = angularZ
             self.cmd_vel_publisher.publish(cmd_vel)
   
-        # Publish buttons when chage occurs
+        # Publish buttons when change occurs
         if buttons[4] != self.buttonsLast[4] :
             b:bool = (buttons[4]==1)
             json_msg = {"nav":{"buttonKill":b}}

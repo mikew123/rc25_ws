@@ -44,14 +44,6 @@ class ControllerNode(Node):
     def __init__(self):
         super().__init__('controller_node')
             
-        self.efk_global_set_param_svc = self.create_client(SetParameters, '/efk_global/set_parameters')
-        while not self.efk_global_set_param_svc.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info('/efk_global/set_parameters service not available, waiting again...')
-
-        self.efk_local_set_param_svc = self.create_client(SetParameters, '/efk_local/set_parameters')
-        while not self.efk_local_set_param_svc.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info('/efk_local/set_parameters service not available, waiting again...')
-                
         # Message topic to/from all nodes for general messaging Json formated string
         self.json_msg_publisher = self.create_publisher(String, "json_msg", 10)
         self.json_msg_subscription = self.create_subscription(String, "json_msg"
@@ -67,64 +59,6 @@ class ControllerNode(Node):
         self.tts("Controller Node Started")
         self.get_logger().info(f"ControllerNode Started")
 
-    def send_set_param_request(self, svc: Client, name, value) -> None:
-        """
-        Set a parameter using the given param service
-        command line example:
-        cli -> ros2 param set /local_costmap/local_costmap obstacle_layer.enabled False
-        """
-
-        while not svc.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info('send_set_param_request: service not available, waiting again...')
-
-        req = SetParameters.Request()
-        self.callback_set_param_done = False
-
-        param = Parameter()
-        param.name = name
-        param.value.type = None
-        if isinstance(value, bool) :
-            param.value.type = ParameterType.PARAMETER_BOOL
-            param.value.bool_value = value
-        elif isinstance(value, list) :
-            if isinstance(value[0], bool) :
-                param.value.type = ParameterType.PARAMETER_BOOL_ARRAY
-                param.value.bool_array_value = value
-                
-        if param.value.type == None :
-            self.get_logger().info(f"send_set_param_request: unsupported variable type {value=}")
-            return
-
-        req.parameters.append(param)
-
-        self.get_logger().info(f"send_set_param_request: Sending {name=} {value=}")
-        future = svc.call_async(req)
-
-    ######################################################
-        # NOTE: if seems to work without checking if future done
-        # time.sleep(1)
-        # self.get_logger().info(f"send_set_param_request: {future.done()=}")
-
-    #     # future.add_done_callback(partial(self.callback_set_param, name=name, value=value))
-    #     future.add_done_callback(self.callback_set_param)
-        
-    #     while (not self.callback_set_param_done) and (not future.done()) :
-    #         self.get_logger().info(f"send_set_param_request: waiting for callback or done {future.done()=}")
-    #         time.sleep(0.1)
-
-    #     self.get_logger().info(f"send_set_param_request: callback wait done {name=} {value=}")
-    #     future.remove_done_callback()
-
-    # # def callback_set_param(self,future: Future, name, value) :
-    # def callback_set_param(self,future: Future) :
-    #     #SetParametersResult
-    #     result = future.result()
-    #     successful = result.results[0].successful
-    #     self.set_param_successful = successful
-
-    #     # self.get_logger().info(f"callback_set_param: {name=} {value=} {result=} {successful=}")
-    #     self.get_logger().info(f"callback_set_param: {result=}")
-    #     self.callback_set_param_done = True
 
     def readWaypointsFile(self, file) :
         '''
@@ -218,32 +152,6 @@ class ControllerNode(Node):
         self.sm_next_state = next_state
         self.sm_last_state = state
 
-    #        [x_pos   , y_pos    , z_pos,
-    #         roll    , pitch    , yaw,
-    #         x_vel   , y_vel    , z_vel,
-    #         roll_vel, pitch_vel, yaw_vel,
-    #         x_accel , y_accel  , z_accel]
-    efk_global_odom1_config = [
-        True,  True,  False, # lat,lon are used for x_pos,y_pos
-        False, False, False,
-        False, False, False,
-        False, False, False,
-        False, False, False 
-                ]
-    efk_global_odom0_config = [
-        False, False, False,
-        False, False, True, # compass yaw from efk_local is used
-        True,  False, False,
-        False, False, True,
-        False, False, False
-        ]
-    efk_local_imu0_config = [
-        False, False, False,
-        False, False, True, # Compass IMU yaw is used
-        False, False, False,
-        False, False, True,
-        False, False, False 
-        ]
 
     def setupNav(self) -> bool :
         '''
@@ -290,24 +198,6 @@ class ControllerNode(Node):
         if set_datum != None :
             pass
 
-        # # configure navigation nodes parameters
-        # if config != None :
-        #     if "gps" in config :
-        #         if config["gps"] == True :
-        #             # configure for both compass and gps
-        #             self.send_set_param_request(self.efk_global_set_param_svc, 
-        #                                         'publish_tf', True)
-        #             self.send_set_param_request(self.efk_global_set_param_svc, # GPS
-        #                                         'odom1_config', self.efk_global_odom1_config)
-        #             self.send_set_param_request(self.efk_global_set_param_svc, # Compass
-        #                                         'odom0_config', self.efk_global_odom0_config)
-        #             self.send_set_param_request(self.efk_local_set_param_svc, # Compass
-        #                                         'imu0_config', self.efk_local_imu0_config)
-
-        #     elif "compass" in config :
-        #         if config["compass"] == True:
-        #             self.send_set_param_request(self.efk_global_set_param_svc, # Compass
-        #                                         'imu0_config', self.efk_local_imu0_config)
 
         return True
     

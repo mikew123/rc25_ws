@@ -108,6 +108,7 @@ class NavNode(Node):
     # True when killSw is released to stop the robot motion
     killSw:bool = False
     cd_killSwChange:bool = False
+    killSwEn:bool = False
 
     wayPoint:dict = None
     wayPointNum:int = 0
@@ -258,8 +259,7 @@ class NavNode(Node):
             if (self.buttonKill==False) and (buttonKill==True):
                 self.buttonKillTrig = True
             self.buttonKill = buttonKill
-        # else :
-        #     self.wayPoint = None
+            self.processKillButton()
 
         if "config" in nav :
             self.wpConfig = nav["config"]
@@ -273,6 +273,25 @@ class NavNode(Node):
             self.cd_killSwChange = True
             self.get_logger().info(f"processKillSwStatus: kill switch is {kill}")
         self.killSw = kill
+
+    def processKillButton(self) -> None:
+        '''
+        Button on teleop game controller used for Kill
+        As long as the button is not pressed, the kill sw is disabled
+        When button first pressed the kill switch is enabled and kill=False
+        After enabled
+            While button is released kill=True
+            While button is pressed kill=False
+        '''
+        if self.buttonKillTrig == False :
+            return
+        killB:bool = self.buttonKill
+        if killB == True :
+            self.killSwEn = True
+            self.get_logger().info(f"processKillButton: teleop kill switch is enabled")
+            self.tts("Kill switch is enabled")
+        if self.killSwEn == True :
+            self.killSw = not killB
 
     # Timer based state machine for cone navigation
     T_INIT_WAIT, T_CAL_IMU, T_WAIT_GO, T_REQ_WP, T_WAIT_REQ, T_NAV_WP, T_GOTO_CONE = range(7)
