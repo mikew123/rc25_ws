@@ -1,4 +1,5 @@
-from sympy import true
+# RC25 navigation node
+
 import rclpy
 import math
 import time
@@ -15,8 +16,6 @@ from rclpy.node import Node
 from std_msgs.msg import String
 from geometry_msgs.msg import PointStamped, PoseStamped, PoseWithCovarianceStamped
 from geometry_msgs.msg import Twist, Pose
-# from sensor_msgs.msg import LaserScan
-# from sensor_msgs.msg import PointCloud2
 from geographic_msgs.msg import GeoPose
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
 
@@ -118,16 +117,19 @@ class NavNode(Node):
 
     # YAML file with cone locations
     waypointsFileName = "~/sambashare/nav_files/RoboColumbus.yml"
-    waypoints = None
-
     waypointsFile:dict = None
-    wayPoint:dict = None
-    wayPointNum:int = 0
-    coneWayPoint:bool = False
+
+    wpConfig          = None
+    wpGps:bool        = False
+    wpCompass:bool    = False
+    wpSetPose:dict    = None
+    wpSetDatum:dict   = None
+    wpWaypoints:dict  = None
+    wpWaypoint:dict   = None
+    wpWaypointNum:int = 1 # First waypoint number
+    wpCone:bool       = False
 
     sm_last_state = -1
-
-
 
     # EFK filter node sensor configurations
     #    [x_pos   , y_pos    , z_pos,
@@ -247,14 +249,6 @@ class NavNode(Node):
         time.sleep(2) # wait for json_msg_publisher to be ready!!??
         self.tts("RC25 Navigation Node Started")
         self.get_logger().info(f"NavNode Started")
-
-    wpGps:bool        = False
-    wpCompass:bool    = False
-    wpSetPose:dict    = None
-    wpSetDatum:dict   = None
-    wpWaypoints:dict  = None
-    wpWaypointNum:int = 1 # First waypoint number
-    wpWaypoint:dict   = None
 
     def readWaypointsFile(self, file) :
         '''
@@ -481,11 +475,6 @@ class NavNode(Node):
             nav = data['nav']
             self.processNavMsg(nav)
 
-    # def requestNextCone(self) :
-    #     self.tts("Requesting next way point location")
-    #     json_msg = {"nav": {"request_waypoint":True}}
-    #     self.sendJsonMsg(json_msg)
-
     def getNextWaypoint(self) -> bool :
         '''
         Get the next waypoint from the read waypoints file
@@ -494,6 +483,7 @@ class NavNode(Node):
         waypoints = self.wpWaypoints
         n = self.wpWaypointNum
         if not (n in waypoints) :
+            self.wpWaypoint = False
             return False
         
         self.wpWaypoint = waypoints[n]
@@ -507,9 +497,6 @@ class NavNode(Node):
 
     def processNavMsg(self, nav:dict) -> None :
         # self.get_logger().info(f"processNavMsg: {nav=}")
-        if "waypoint" in nav :
-            self.wayPoint = nav["waypoint"]
-            self.wayPointNum +=1
 
         if "buttonDo" in nav :
             buttonDo = nav["buttonDo"]
@@ -523,9 +510,6 @@ class NavNode(Node):
                 self.buttonKillTrig = True
             self.buttonKill = buttonKill
             self.processKillButton()
-
-        # if "config" in nav :
-        #     self.wpConfig = nav["config"]
 
         if "imu_cal_status" in nav :
             self.imuCalStatus = nav["imu_cal_status"]
@@ -557,26 +541,14 @@ class NavNode(Node):
             self.killSw = not killB
 
     # Timer based state machine for cone navigation
-    # T_INIT_WAIT, T_CAL_IMU, T_WAIT_GO, T_REQ_WP, T_WAIT_REQ, T_NAV_WP, T_GOTO_CONE = range(7)
     T_INIT_WAIT, T_CAL_IMU, T_WAIT_GO, T_GET_WP, T_NAV_WP, T_NAV_WP_AGAIN, T_GOTO_CONE, T_DONE = range(8)
     tc_state = -1
     tc_next_state = T_INIT_WAIT
-
-    wpConfig = None
-    imuCalStatus = False
-    calImu = False
-    navGo = False
 
     def smTimerNav2Config(self, state:int) -> None :
         '''
         Configure nav2 parameters for nav to waypoint or goto cone
         '''
-        # use config information from waypoints file
-        config = self.wpConfig
-        if config == None :
-            self.get_logger().error(f"smTimerNav2Config: No config information")
-            self.tts("ERROR: No config information")
-            return
         
         if state == self.T_NAV_WP :
             # configure navigation nodes parameters
@@ -585,24 +557,22 @@ class NavNode(Node):
                         "goal_checker.xy_goal_tolerance", 1.0)
 
             # Set which sensors are fused in EFK modules
-            if "gps" in config :
-                if config["gps"] == True :
-                    # configure for both compass and gps
-                    self.send_set_param_request(self.efk_global_set_param_svc, 
-                                'publish_tf', True)
-                    self.send_set_param_request(self.efk_global_set_param_svc, # GPS
-                                'odom1_config', self.efk_global_odom1_config_gpsEn)
-                    self.send_set_param_request(self.efk_global_set_param_svc, # Compass
-                                'odom0_config', self.efk_global_odom0_config_yawEn)
-                    self.send_set_param_request(self.efk_local_set_param_svc, # Compass
-                                'imu0_config', self.efk_local_imu0_config_yawEn)
+            if self.wpGps == True :
+                # configure for both compass and gps
+                self.send_set_param_request(self.efk_global_set_param_svc, 
+                            'publish_tf', True)
+                self.send_set_param_request(self.efk_global_set_param_svc, # GPS
+                            'odom1_config', self.efk_global_odom1_config_gpsEn)
+                self.send_set_param_request(self.efk_global_set_param_svc, # Compass
+                            'odom0_config', self.efk_global_odom0_config_yawEn)
+                self.send_set_param_request(self.efk_local_set_param_svc, # Compass
+                            'imu0_config', self.efk_local_imu0_config_yawEn)
 
-            elif "compass" in config :
-                if config["compass"] == True:
-                    self.send_set_param_request(self.efk_global_set_param_svc, # Compass
-                                'imu0_config', self.efk_local_imu0_config_yawEn)
-                    self.send_set_param_request(self.efk_local_set_param_svc, # Compass
-                                'imu0_config', self.efk_local_imu0_config_yawEn)
+            if self.wpCompass == True:
+                self.send_set_param_request(self.efk_global_set_param_svc, # Compass
+                            'imu0_config', self.efk_local_imu0_config_yawEn)
+                self.send_set_param_request(self.efk_local_set_param_svc, # Compass
+                            'imu0_config', self.efk_local_imu0_config_yawEn)
                     
         elif state == self.T_GOTO_CONE :
             # configure navigation nodes parameters for goto cone
@@ -637,13 +607,8 @@ class NavNode(Node):
             self.tts("wait for nav 2")
             time.sleep(20)
 
-            # if self.wpConfig == None :
-            #     jsonMsg = {"nav":{"request_waypoint_config":True}}
-            #     self.sendJsonMsg(jsonMsg)
-            # time.sleep(1)
-
             # calibrate compass if used
-            if (self.wpCompass == True) or (self.wpGps == true) :
+            if (self.wpCompass == True) or (self.wpGps == True) :
                 next_state = self.T_CAL_IMU
             else :
                 next_state = self.T_WAIT_GO
@@ -660,25 +625,13 @@ class NavNode(Node):
             status = self.waitGo()
             if status :           
                 self.setupNav()
-                # next_state = self.T_REQ_WP
                 next_state = self.T_GET_WP
-            
-        # elif state == self.T_REQ_WP :
-        #     self.wayPoint = None
-        #     self.requestNextCone()
-        #     next_state = self.T_WAIT_REQ
 
         elif state == self.T_GET_WP :        
-            self.wayPoint = None
             if self.getNextWaypoint() :
                 next_state = self.T_NAV_WP
             else :
                 next_state = self.T_DONE
-
-        # elif state == self.T_WAIT_REQ :
-        #     # wait for waypoint location from controller
-        #     if self.wayPoint != None :
-        #         next_state = self.T_NAV_WP
         
         elif state == self.T_NAV_WP_AGAIN :
             next_state = self.T_NAV_WP
@@ -692,16 +645,10 @@ class NavNode(Node):
                 # execute goto waypoint once
                 x = 0.0 # default
                 y = 0.0
-                self.coneWayPoint = False # default
-                # if "cone" in self.wayPoint :
-                #     self.coneWayPoint = self.wayPoint["cone"]
+                self.wpCone = False # default
                 if "cone" in self.wpWaypoint :
-                    self.coneWayPoint = self.wpWaypoint["cone"]
+                    self.wpCone = self.wpWaypoint["cone"]
 
-                # if ("x" in self.wayPoint) and ("y" in self.wayPoint) :
-                #     # map based XY location
-                #     x = self.wayPoint["x"]
-                #     y = self.wayPoint["y"]
                 if ("x" in self.wpWaypoint) and ("y" in self.wpWaypoint) :
                     # map based XY location
                     x = self.wpWaypoint["x"]
@@ -717,8 +664,7 @@ class NavNode(Node):
                     self.nav.goToPose(goto_pose)
 
                 else :
-                    # invalid waypoint, request next
-                    # next_state = self.T_REQ_WP
+                    # invalid waypoint, get next
                     next_state = self.T_GET_WP
 
             #TODO: timeout + kill switch
@@ -726,12 +672,11 @@ class NavNode(Node):
                 result = self.nav.getResult()
                 if result == TaskResult.SUCCEEDED :
                     self.tts("Navigate to way point location is successfull")
-                    if self.coneWayPoint :
+                    if self.wpCone :
                         # Find cone close to the way point
                         next_state = self.T_GOTO_CONE
                     else :
                         # No cone is at the way point
-                        # next_state = self.T_REQ_WP
                         next_state = self.T_GET_WP
                 else :
                     # try again
@@ -749,12 +694,11 @@ class NavNode(Node):
                 self.smTimerNav2Config(state)
 
             # find cone and "touch" it
-            found = self.cd_sm()
-            if found : 
+            done = self.cd_sm()
+            if done : 
                 #go request next cone location
                 self.get_logger().info(f"tc: done - touch cone succeeded")
                 self.tts("cone was touched")
-                # next_state = self.T_REQ_WP
                 next_state = self.T_GET_WP
 
         elif state == self.T_DONE :
@@ -777,7 +721,7 @@ class NavNode(Node):
         '''
         #TODO: avoid obsticals
         # check for calibration status 3 (complete)
-        # if self.imuCalStatus==3 : return true
+        # if self.imuCalStatus==3 : return True
 
         state = self.next_calImuState
         stateChange = False
@@ -1134,15 +1078,8 @@ class NavNode(Node):
         if state_change :
             self.get_logger().info(f"{func} drive closer to cone using cmd_vel and camera {state=}")
             self.tts("State 2")
-            # self.nav.cancelTask()
-
-        # self.nav.cancelTask()
 
         if (time.time_ns()*1e-9 - self.cd_timer) < 2.0 : return state
-
-        # get cone info
-        # a:float = self.cone_at_a_lidar
-        # d:float = self.cone_at_d_lidar
 
         a:float = self.cone_at_a_cam
         d:float = self.cone_at_d_cam
@@ -1199,10 +1136,6 @@ class NavNode(Node):
         killSwitchActive:bool = ks
         next_state = state
         msg = Twist()
-
-        # get cone info
-        # d_tof = self.cone_at_d_tof_fc
-        # a = self.cone_at_a_tof_fc
 
         d = self.cone_at_d_lidar
         a = self.cone_at_a_lidar
@@ -1508,7 +1441,6 @@ class NavNode(Node):
 
         # self.get_logger().info(f"tof_fc_callback: {x=:.3f} {y=:.3f} {a=:.3f} {d=:.3f} ")
         
-        
 
     def gotoPoseBlocking(self, pose, t):
         """
@@ -1592,13 +1524,6 @@ class NavNode(Node):
         # TODO: use a given stamp time?
         pose.header.stamp = stamp
         pose.pose = self.createPose(x,y,a)
-        # pose.pose.position.x = float(x)
-        # pose.pose.position.y = float(y)
-        # pose.pose.position.z = 0.0
-        # (pose.pose.orientation.x,
-        # pose.pose.orientation.y,
-        # pose.pose.orientation.z,
-        # pose.pose.orientation.w) = tf_transformations.quaternion_from_euler(0.0,0.0,float(a))
         # self.get_logger().info(pose)
         return pose
 
@@ -1645,10 +1570,6 @@ def main(args=None):
     # nav.waitUntilNav2Active()
 
     node = NavNode(nav)
-
-    # rclpy.spin(node)
-    # node.destroy_node()
-    # rclpy.shutdown()
 
     try :
         executor = MultiThreadedExecutor()
