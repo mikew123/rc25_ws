@@ -14,5 +14,5 @@ navsat_transform:
     broadcast_utm_transform: true
     publish_filtered_gps: true
     use_odometry_yaw: false # use IMU compass #true
-    wait_for_datum: true
+    wait_for_datum: true # ? does not seem to wait so I had to set datum here
     datum: [32.77031, -96.83769, 0.0] # House, [lat, lon, alt]
