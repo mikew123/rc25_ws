@@ -44,6 +44,7 @@ class ImuGpsNode(Node):
     gpsLatYAcc = 0.0
     gpsLonXAcc = 0.0
 
+    minSIV = 3 #5
     
     def __init__(self):
         super().__init__('imu_gps_node')
@@ -227,8 +228,8 @@ class ImuGpsNode(Node):
         # put num sat in view into status field service
         status = gpsJsonPacket.get("status")
         siv = gpsJsonPacket.get("siv")
-        # 5 satelites is pretty stable
-        if (status==True) and (siv>=5):
+        # num satelites considered stable
+        if (status==True) and (siv>=self.minSIV):
             # Satelite fix is OK
             msg.status.status = 0
             # setting servive to satelites in view since we dont know which sat are used

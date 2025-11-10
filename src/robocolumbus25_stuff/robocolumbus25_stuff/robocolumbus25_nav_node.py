@@ -324,17 +324,18 @@ class NavNode(Node):
 
         If gps == True 
             The set_pose information in the file is ignored
-            The lat/lon datum and pose are set with matching pose
+            The lat,lon datum and x,y pose are set
             If there is no set_datum in the file then the current gps lat/lon signal is used
-            The pose is set with a conversion of lat/lon to x/y
-            The datum orientation is set within navsat_transform from compass
+            If there is no set_pose the pose is 0,0 yaw=compass
+            If set_pose is lat,lon then it is converted to map x,y relative to datum lat,lon
+            (The datum orientation is set within navsat_transform from compass)
         If gps == False or doesnt exist
             The datum is not set
-            If there is a set_pose it sets the pose
-                If there is no pose x/y then x,y = 0,0 origin
+            If there is a set_pose it sets the pose using x,y (ignores any lat,lon)
+                If there is no set_pose x/y then pose x,y = 0,0 origin
                 If there is no set_pose deg or yaw 
-                    If compass == True it is used for the orientation yaw
-                        otherwise yaw=0
+                    If compass == True pose yaw = compass yaw
+                        otherwise pose yaw=0
 
         returns True if setup OK
         '''
@@ -362,29 +363,42 @@ class NavNode(Node):
 
             # create pose x,y,yaw from datum lat/lon and compass
             #TODO: get compass yaw, should we use a datum yaw if given?
-            lat = wpDatum["lat"]
-            lon = wpDatum["lon"]
-            (x,y,_,_) = utm.from_latlon(lat, lon)
-            if "rad" in wpDatum :
-                rad = wpDatum["rad"]
-            elif "deg" in wpDatum :
-                rad = wpDatum["deg"]/180.0 * math.pi
-            else :
-                #TODO: get yaw from compass
-                rad = 0.0
+            x, y, rad = 0.0, 0.0, 0.0 # defaults
+
+            if wpPose != None :
+                if ("x" in wpPose) and ("y" in wpPose) :
+                    x = wpPose["x"]
+                    y = wpPose["y"]
+                elif ("lat" in wpPose) and ("lon" in wpPose) :
+                    lat = wpPose["lat"]
+                    lon = wpPose["lon"]
+                    # convert lat,lon to map x,y
+                    (peast, pnorth, pn, ps) = utm.from_latlon(lat, lon)
+                    (deast, dnorth, dn, ds) = utm.from_latlon(wpDatum("lat"), wpDatum("lon"))
+                    if pn == dn :
+                        x = peast = deast
+                        y = pnorth - dnorth
+
+                # get yaw to use in pose
+                if "rad" in wpPose :
+                    rad = wpPose["rad"]
+                elif "deg" in wpPose :
+                    rad = wpPose["deg"]/180.0 * math.pi
+
+            # alternate sources of pose yaw
+            if rad == 0.0 :
+                if "rad" in wpDatum :
+                    rad = wpDatum["rad"]
+                elif "deg" in wpDatum :
+                    rad = wpDatum["deg"]/180.0 * math.pi
+                elif self.wpCompass == True :
+                    # TODO: get yaw from compass
+                    rad = 0.0
+
             wpPose = {"x":x,"y":y,"rad":rad}
 
         if wpPose == None :
-            # fill in missing pose data
-            if wpPose != None :
-                if not (("x" in wpPose) and ("y" in wpPose)) :
-                    # set pose x,y to 0,0
-                    wpPose["x"] = 0.0
-                    wpPose["y"] = 0.0
-                if not (("deg" in wpPose) or ("rad" in wpPose)) :
-                    wpPose["rad"] = 0.0
-            else :
-                wpPose = {"x":0.0,"y":0.0,"rad":0.0}
+            wpPose = {"x":0.0,"y":0.0,"rad":0.0}
 
         # if pose orientation in degrees convert to radians
         if (not ("rad" in wpPose)) and ("deg" in wpPose):
@@ -395,7 +409,7 @@ class NavNode(Node):
             datum = [
                 wpDatum["lat"],
                 wpDatum["lon"],
-                0.0 # altitude
+                0.0 # altitude? yaw ??
             ] 
             self.send_set_param_request(self.navsat_transform_server_set_param_svc,
                                     "datum",  datum)           
