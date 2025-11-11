@@ -112,8 +112,8 @@ class NavNode(Node):
     
     # True when killSw is released to stop the robot motion
     killSw:bool = False
-    cd_killSwChange:bool = False
-    killSwEn:bool = False
+    killSwChange:bool = False
+    # killSwEn:bool = False
 
     # YAML file with cone locations
     waypointsFileName = "~/sambashare/nav_files/RoboColumbus.yml"
@@ -481,10 +481,6 @@ class NavNode(Node):
         #self.get_logger().info(f"json_msg_callback: {msg=}")
         data = json.loads(msg.data)
 
-        if 'kill' in data :
-            kill:bool = data['kill']
-            self.processKillSwStatus(kill)
-
         if 'nav' in data :
             nav = data['nav']
             self.processNavMsg(nav)
@@ -505,9 +501,9 @@ class NavNode(Node):
         return True
 
     buttonDo = False
-    buttonKill = False
+    # buttonKill = False
     buttonDoTrig = False
-    buttonKillTrig = False
+    # buttonKillTrig = False
 
     def processNavMsg(self, nav:dict) -> None :
         # self.get_logger().info(f"processNavMsg: {nav=}")
@@ -518,41 +514,44 @@ class NavNode(Node):
                 self.buttonDoTrig = True
             self.buttonDo = buttonDo
 
-        if "buttonKill" in nav :
-            buttonKill = nav["buttonKill"]
-            if (self.buttonKill==False) and (buttonKill==True):
-                self.buttonKillTrig = True
-            self.buttonKill = buttonKill
-            self.processKillButton()
+        # if "buttonKill" in nav :
+        #     buttonKill = nav["buttonKill"]
+        #     if (self.buttonKill==False) and (buttonKill==True):
+        #         self.buttonKillTrig = True
+        #     self.buttonKill = buttonKill
+        #     self.processKillButton()
 
         if "imu_cal_status" in nav :
             self.imuCalStatus = nav["imu_cal_status"]
 
+        if "kill" in nav :
+            kill = nav["kill"]
+            self.processKill(kill)
 
-    def processKillSwStatus(self, kill:bool) -> None :
+    def processKill(self, kill:bool) -> None :
         if(kill != self.killSw) :
-            self.cd_killSwChange = True
-            self.get_logger().info(f"processKillSwStatus: kill switch is {kill}")
+            self.killSwChange = True
+            # self.get_logger().info(f"processKill: kill switch is {kill}")
         self.killSw = kill
 
-    def processKillButton(self) -> None:
-        '''
-        Button on teleop game controller used for Kill
-        As long as the button is not pressed, the kill sw is disabled
-        When button first pressed the kill switch is enabled and kill=False
-        After enabled
-            While button is released kill=True
-            While button is pressed kill=False
-        '''
-        if self.buttonKillTrig == False :
-            return
-        killB:bool = self.buttonKill
-        if killB == True :
-            self.killSwEn = True
-            self.get_logger().info(f"processKillButton: teleop kill switch is enabled")
-            self.tts("Kill switch is enabled")
-        if self.killSwEn == True :
-            self.killSw = not killB
+    # def processKillButton(self) -> None:
+    #     '''
+    #     Button on teleop game controller used for Kill
+    #     As long as the button is not pressed, the kill sw is disabled
+    #     When button first pressed the kill switch is enabled and kill=False
+    #     After enabled
+    #         While button is released kill=True
+    #         While button is pressed kill=False
+    #     '''
+    #     if self.buttonKillTrig == False :
+    #         return
+    #     killB:bool = self.buttonKill
+    #     if killB == True :
+    #         self.killSwEn = True
+    #         self.get_logger().info(f"processKillButton: teleop kill switch is enabled")
+    #         self.tts("Kill switch is enabled")
+    #     if self.killSwEn == True :
+    #         self.killSw = not killB
 
     # Timer based state machine for cone navigation
     T_INIT_WAIT, T_CAL_IMU, T_WAIT_GO, T_GET_WP, T_NAV_WP, T_NAV_WP_AGAIN, T_GOTO_CONE, T_DONE = range(8)
@@ -838,10 +837,16 @@ class NavNode(Node):
             pauseT (sec) is the time paused between movements
             return=True when finished
         '''
-
+        
         # /cmd_vel message to drive robot
         msg = Twist()
-        
+
+        if self.killSw == True :
+            # Kill switch active 
+            # Twist msg default is velocities = 0
+            self.cmd_vel_publisher.publish(msg)
+            return False
+
         state = self.next_dpState
         stateChange = False
         next_state = state # default
@@ -918,8 +923,11 @@ class NavNode(Node):
             # self.nav.cancelTask() # cancel the running task when state changes
 
         ks = self.killSw
-        ksc = self.cd_killSwChange
-        if ksc : self.cd_killSwChange = False
+        ksc = self.killSwChange
+        if ksc : 
+            self.killSwChange = False
+            # Try canceling task 
+            # if ks : self.cancelNav2Task()
 
         state:int = self.cd_state
         next_state:int = state
@@ -1001,6 +1009,7 @@ class NavNode(Node):
                 # if self.wcScanInit == False :
                 #     self.tts("Scaning for a cone")
 
+                #NOTE: kill sw processed in drivePattern
                 status = self.drivePattern(self.wcScanInit, 10, 0.25, 5.0, 1.0)
                 self.wcScanInit = False
                 if status:

@@ -2,7 +2,8 @@
 This robocolumbus wheel controller ROS2 is for controlling the 
 1/6 scale model jeep wheel velocity and front steering
 The steering model is Ackerman type
-The "/cmd_vel" topic is subcribed to and the linear.x and angular.z 
+The "/cmd_vel" topic from nav node is subcribed to and the linear.x and angular.z 
+The "/cmd_vel/teleop" topic from teleop is subcribed to and the linear.x and angular.z 
 velocity commands are used to create the jeep rear wheel velocity 
 and the front wheel steering angle via a serial interface
 The serial interface is TBD
@@ -52,7 +53,6 @@ class WheelControllerNode(Node):
     last_steering_angle = 0.0
 
     last_cv_time_sec = 0.0 # seconds
-    last_cv_msg = Twist()
 
     # Serial port configuration (update as needed)
     serial_port = ["/dev/serial/by-id/usb-Waveshare_RP2040_Zero_E6625887D37C3E30-if00"
@@ -74,6 +74,9 @@ class WheelControllerNode(Node):
 
         self.cmd_vel_subscription = self.create_subscription(Twist, '/cmd_vel'
                                         , self.cmd_vel_callback, 10)
+        
+        self.cmd_vel_teleop_subscription = self.create_subscription(Twist, '/cmd_vel/teleop'
+                                        , self.cmd_vel_teleop_callback, 10)
 
         self.wheel_odom_publisher = self.create_publisher(Odometry, 'wheel_odom', 10)
 
@@ -93,10 +96,6 @@ class WheelControllerNode(Node):
 
         self.ser.flush()
         time.sleep(5)  # engine controller seems to act weird if no delay
-
-        # # Send zero velocity command to unstick battery status - worked!
-        # cmd = {"cv":[0,0]}
-        # self.sendJsonCmd(cmd)
 
         self.tts("Wheel Controller Node Started")
         self.get_logger().info(f"WheelControllerNode: Started node")
@@ -143,7 +142,25 @@ class WheelControllerNode(Node):
 
     def json_msg_callback(self, msg:String) -> None :
         #self.get_logger().info(f"json_msg_callback: {msg=}")
-        pass
+        data = json.loads(msg.data)
+
+        if "nav" in data :
+            nav = data["nav"]
+            self.processNavMsg(nav)
+
+    def processNavMsg(self, nav:dict) -> None :
+        if 'kill' in nav :
+            kill:bool = nav['kill']
+            self.processKill(kill)
+
+    killSw = False
+    killSwChange = False
+
+    def processKill(self, kill:bool) -> None :
+        if(kill != self.killSw) :
+            self.killSwChange = True
+            self.get_logger().info(f"processKill: kill switch is {kill}")
+        self.killSw = kill
 
     def tts(self, tts) -> None:
         json_msg = {"speaker":{"tts":tts}}
@@ -294,9 +311,57 @@ class WheelControllerNode(Node):
         current_time = self.get_clock().now()
         current_time_sec = current_time.nanoseconds * 1e-9
 
+        if self.killSw == False :
+            linear_x = msg.linear.x
+            angular_z = msg.angular.z
+        else :
+            # Kill switch is enabled - force stop
+            if self.killSwChange == True :
+                self.killSwChange = False
+                self.get_logger().info(f"cmd_vel_callback: Kill sw is active - stopping")
+            linear_x = 0.0
+            angular_z = 0.0
+
+        self.cmd_vel_to_wheels(linear_x,angular_z,"nav")
+
+    def cmd_vel_teleop_callback(self, msg: Twist) -> None:
+        # self.get_logger().info(f"cmd_vel_teleop_callback {msg=}")
+
+        # does not get blocked by teleop kill switch
         linear_x = msg.linear.x
         angular_z = msg.angular.z
 
+        self.cmd_vel_to_wheels(linear_x,angular_z,"teleop")
+
+    teleop_timer_sec = 0
+
+    def cmd_vel_to_wheels(self, lx:float , az:float, source:str) -> None :
+        '''
+        Send navigator or teleop /cmd_vel velocities to wheels
+        source = "nav" or "teleop"
+        '''
+        self.get_logger().info(f"cmd_vel_to_wheels: {source=} {lx=} {az=}")
+
+        current_time = self.get_clock().now()
+        current_time_sec = current_time.nanoseconds * 1e-9
+
+        linear_x = 0.0
+        angular_z = 0.0
+
+        if source == "teleop" :
+            linear_x = lx
+            angular_z = az
+            self.teleop_timer_sec = current_time_sec + 1.0
+        elif source == "nav" :
+            # block nav /cmd_vel when teleop /cmd_vel is active, clear at 1 sec
+            if self.teleop_timer_sec <= current_time_sec :
+                linear_x = lx
+                angular_z = az
+            else :
+                return
+        else :
+            return
+        
         # Why scale angular velocity Z for robot to match odom and nav2 to work?
         angular_z *= 2.4
 
@@ -315,54 +380,9 @@ class WheelControllerNode(Node):
         if(wheel_velocity!=0.0):
             cmd = {"wd":1000,"cv":[wheel_velocity, steering_angle]}
         else : # force stop (how it affects PID?)
-            cmd = {"wd":1000,"cv":[wheel_velocity, steering_angle]}
+            cmd = {"wd":1000,"cv":[0, 0]}
         self.sendJsonCmd(cmd)
 
-        # if self.odom_encoder == False :
-        #     dt = current_time_sec - self.last_time_sec
-        #     lx = msg.linear.x
-        #     az = msg.angular.z
-
-        #     if(dt<0.0 or dt>1.0) : 
-        #         self.last_cmd_vel = msg
-        #         self.last_time_sec = current_time_sec
-        #         # init with no movement
-        #         self.wheel_odom_publisher.publish(Odometry())
-        #         return
-
-        #     # Simple differential drive odometry update calcs
-
-        #     delta_x = (lx*dt) * math.cos(self.yaw)
-        #     delta_y = (lx*dt) * math.sin(self.yaw)
-        #     self.x += delta_x
-        #     self.y += delta_y
-
-        #     dz = az * dt
-        #     self.yaw += dz
-        #     # handle angle wrap
-        #     if self.yaw > math.pi : self.yaw -= 2 * math.pi
-        #     if self.yaw <-math.pi : self.yaw += 2 * math.pi
-
-        #     # Prepare odometry message
-        #     odom_msg = Odometry()
-        #     odom_msg.header.stamp = current_time.to_msg()
-        #     odom_msg.header.frame_id = "odom"
-        #     odom_msg.child_frame_id = "base_link"
-        #     odom_msg.twist.twist.linear.x = lx
-        #     odom_msg.twist.twist.angular.z = az
-        #     odom_msg.pose.pose.position.x = self.x
-        #     odom_msg.pose.pose.position.y = self.y
-        #     odom_msg.pose.pose.position.z = 0.0
-        
-        #     # Convert yaw to quaternion
-        #     (x,y,z,w) = tf_transformations.quaternion_from_euler(0, 0, self.yaw)
-        #     odom_msg.pose.pose.orientation = Quaternion(x=x,y=y,z=z,w=w)
-
-        #     #self.get_logger().info(f"cmd_vel odom: {dt=:.3f} {lx=:.3f} {az=:.3f} {self.x=:.3f} {self.y=:.3f} {self.yaw=:.3f}")
-
-        #     self.wheel_odom_publisher.publish(odom_msg)
-
-        self.last_cv_msg = msg
         self.last_cv_time_sec = current_time_sec
             
     def destroy_node(self):

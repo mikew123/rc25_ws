@@ -33,7 +33,7 @@ class Robocolumbus25TeleopNode(Node):
         self.joy_subscription = self.create_subscription(Joy, '/joy'
                                     , self.joy_callback, 10)
         
-        self.cmd_vel_publisher = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.cmd_vel_publisher = self.create_publisher(Twist, '/cmd_vel/teleop', 10)
 
         time.sleep(2) # wait for json_msg_publisher to be ready!!??
         self.tts("Teleop Node Started")

@@ -63,6 +63,59 @@ class ControllerNode(Node):
                 status = engine['status']
                 self.processEngineStatus(status)
 
+        if 'nav' in data :
+            nav = data['nav']
+            self.processNavMsg(nav)
+
+    buttonKill = False
+    buttonKillTrig = False
+    killSwEn = False
+    def processNavMsg(self, nav:dict) -> None :
+        # self.get_logger().info(f"processNavMsg: {nav=}")
+
+        if "buttonKill" in nav :
+            buttonKill = nav["buttonKill"]
+            self.processKillButton(buttonKill)
+
+    # def processKillSwStatus(self, kill:bool) -> None :
+    #     if(kill != self.killSw) :
+    #         self.cd_killSwChange = True
+    #         self.get_logger().info(f"processKillSwStatus: kill switch is {kill}")
+    #     self.killSw = kill
+
+    def processKillButton(self, buttonKill:bool) -> None:
+        '''
+        Button on teleop game controller used for Kill
+        As long as the button is not pressed, the kill sw is disabled
+        When button first pressed the kill switch is enabled and kill=False
+        After enabled
+            While button is released kill=True
+            While button is pressed kill=False
+        '''
+
+        if (self.buttonKill==False) and (buttonKill==True):
+            self.buttonKillTrig = True
+        self.buttonKill = buttonKill
+
+        if self.buttonKillTrig == False :
+            return
+        
+        killB:bool = self.buttonKill
+        if killB == True :
+            if self.killSwEn == False :
+                self.killSwEn = True
+                self.get_logger().info(f"processKillButton: teleop kill switch is enabled")
+                self.tts("Kill switch is enabled")
+
+        if self.killSwEn == True :
+            kill = not killB
+            msg = {"nav": {"kill":kill}}
+            self.sendJsonMsg(msg)
+            if kill == True :
+                self.tts("Kill switch is activated - stopping")
+            else :
+                self.tts("Kill switch is not active - allow movement again")
+
     def processEngineStatus(self,status:String) -> None :
             # self.get_logger().info(f"processEngineStatus: {status=}")
             if "mode" in status : self.processMode(status["mode"])
