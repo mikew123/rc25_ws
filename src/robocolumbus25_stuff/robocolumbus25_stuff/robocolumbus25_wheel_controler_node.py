@@ -63,6 +63,24 @@ class WheelControllerNode(Node):
     # Odometry from encoder or velocity
     odom_encoder = True
     
+    odomPoseCovariance = [
+        1e-12, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 1e-12, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 1e-12, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 1e-12, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 1e-12, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 1e-12
+    ]
+    
+    odomTwistCovariance = [
+        0.001, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 1e-12, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 1e-12, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 1e-12, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 1e-12, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 1e-12
+    ]
+
     def __init__(self):
         super().__init__('robocolumbus25_wheel_controler_node')
 
@@ -272,9 +290,11 @@ class WheelControllerNode(Node):
             # Update pose 
             odom_msg.pose.pose.position.x = self.x
             odom_msg.pose.pose.position.y = self.y
+            odom_msg.pose.covariance = self.odomPoseCovariance
             # Update velocities
             odom_msg.twist.twist.linear.x = ddt
             odom_msg.twist.twist.angular.z = az
+            odom_msg.twist.covariance = self.odomTwistCovariance
         
             # Convert yaw to quaternion
             (x,y,z,w) = tf_transformations.quaternion_from_euler(0, 0, self.yaw)

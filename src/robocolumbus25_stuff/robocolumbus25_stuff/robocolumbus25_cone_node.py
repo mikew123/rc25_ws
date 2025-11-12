@@ -232,7 +232,7 @@ class ConeNode(Node):
                         begin = np.int32(0)
                         end = np.int32(0)
 
-                    else :
+                    elif coneRanges.size > 3 :
                         coneRays = coneRanges[begin:end]
                         coneMin = np.min(coneRays)
                         coneMax = np.max(coneRays)
@@ -275,6 +275,9 @@ class ConeNode(Node):
 
 
                         # keep looking for more cone candidates
+                        begin = np.int32(0)
+                        end = np.int32(0)
+                    else :
                         begin = np.int32(0)
                         end = np.int32(0)
 

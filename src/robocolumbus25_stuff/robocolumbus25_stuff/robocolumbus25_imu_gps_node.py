@@ -11,7 +11,7 @@ import tf_transformations
 from rclpy.node import Node
 from std_msgs.msg import String, Int32, Float32, Float32MultiArray
 from sensor_msgs.msg import Imu
-from sensor_msgs.msg import NavSatFix
+from sensor_msgs.msg import NavSatFix, NavSatStatus
 from geometry_msgs.msg import Pose
 from geometry_msgs.msg import Quaternion
 
@@ -46,6 +46,34 @@ class ImuGpsNode(Node):
 
     minSIV = 3 #5
     
+    # lat, lon, alt
+    gpsCovariance = [
+        0.01, 0.0, 0.0,
+        0.0, 0.01, 0.0,
+        0.0, 0.0, 0.01
+    ]
+
+    #x, y, z
+    imuOrientationCovariance =  [
+        0.001, 0.0, 0.0,
+        0.0, 0.001, 0.0,
+        0.0, 0.0, 0.001
+    ]
+
+    #x, y, z
+    imuAngularVelocityCovariance = [
+        0.001, 0.0, 0.0,
+        0.0, 0.001, 0.0,
+        0.0, 0.0, 0.001
+    ]
+
+    #x, y, z
+    imuLinearVelocityCovariance = [
+        0.001, 0.0, 0.0,
+        0.0, 0.001, 0.0,
+        0.0, 0.0, 0.001
+    ]
+
     def __init__(self):
         super().__init__('imu_gps_node')
 
@@ -216,7 +244,7 @@ class ImuGpsNode(Node):
     def gpsPublish(self, gpsJsonPacket) -> None:        
         # self.get_logger().info(f"gpsPublish : {gpsJsonPacket=}")
 
-        msg = NavSatFix();
+        msg = NavSatFix()
 
         # NOTE: should we use the imu timestamp to get better accuracy?
         msg.header.stamp = self.get_clock().now().to_msg()
@@ -231,19 +259,24 @@ class ImuGpsNode(Node):
         # num satelites considered stable
         if (status==True) and (siv>=self.minSIV):
             # Satelite fix is OK
-            msg.status.status = 0
+            msg.status.status = NavSatStatus.STATUS_FIX
             # setting servive to satelites in view since we dont know which sat are used
+            # msg.status.service = NavSatStatus.SERVICE_GPS \
+            #     + NavSatStatus.SERVICE_GLONASS + NavSatStatus.SERVICE_GALILEO
             msg.status.service = siv
             msg.latitude  = 1e-7*gpsJsonPacket.get("lat")
             msg.longitude = 1e-7*gpsJsonPacket.get("lon")
             msg.altitude  = 1e-3*gpsJsonPacket.get("alt") # mm to Meters
         else :
             # Not a valid satelite fix
-            msg.status.status = -1
+            msg.status.status = NavSatStatus.STATUS_NO_FIX
             msg.status.service = siv
             msg.latitude  = math.nan
             msg.longitude = math.nan
             msg.altitude  = math.nan
+
+        msg.position_covariance = self.gpsCovariance
+        msg.position_covariance_type = NavSatFix.COVARIANCE_TYPE_DIAGONAL_KNOWN
 
         self.gps_nav_publisher.publish(msg)
 
@@ -314,6 +347,7 @@ class ImuGpsNode(Node):
                     msg.orientation.y = qy
                     msg.orientation.z = qz
                     msg.orientation.w = qw
+                    msg.orientation_covariance = self.imuOrientationCovariance
 
                     #########################
                     # IMU Rotational velocities
@@ -321,6 +355,7 @@ class ImuGpsNode(Node):
                     msg.angular_velocity.x =  float(self.rvelJsonPacket.get("x"))
                     msg.angular_velocity.y =  float(self.rvelJsonPacket.get("y"))
                     msg.angular_velocity.z =  float(self.rvelJsonPacket.get("z"))
+                    msg.angular_velocity_covariance = self.imuAngularVelocityCovariance
 
                     ###########################
                     # IMU Linear accelerations
@@ -328,6 +363,7 @@ class ImuGpsNode(Node):
                     msg.linear_acceleration.x = float(self.laccJsonPacket.get("x"))
                     msg.linear_acceleration.y = float(self.laccJsonPacket.get("y"))
                     msg.linear_acceleration.z = float(self.laccJsonPacket.get("z"))
+                    msg.linear_acceleration_covariance = self.imuLinearVelocityCovariance
 
                     self.imu_msg_publisher.publish(msg)
 
