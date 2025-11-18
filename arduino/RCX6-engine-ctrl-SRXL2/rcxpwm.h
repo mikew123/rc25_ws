@@ -59,8 +59,8 @@ private:
 const int steerCenter = 1550; //1575*0.985; // -1.5* correction to balance "toe"
 const int steerRightMax = 2000;
 const int steerLeftMax = 1000;
-const int shiftLow = 1100;
-const int shiftHigh = 1900;
+const int shiftLow  = 1500 - 500;
+const int shiftHigh = 1500 + 500;
 const int SEL_RCVR = 1000;
 const int SEL_COMP = 2000;
 const int pwmPerNominal = 11000;

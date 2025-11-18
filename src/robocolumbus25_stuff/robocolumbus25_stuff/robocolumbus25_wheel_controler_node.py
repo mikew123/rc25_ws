@@ -360,7 +360,7 @@ class WheelControllerNode(Node):
         Send navigator or teleop /cmd_vel velocities to wheels
         source = "nav" or "teleop"
         '''
-        self.get_logger().info(f"cmd_vel_to_wheels: {source=} {lx=} {az=}")
+        # self.get_logger().info(f"cmd_vel_to_wheels: {source=} {lx=} {az=}")
 
         current_time = self.get_clock().now()
         current_time_sec = current_time.nanoseconds * 1e-9

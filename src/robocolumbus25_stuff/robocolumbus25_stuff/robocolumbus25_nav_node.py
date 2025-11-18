@@ -17,6 +17,7 @@ from std_msgs.msg import String
 from geometry_msgs.msg import PointStamped, PoseStamped, PoseWithCovarianceStamped
 from geometry_msgs.msg import Twist, Pose
 from geographic_msgs.msg import GeoPose
+from sensor_msgs.msg import NavSatFix, NavSatStatus
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
 
 from tf2_ros import LookupException, ConnectivityException, ExtrapolationException
@@ -131,6 +132,8 @@ class NavNode(Node):
 
     sm_last_state = -1
 
+    gpsCurrent = None
+
     # EFK filter node sensor configurations
     #    [x_pos   , y_pos    , z_pos,
     #     roll    , pitch    , yaw,
@@ -185,7 +188,13 @@ class NavNode(Node):
         False, False, True,
         False, False, False 
         ]
+        
 
+    # Velocity when going to way point
+    velocity_smoother_max_velocity_wp = [1.0, 0.0, 2.0]
+
+    # Velocity when approaching cone
+    velocity_smoother_max_velocity_cone = [0.5, 0.0, 1.0]
 
     def  __init__(self, nav: BasicNavigator):
         super().__init__('robocolumbus25_nav_node')
@@ -213,6 +222,10 @@ class NavNode(Node):
         while not self.efk_local_set_param_svc.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('/efk_local/set_parameters service not available, waiting again...')
 
+        self.velocity_smoother_set_param_svc = self.create_client(SetParameters, '/velocity_smoother/set_parameters')
+        while not self.velocity_smoother_set_param_svc.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('/velocity_smoother/set_parameters service not available, waiting again...')
+
         # #DEBUG
         # self.send_set_param_request(self.controller_server_set_param_svc,
         #             "goal_checker.xy_goal_tolerance", 0.1)
@@ -228,6 +241,8 @@ class NavNode(Node):
                                             , self.tof_fc_mid_subscription_callback, 10)
         self.tof_dist_subscription = self.create_subscription(TofDist, '/tof_dist'
                                             , self.tof_dist_subscription_callback, 10)
+        self.gps_nav_subscription = self.create_subscription(NavSatFix, '/gps_nav'
+                                            , self.gps_nav_subscription_callback, 10)
 
         # Message topic to/from all nodes for general messaging Json formated string
         self.json_msg_publisher = self.create_publisher(String, "/json_msg", 10)
@@ -317,7 +332,7 @@ class NavNode(Node):
             self.wpWaypoints = doc["waypoints"]
 
 
-    def setupNav(self) -> bool :
+    def setupNav(self, stateChange:bool) -> bool :
         '''
         Executed when nav button pressed
         Set up initial pose and/or datum using info in waypoints file
@@ -344,7 +359,9 @@ class NavNode(Node):
         wpDatum:dict = self.wpSetDatum
         wpPose:dict  = self.wpSetPose
 
-        self.get_logger().info(f"setupNav: {wpPose=} {wpDatum=}")
+        if stateChange :
+            self.get_logger().info(f"setupNav: {wpPose=} {wpDatum=}")
+            
         if self.wpGps == True :
             # must use the compass while using gps
             self.wpCompass = True
@@ -352,18 +369,40 @@ class NavNode(Node):
             # No gps so datum is not used
             wpDatum = None
 
+        datum:list[float] = None
         if self.wpGps == True :
+            # get the starting location datum
             if wpDatum != None :
                 if not (("lat" in wpDatum) and ("lon" in wpDatum)) :
                     # get datum lat,lon current location from gps signal
-                    pass
+                    datum = self.getCurrentGps()
+                    if datum == None :
+                        # wait for filtered GPS datum
+                        return False
+                else :
+                    # use datum in wp file
+                    datum = [
+                        wpDatum["lat"],
+                        wpDatum["lon"],
+                        0.0 # altitude?
+                    ] 
             else : # no datum data in waypoint file
                 # get datum lat,lon current location from gps signal
-                pass
+                if stateChange :
+                    self.get_logger().info(f"setupNav: Get current gps for the datum")
+                    self.tts("Get current gps for the datum")
+                datum = self.getCurrentGps()
+
+                if datum == None :
+                    # wait for filtered GPS datum
+                    return False
+
+                self.get_logger().info(f"setupNav: Use current gps as {datum=}")
+                self.tts("use current gps datum lat={datum[0]} lon={datum[1]}")
 
             # create pose x,y,yaw from datum lat/lon and compass
             #TODO: get compass yaw, should we use a datum yaw if given?
-            x, y, rad = 0.0, 0.0, 0.0 # defaults
+            x, y, rad = 0.0, 0.0, None # defaults
 
             if wpPose != None :
                 if ("x" in wpPose) and ("y" in wpPose) :
@@ -386,14 +425,18 @@ class NavNode(Node):
                     rad = wpPose["deg"]/180.0 * math.pi
 
             # alternate sources of pose yaw
-            if rad == 0.0 :
-                if "rad" in wpDatum :
-                    rad = wpDatum["rad"]
-                elif "deg" in wpDatum :
-                    rad = wpDatum["deg"]/180.0 * math.pi
-                elif self.wpCompass == True :
+            if rad == None :
+                if wpDatum != None :
+                    if "rad" in wpDatum :
+                        rad = wpDatum["rad"]
+                    elif "deg" in wpDatum :
+                        rad = wpDatum["deg"]/180.0 * math.pi
+            if rad == None :
+                if self.wpCompass == True :
                     # TODO: get yaw from compass
                     rad = 0.0
+            else :
+                rad = 0.0
 
             wpPose = {"x":x,"y":y,"rad":rad}
 
@@ -404,13 +447,17 @@ class NavNode(Node):
         if (not ("rad" in wpPose)) and ("deg" in wpPose):
             wpPose["rad"] = wpPose["deg"]/180.0 * math.pi
 
-        datum = None
-        if wpDatum != None :
-            datum = [
-                wpDatum["lat"],
-                wpDatum["lon"],
-                0.0 # altitude? yaw ??
-            ] 
+        # datum = None
+        # if wpDatum != None :
+        #     datum = [
+        #         wpDatum["lat"],
+        #         wpDatum["lon"],
+        #         0.0 # altitude? yaw ??
+        #     ] 
+        #     self.send_set_param_request(self.navsat_transform_server_set_param_svc,
+        #                             "datum",  datum)           
+
+        if datum != None :
             self.send_set_param_request(self.navsat_transform_server_set_param_svc,
                                     "datum",  datum)           
 
@@ -423,6 +470,60 @@ class NavNode(Node):
         self.get_logger().info(f"setupNav: {pose=} {datum=}")
         return True
 
+    def gps_nav_subscription_callback(self, msg:NavSatFix) -> None :
+        '''
+        Save last 10 valid gps [lat,lon,alt]
+        Clear list when gps invalid occurs
+        '''
+        siv = msg.status.service # service used for num sat in view
+        if siv < 5 :
+            self.gpsCurrent = None
+            return
+        
+        if self.gpsCurrent == None :
+            self.gpsCurrent = []
+
+        lat = msg.latitude
+        lon = msg.longitude
+        alt = msg.altitude
+
+        self.gpsCurrent.append([lat,lon,alt])
+
+    def getCurrentGps(self) -> list[float] :
+        '''
+        Use median filter for gps data
+        Return filtered gps [lat, lon, alt] when available
+        Else return None
+        '''
+
+        curGps:list = self.gpsCurrent
+
+        if curGps == None : 
+            return None
+            
+        curGpsLen = len(curGps)
+        if curGpsLen < 10 :
+            return None
+        
+        # Filter the last 10 GPS values
+        lats:list[float] = []
+        lons:list[float] = []
+        alts:list[float] = []
+        gps:list[float]
+        for gps in curGps :
+            lats.append(gps[0])
+            lons.append(gps[1])
+            alts.append(gps[2])
+
+        # Median filter by selecting the sorted mid value
+        lats.sort()
+        lons.sort()
+        alts.sort()
+        mid = int(curGpsLen/2)
+        gps = [lats[mid ],lons[mid],alts[mid]]
+
+        return gps
+    
     def send_set_param_request(self, svc: Client, name, value) -> None:
         """
         Set a parameter using the given param service
@@ -554,7 +655,8 @@ class NavNode(Node):
     #         self.killSw = not killB
 
     # Timer based state machine for cone navigation
-    T_INIT_WAIT, T_CAL_IMU, T_WAIT_GO, T_GET_WP, T_NAV_WP, T_NAV_WP_AGAIN, T_GOTO_CONE, T_DONE = range(8)
+    T_INIT_WAIT, T_CAL_IMU, T_WAIT_GO, T_SETUP_NAV, \
+        T_GET_WP, T_NAV_WP, T_NAV_WP_AGAIN, T_GOTO_CONE, T_DONE = range(9)
     tc_state = -1
     tc_next_state = T_INIT_WAIT
 
@@ -580,10 +682,12 @@ class NavNode(Node):
                             'odom0_config', self.efk_global_odom0_config_yawEn)
                 self.send_set_param_request(self.efk_local_set_param_svc, # Compass
                             'imu0_config', self.efk_local_imu0_config_yawEn)
+                self.send_set_param_request(self.velocity_smoother_set_param_svc, # Compass
+                            'max_velocity', self.velocity_smoother_max_velocity_wp)
 
             if self.wpCompass == True:
                 self.send_set_param_request(self.efk_global_set_param_svc, # Compass
-                            'imu0_config', self.efk_local_imu0_config_yawEn)
+                            'imu0_config', self.efk_global_odom0_config_yawEn)
                 self.send_set_param_request(self.efk_local_set_param_svc, # Compass
                             'imu0_config', self.efk_local_imu0_config_yawEn)
                     
@@ -601,6 +705,8 @@ class NavNode(Node):
                         'odom0_config', self.efk_global_odom0_config_yawDis)
             self.send_set_param_request(self.efk_local_set_param_svc, # Compass
                         'imu0_config', self.efk_local_imu0_config_yawDis)
+            self.send_set_param_request(self.velocity_smoother_set_param_svc,
+                        'max_velocity', self.velocity_smoother_max_velocity_cone)
 
     def sm_timer_callback(self):
 
@@ -635,9 +741,11 @@ class NavNode(Node):
 
         if state == self.T_WAIT_GO :
             # Wait for go command from button
-            status = self.waitGo()
-            if status :           
-                self.setupNav()
+            if self.waitGo() :
+                next_state = self.T_SETUP_NAV
+
+        if state == self.T_SETUP_NAV :
+            if self.setupNav(stateChange) :
                 next_state = self.T_GET_WP
 
         elif state == self.T_GET_WP :        
@@ -730,7 +838,7 @@ class NavNode(Node):
         '''
         Calibrate the IMU by moving robot
         Wait for cal button to be pressed
-        Return True when IMU calibration is complete (status 3)
+        Return True when button released
         '''
         #TODO: avoid obsticals
         # check for calibration status 3 (complete)
@@ -899,8 +1007,9 @@ class NavNode(Node):
                 msg.angular.z = 0.0
                 returnVal = True
         else :
-            # continue calibration pattern until both calibrated and button released
-            if (self.buttonDo==False) and (self.imuCalStatus==3) :
+            # continue calibration pattern until button is released
+            # if (self.buttonDo==False) and (self.imuCalStatus==3) :
+            if self.buttonDo==False :
                 msg.linear.x  = 0.0
                 msg.angular.z = 0.0
                 returnVal = True
@@ -1007,7 +1116,7 @@ class NavNode(Node):
             # slowly scan for cone
             if not killSwitchActive :
                 # if self.wcScanInit == False :
-                #     self.tts("Scaning for a cone")
+                #     self.tts("Scanning for a cone")
 
                 #NOTE: kill sw processed in drivePattern
                 status = self.drivePattern(self.wcScanInit, 10, 0.25, 5.0, 1.0)
