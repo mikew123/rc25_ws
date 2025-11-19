@@ -1405,11 +1405,11 @@ class NavNode(Node):
         elif self.cd_sub_state == 2 :
             dist = self.cd_backup_dist
             vel = self.cd_backup_vel
-            t = 1.5*dist/vel
+            t = int(1.5*dist/vel + 0.5)
             if not killSwitchActive :
                 # issue a backup navigation command with obstical avoidance
                 self.nav.backup(backup_dist=dist, backup_speed=vel
-                    , time_allowance=2*t) # non-blocking
+                    , time_allowance=t) # non-blocking
                 self.cd_sub_timer = cur_time
                 self.cd_sub_state = 3
 
