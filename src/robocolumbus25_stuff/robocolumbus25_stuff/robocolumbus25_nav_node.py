@@ -54,9 +54,9 @@ class NavNode(Node):
 
     # state=1 use /cone_point to get location for navigator to drive to
     # Distance from detected cone to end navigation
-    cd_stop_dist = 1.5
-    # nav this aamout of time before getting new cone fix
-    cd_nav_time = 2.5
+    cd_cone_stop_dist = 1.5
+    # nav this amount of time before getting new cone fix
+    cd_cone_nav_time = 2.5
 
     # state=2 use /Lidar +-22.5 FOV to get closer to cone using /cmd_vel
     cd_closer_dist = 0.5
@@ -64,7 +64,7 @@ class NavNode(Node):
     cd_closer_avel = cd_closer_lvel
 
     # state=3 use /tof_fc_mid to "touch" cone using /cmd_vel
-    cd_touch_dist = 0.045
+    cd_touch_dist = 0.015 #0.045
     cd_touch_lin_vel = 0.05
     cd_touch_ang_vel = cd_touch_lin_vel
 
@@ -72,14 +72,15 @@ class NavNode(Node):
     cd_touch_wait = 2.0
 
     # backup after touching cone using /cmd_vel
+    # manual backup then nav2 backup
     cd_backup_dist = 1.5
-    cd_backup_vel = 0.25
+    cd_backup_vel = 0.5
+    cd_man_backup_dist = 0.5
+    cd_man_backup_vel = 0.25
 
     # # Field of view pointing forward from Lidar 36 degree scan data 
-    # fovRad = 0.758 # 45 deg, +-22.5 degrees
-
     tof_fc_dist_max = 1.5
-    tof_fov = 0.785 
+    tof_fov = 0.785 # fovRad = 0.758 # 45 deg, +-22.5 degrees
 
     # GLOBAL variables 
 
@@ -130,7 +131,7 @@ class NavNode(Node):
     wpWaypointNum:int = 1 # First waypoint number
     wpCone:bool       = False
 
-    sm_last_state = -1
+    # sm_last_state = -1
 
     gpsCurrent = None
 
@@ -228,7 +229,7 @@ class NavNode(Node):
 
         # #DEBUG
         # self.send_set_param_request(self.controller_server_set_param_svc,
-        #             "goal_checker.xy_goal_tolerance", 0.1)
+        #             "goal_checker.xy_goal_tolerance", 1.0)
             
         self.cmd_vel_publisher = self.create_publisher(Twist, '/cmd_vel', 10)
 
@@ -331,6 +332,16 @@ class NavNode(Node):
         if "waypoints" in doc :
             self.wpWaypoints = doc["waypoints"]
 
+        # # convert lat lon waypoints to x y
+        # wpoints = self.wpWaypoints
+        # if wpoints != None :
+        #     length = len(wpoints)
+        #     self.get_logger().info(f"{length=} {wpoints=}")
+        #     for n0 in range(length) :
+        #         n = n0+1
+        #         if n in wpoints :
+        #             wp = wpoints[1]
+        #             self.get_logger().info(f"{n=} {wp=}")
 
     def setupNav(self, stateChange:bool) -> bool :
         '''
@@ -660,6 +671,9 @@ class NavNode(Node):
     tc_state = -1
     tc_next_state = T_INIT_WAIT
 
+    sm_xy_goal_wp   = 2.0
+    sm_xy_goal_cone = 0.25
+
     def smTimerNav2Config(self, state:int) -> None :
         '''
         Configure nav2 parameters for nav to waypoint or goto cone
@@ -667,9 +681,9 @@ class NavNode(Node):
         
         if state == self.T_NAV_WP :
             # configure navigation nodes parameters
-            # change goal tolerance to 1M for nav to waypoint
+            # change goal tolerance for nav to waypoint
             self.send_set_param_request(self.controller_server_set_param_svc,
-                        "goal_checker.xy_goal_tolerance", 1.0)
+                        "goal_checker.xy_goal_tolerance", self.sm_xy_goal_wp)
 
             # Set which sensors are fused in EFK modules
             if self.wpGps == True :
@@ -693,9 +707,9 @@ class NavNode(Node):
                     
         elif state == self.T_GOTO_CONE :
             # configure navigation nodes parameters for goto cone
-            # change goal tolerance to 0.25M when approaching cone
+            # change goal tolerance when approaching cone
             self.send_set_param_request(self.controller_server_set_param_svc,
-                        "goal_checker.xy_goal_tolerance", 0.25)
+                        "goal_checker.xy_goal_tolerance", self.sm_xy_goal_cone)
             # Set which sensors are fused in EFK modules
             self.send_set_param_request(self.efk_global_set_param_svc, 
                         'publish_tf', False)
@@ -804,10 +818,19 @@ class NavNode(Node):
                     self.tts("Attempt to navigate to way point location again")
                     # next_state = self.T_WAIT_REQ
                     next_state = self.T_NAV_WP_AGAIN
-            else :
-                result = self.nav.getFeedback()
-                #self.get_logger().info(f"gotoPose {result=}")
-                
+            
+            # TODO: test dist measured to wp before checking for cone
+            # else :
+            #     if self.wpCone :
+            #         result = self.nav.getFeedback()
+            #         self.get_logger().info(f"sm_timer_callback: gotoPose {state=} {result=}")
+            #         trav_time_rem = Duration.from_msg(result.estimated_time_remaining).nanoseconds / 1e9
+            #         cone_dist:float = self.cone_at_d_cam
+            #         if (trav_time_rem < 20) and (cone_dist > 1.0) and (cone_dist < 7.0) :
+            #             # cone detected 
+            #             self.cancelNav2Task()
+            #             next_state = self.T_GOTO_CONE
+                    
 
         elif state == self.T_GOTO_CONE :
             if stateChange :
@@ -864,15 +887,15 @@ class NavNode(Node):
 
         elif state == self.CAL_IMU :
             if stateChange :
-                self.tts(f"IMU is calibrating")
+                self.tts(f"Release button when finished")
 
             status = self.drivePattern(stateChange, 0, 0.5, 2.0, 0.5)
             if status==True :
                 next_state = self.CAL_IMU_DONE
 
         elif state == self.CAL_IMU_DONE :
-            if stateChange :
-                self.tts(f"IMU calbration is complete")
+            # if stateChange :
+            #     self.tts(f"IMU calbration is complete")
             
             next_state = self.CAL_IMU_WAIT_BUTT
             returnVal = True
@@ -1155,8 +1178,8 @@ class NavNode(Node):
         next_state = state
 
         if x!=0 :
-            dist = self.cd_stop_dist
-            t = self.cd_nav_time
+            dist = self.cd_cone_stop_dist
+            t = self.cd_cone_nav_time
 
             # non-blocking navigation
             if self.cd_sub_state == 0 :
@@ -1232,7 +1255,7 @@ class NavNode(Node):
         elif d == 0 :
             self.get_logger().info(f"{func} lost cone {state=}")
             next_state = 0
-        elif d > 2*self.cd_stop_dist :
+        elif d > 2*self.cd_cone_stop_dist :
             self.get_logger().info(f"{func} cone is too far {d=} {state=}")
             next_state = 5 # back up
         elif d > self.cd_closer_dist :
@@ -1360,18 +1383,45 @@ class NavNode(Node):
 
         if self.cd_sub_state == 0 :
             if not killSwitchActive :
-                # issue a backup navigation command with obstical avoidance
-                self.nav.backup(backup_dist=dist, backup_speed=vel
-                    , time_allowance=10) #, disable_collision_checks=False) # non-blocking
+                # set timer to backup a bit manually
                 self.cd_sub_timer = cur_time
                 self.cd_sub_state = 1
 
         elif self.cd_sub_state == 1 :
+                # TODO: kill switch
+                # backup a bit manually to get out of collision stop polygon
+                msg = Twist()
+                dist = self.cd_man_backup_dist
+                vel = self.cd_man_backup_vel
+                t = 1.5*dist/vel
+                if (cur_time - self.cd_sub_timer) < t :
+                    # manual back up to avoid collision detect
+                    msg.linear.x = -vel 
+                else :
+                    msg.linear.x = 0.0 # stop
+                    self.cd_sub_state = 2
+                self.cmd_vel_publisher.publish(msg)
+
+        elif self.cd_sub_state == 2 :
+            dist = self.cd_backup_dist
+            vel = self.cd_backup_vel
+            t = 1.5*dist/vel
+            if not killSwitchActive :
+                # issue a backup navigation command with obstical avoidance
+                self.nav.backup(backup_dist=dist, backup_speed=vel
+                    , time_allowance=2*t) # non-blocking
+                self.cd_sub_timer = cur_time
+                self.cd_sub_state = 3
+
+        elif self.cd_sub_state == 3 :
+            dist = self.cd_backup_dist
+            vel = self.cd_backup_vel
+            t = 1.5*dist/vel
             if killSwitchActive :
                 # Cancel goal and wait when kill switch status changes to active
                 if killSwitchChange :
                     # self.nav.cancelTask()
-                    self.cd_sub_state = 0
+                    self.cd_sub_state = 2
             else : # Execute when kill switch is not active
                 # check for nav backup is complete or navigate time finished
                 if (cur_time - self.cd_sub_timer) < t :

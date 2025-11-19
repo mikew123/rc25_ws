@@ -154,7 +154,7 @@ efk_local :
     imu0_relative: false
     imu0_queue_size: 5
     # imu0_pose_rejection_threshold: 0.8                 # Note the difference in parameter names
-    # imu0_twist_rejection_threshold: 0.8                #
+    imu0_twist_rejection_threshold: 2.2 # limit lx 1m/s az 2m/s
     # imu0_linear_acceleration_rejection_threshold: 0.8  #
 
     # [ADVANCED] Some IMUs automatically remove acceleration due to gravity, and others don't. If yours doesn't, please set
