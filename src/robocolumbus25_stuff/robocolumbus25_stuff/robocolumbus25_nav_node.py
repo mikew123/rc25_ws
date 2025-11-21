@@ -54,7 +54,7 @@ class NavNode(Node):
 
     # state=1 use /cone_point to get location for navigator to drive to
     # Distance from detected cone to end navigation
-    cd_cone_stop_dist = 1.5
+    cd_cone_stop_dist = 3.0 # 1.5 increase for GPS
     # nav this amount of time before getting new cone fix
     cd_cone_nav_time = 2.5
 
@@ -92,6 +92,8 @@ class NavNode(Node):
     cone_at_a_cam:float = 0.0
     cone_det_time_cam:int = 0
     cone_det_time_out_cam:int = 2.0
+
+    cone_at_y_cam_last_det:float = 0.0
 
     # for touch (state=3)
     # using /cone_point_lidar
@@ -332,17 +334,57 @@ class NavNode(Node):
         if "waypoints" in doc :
             self.wpWaypoints = doc["waypoints"]
 
-        # # convert lat lon waypoints to x y
-        # wpoints = self.wpWaypoints
-        # if wpoints != None :
-        #     length = len(wpoints)
-        #     self.get_logger().info(f"{length=} {wpoints=}")
-        #     for n0 in range(length) :
-        #         n = n0+1
-        #         if n in wpoints :
-        #             wp = wpoints[1]
-        #             self.get_logger().info(f"{n=} {wp=}")
+        # convert lat lon waypoints to x y
+        wpoints = self.wpWaypoints
+        if ("lat" in self.wpSetPose) and ("lon" in self.wpSetPose) :
+            # pose lat lon is the starting point 0,0
+            poseLat = self.wpSetPose["lat"]
+            poseLon = self.wpSetPose["lon"]
+            # set pose x,y to origin of map 0,0
+            self.wpSetPose["x"] = 0.0
+            self.wpSetPose["y"] = 0.0    
+        else :
+            poseLat = None
+            poseLon = None
+            self.get_logger().error(f"readWaypointsFile: pose does not have lat+lon")
 
+        if wpoints != None :
+            length = len(wpoints)
+            self.get_logger().info(f"{poseLat=} {poseLon=} wp {length=} {wpoints=}")
+            for n0 in range(length) :
+                # waypoints 1 to length
+                n = n0+1
+                if n in wpoints :
+                    wp = wpoints[n]
+                    self.get_logger().info(f"{n=} {wp=}")
+                    if ("lat" in wp) and ("lon" in wp) :
+                        lat = wp["lat"]
+                        lon = wp["lon"]
+                        (x,y) = self.latLon_to_XY(poseLat, poseLon, lat, lon)
+                        wp["x"] = x
+                        wp["y"] = y
+                        self.wpWaypoints[n] = wp
+                    else :
+                        self.get_logger().error(f"readWaypointsFile: no lat lon in {wp=}")
+
+
+            self.get_logger().info(f"readWaypointsFile: {self.wpSetPose=} {self.wpWaypoints=}")
+
+    def latLon_to_XY(self, datum_lat:float, datum_lon:float, lat:float, lon:float) -> tuple :
+        '''
+        Convert GPS latitude,logitude to map X,Y 
+        X,Y are relative to the datum lat,lon
+        returns tuple (x,y)
+        '''
+        # convert lat,lon to map x,y
+        (deast, dnorth, dn, ds) = utm.from_latlon(datum_lat, datum_lon)
+        (peast, pnorth, pn, ps) = utm.from_latlon(lat, lon)
+        x = peast - deast
+        y = pnorth - dnorth
+        if dn != pn :
+            self.logger().error(f"latLon_to_XY: UTM zone number mismatch {dn=} {pn=}")
+        return (x,y)
+    
     def setupNav(self, stateChange:bool) -> bool :
         '''
         Executed when nav button pressed
@@ -419,15 +461,6 @@ class NavNode(Node):
                 if ("x" in wpPose) and ("y" in wpPose) :
                     x = wpPose["x"]
                     y = wpPose["y"]
-                elif ("lat" in wpPose) and ("lon" in wpPose) :
-                    lat = wpPose["lat"]
-                    lon = wpPose["lon"]
-                    # convert lat,lon to map x,y
-                    (peast, pnorth, pn, ps) = utm.from_latlon(lat, lon)
-                    (deast, dnorth, dn, ds) = utm.from_latlon(wpDatum("lat"), wpDatum("lon"))
-                    if pn == dn :
-                        x = peast = deast
-                        y = pnorth - dnorth
 
                 # get yaw to use in pose
                 if "rad" in wpPose :
@@ -457,16 +490,6 @@ class NavNode(Node):
         # if pose orientation in degrees convert to radians
         if (not ("rad" in wpPose)) and ("deg" in wpPose):
             wpPose["rad"] = wpPose["deg"]/180.0 * math.pi
-
-        # datum = None
-        # if wpDatum != None :
-        #     datum = [
-        #         wpDatum["lat"],
-        #         wpDatum["lon"],
-        #         0.0 # altitude? yaw ??
-        #     ] 
-        #     self.send_set_param_request(self.navsat_transform_server_set_param_svc,
-        #                             "datum",  datum)           
 
         if datum != None :
             self.send_set_param_request(self.navsat_transform_server_set_param_svc,
@@ -626,13 +649,6 @@ class NavNode(Node):
                 self.buttonDoTrig = True
             self.buttonDo = buttonDo
 
-        # if "buttonKill" in nav :
-        #     buttonKill = nav["buttonKill"]
-        #     if (self.buttonKill==False) and (buttonKill==True):
-        #         self.buttonKillTrig = True
-        #     self.buttonKill = buttonKill
-        #     self.processKillButton()
-
         if "imu_cal_status" in nav :
             self.imuCalStatus = nav["imu_cal_status"]
 
@@ -645,25 +661,6 @@ class NavNode(Node):
             self.killSwChange = True
             # self.get_logger().info(f"processKill: kill switch is {kill}")
         self.killSw = kill
-
-    # def processKillButton(self) -> None:
-    #     '''
-    #     Button on teleop game controller used for Kill
-    #     As long as the button is not pressed, the kill sw is disabled
-    #     When button first pressed the kill switch is enabled and kill=False
-    #     After enabled
-    #         While button is released kill=True
-    #         While button is pressed kill=False
-    #     '''
-    #     if self.buttonKillTrig == False :
-    #         return
-    #     killB:bool = self.buttonKill
-    #     if killB == True :
-    #         self.killSwEn = True
-    #         self.get_logger().info(f"processKillButton: teleop kill switch is enabled")
-    #         self.tts("Kill switch is enabled")
-    #     if self.killSwEn == True :
-    #         self.killSw = not killB
 
     # Timer based state machine for cone navigation
     T_INIT_WAIT, T_CAL_IMU, T_WAIT_GO, T_SETUP_NAV, \
@@ -820,16 +817,19 @@ class NavNode(Node):
                     next_state = self.T_NAV_WP_AGAIN
             
             # TODO: test dist measured to wp before checking for cone
-            # else :
-            #     if self.wpCone :
-            #         result = self.nav.getFeedback()
-            #         self.get_logger().info(f"sm_timer_callback: gotoPose {state=} {result=}")
-            #         trav_time_rem = Duration.from_msg(result.estimated_time_remaining).nanoseconds / 1e9
-            #         cone_dist:float = self.cone_at_d_cam
-            #         if (trav_time_rem < 20) and (cone_dist > 1.0) and (cone_dist < 7.0) :
-            #             # cone detected 
-            #             self.cancelNav2Task()
-            #             next_state = self.T_GOTO_CONE
+            else :
+                if self.wpCone :
+                    # result = self.nav.getFeedback()
+                    # self.get_logger().info(f"sm_timer_callback: gotoPose {state=} {result=}")
+                    # trav_time_rem = Duration.from_msg(result.estimated_time_remaining).nanoseconds / 1e9
+                    wpx = self.wpWaypoint["x"]
+                    wpy = self.wpWaypoint["y"]
+                    (dist,_,_,_,_) = self.get_dist_from_robot(wpx, wpy)
+                    dist:float = self.cone_at_d_cam
+                    if (dist < 5.0) and (dist > 1.0) :
+                        # cone detected 
+                        self.cancelNav2Task()
+                        next_state = self.T_GOTO_CONE
                     
 
         elif state == self.T_GOTO_CONE :
@@ -1102,13 +1102,14 @@ class NavNode(Node):
     def search_for_cone(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} wait for cone detection {state=}")
-            self.tts("State 0")
+            self.tts("Searching for a cone")
             self.wcScanInit = True
             # self.nav.cancelTask()
 
         # get cone xy from camera detect
         x:float = self.cone_at_x_cam
         y:float = self.cone_at_y_cam
+        yLastDet:float = self.cone_at_y_cam_last_det
         t:int = self.cone_det_time_cam
         to:int = self.cone_det_time_out_cam
         dt:int = (time.time_ns()*1e-9) - t
@@ -1142,7 +1143,11 @@ class NavNode(Node):
                 #     self.tts("Scanning for a cone")
 
                 #NOTE: kill sw processed in drivePattern
-                status = self.drivePattern(self.wcScanInit, 10, 0.25, 5.0, 1.0)
+                vel = 0.25
+                # rotate toward direction of last cone detected
+                if yLastDet > 0.0 :
+                    vel = -vel
+                status = self.drivePattern(self.wcScanInit, 10, vel, 5.0, 1.0)
                 self.wcScanInit = False
                 if status:
                     # drive pattern completed - init drive pattern on the next cycle
@@ -1157,7 +1162,7 @@ class NavNode(Node):
         cur_time = time.time_ns()*1e-9
         if state_change :
             self.get_logger().info(f"{func} navigate with BasicNavigator close to cone {state=}")
-            self.tts("State 1")
+            self.tts("Go towards the cone")
             self.cd_sub_state = 0
             # self.nav.cancelTask()
 
@@ -1232,7 +1237,7 @@ class NavNode(Node):
     def get_closer_to_cone(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} drive closer to cone using cmd_vel and camera {state=}")
-            self.tts("State 2")
+            self.tts("Get closer to cone")
 
         if (time.time_ns()*1e-9 - self.cd_timer) < 2.0 : return state
 
@@ -1283,7 +1288,7 @@ class NavNode(Node):
     def touch_cone(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} drive slowly to \"touch\" cone using cmd_vel and lidar sensor {state=}")
-            self.tts("State 3")
+            self.tts("Slowly touch the cone")
             # self.nav.cancelTask()
 
         # self.nav.cancelTask()
@@ -1334,7 +1339,7 @@ class NavNode(Node):
                 msg.angular.z -= 4*(fr_ob_dist - 0.2) * msg.linear.x
         else : 
             self.get_logger().info(f"{func} touched {d=:.3f} {d_tof=:.3f} {d_tof=:.3f} {a=:.3f} {x=:.3f} {y=:.3f} {fc_ob_dist=:.3f} {fl_ob_dist=:.3f} {fr_ob_dist=:.3f} {state=}")
-            self.tts("State 3: The cone was touched")
+            self.tts("The cone was touched")
             next_state = 4
 
         self.cmd_vel_publisher.publish(msg)
@@ -1346,7 +1351,7 @@ class NavNode(Node):
     def wait_after_touch(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} wait a short time {state=}")
-            self.tts("State 4")
+            # self.tts("State 4")
             # self.nav.cancelTask()
         
         killSwitchActive:bool = ks
@@ -1365,7 +1370,7 @@ class NavNode(Node):
     def backup_after_touch(self, func:str, state:int, state_change:bool, ks:bool, ksc:bool) -> int :
         if state_change :
             self.get_logger().info(f"{func} backup {state=}")
-            self.tts("State 5: Backup")
+            self.tts("Backup")
             self.cd_sub_state = 0
 
         cur_time = time.time_ns()*1e-9            
@@ -1437,7 +1442,7 @@ class NavNode(Node):
         if state_change :
             self.get_logger().info(f"{func} STOP {state=}")
             # self.nav.cancelTask()
-            self.tts("State 6: Stopping now")
+            # self.tts("State 6: Stopping now")
 
         next_state = state
         
@@ -1446,9 +1451,9 @@ class NavNode(Node):
 
     #***************************************************************************
 
-    def get_cone_dist_from_robot(self, cx:float, cy:float) -> tuple:
+    def get_dist_from_robot(self, cx:float, cy:float) -> tuple:
         """
-        return (cone_dist, cone_angle, robot_x, robot_y, robot_angle).
+        return (dist, angle, robot_x, robot_y, robot_angle).
         dist,angle relative to oak-d_frame.
         robot x,y,angle relative to.
         cx,cy is the cone xy relative to oak-d_frame.
@@ -1487,7 +1492,7 @@ class NavNode(Node):
         if cx!=0 and cy!=0 :
             # self.get_logger().info(f"gotoConeXY: cone at {cx=:.3f} {cy=:.3f}")
             
-            (cd, ca, rx, ry, ra) = self.get_cone_dist_from_robot(cx, cy)
+            (cd, ca, rx, ry, ra) = self.get_dist_from_robot(cx, cy)
 
             self.get_logger().info(f"gotoConeXY: robot at {rx=:.3f} {ry=:.3f}, {ra=:.3f} cone at {cx=:.3f} {cy=:.3f} {cd=:.3f} {ca=:.3f}")
 
@@ -1533,6 +1538,10 @@ class NavNode(Node):
         self.cone_at_d_cam = d
         self.cone_at_a_cam = a
         self.cone_det_time_cam = t
+
+        # save last valid cone detection y
+        if x>0.0 :
+            self.cone_at_y_cam_last_det = y
 
         # self.get_logger().info(f"cone_callback: {x=:.3f} {y=:.3f} {a=:.3f} {d=:.3f} ")
 
