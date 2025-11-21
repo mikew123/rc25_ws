@@ -45,6 +45,29 @@ class NavNode(Node):
     # Timer for state machine
     smTimerRateHz:float = 10.0
 
+    T_INIT_WAIT, T_CAL_IMU, T_WAIT_GO, T_SETUP_NAV, \
+        T_GET_WP, T_NAV_WP, T_NAV_WP_AGAIN, T_GOTO_CONE, T_DONE = range(9)
+    tc_state = -1
+    tc_next_state = T_INIT_WAIT
+
+    # stop when this distance from mid_link during goto wp or cone
+    sm_xy_goal_wp   = 3.0 #2.0
+    sm_xy_goal_cone = 0.25
+
+    CAL_IMU_WAIT_BUTT, CAL_IMU, CAL_IMU_DONE = range(3)
+    calImuState = -1
+    next_calImuState = CAL_IMU_WAIT_BUTT
+
+    NAV_GO_WAIT_BUTT, NAV_GO_BUTT_PRESSED = range(2)
+    navGoState = -1
+    next_navGoState = NAV_GO_WAIT_BUTT
+    
+    DP_FWD_RIGHT, DP_REV_LEFT, DP_PAUSE = range(3)
+    dpState = -1
+    next_dpState = DP_FWD_RIGHT
+    dpStopTime = 0.0
+    dpPauseNextState = -1
+    dpCount = 0
 
     cd_timer:float = 0.0
     cd_state:int = 0
@@ -54,7 +77,7 @@ class NavNode(Node):
 
     # state=1 use /cone_point to get location for navigator to drive to
     # Distance from detected cone to end navigation
-    cd_cone_stop_dist = 3.0 # 1.5 increase for GPS
+    cd_cone_stop_dist = 3.0 # 1.5 increase for GPS wander
     # nav this amount of time before getting new cone fix
     cd_cone_nav_time = 2.5
 
@@ -349,7 +372,7 @@ class NavNode(Node):
             self.get_logger().error(f"readWaypointsFile: pose does not have lat+lon")
 
         if wpoints != None :
-            length = len(wpoints)
+            length = len(wpoints) # num of waypoints in file
             self.get_logger().info(f"{poseLat=} {poseLon=} wp {length=} {wpoints=}")
             for n0 in range(length) :
                 # waypoints 1 to length
@@ -364,8 +387,8 @@ class NavNode(Node):
                         wp["x"] = x
                         wp["y"] = y
                         self.wpWaypoints[n] = wp
-                    else :
-                        self.get_logger().error(f"readWaypointsFile: no lat lon in {wp=}")
+                    # else :
+                    #     self.get_logger().error(f"readWaypointsFile: no lat lon in {wp=}")
 
 
             self.get_logger().info(f"readWaypointsFile: {self.wpSetPose=} {self.wpWaypoints=}")
@@ -451,7 +474,7 @@ class NavNode(Node):
                     return False
 
                 self.get_logger().info(f"setupNav: Use current gps as {datum=}")
-                self.tts("use current gps datum lat={datum[0]} lon={datum[1]}")
+                self.tts("use current gps datum lat={datum[0]:.0f} lon={datum[1]:.0f}")
 
             # create pose x,y,yaw from datum lat/lon and compass
             #TODO: get compass yaw, should we use a datum yaw if given?
@@ -663,13 +686,6 @@ class NavNode(Node):
         self.killSw = kill
 
     # Timer based state machine for cone navigation
-    T_INIT_WAIT, T_CAL_IMU, T_WAIT_GO, T_SETUP_NAV, \
-        T_GET_WP, T_NAV_WP, T_NAV_WP_AGAIN, T_GOTO_CONE, T_DONE = range(9)
-    tc_state = -1
-    tc_next_state = T_INIT_WAIT
-
-    sm_xy_goal_wp   = 2.0
-    sm_xy_goal_cone = 0.25
 
     def smTimerNav2Config(self, state:int) -> None :
         '''
@@ -790,7 +806,7 @@ class NavNode(Node):
                     a = 0.0
 
                     self.get_logger().info(f"Go to way point location {x=} {y=}")
-                    self.tts(f"Go to waypoint location {x=} {y=}")
+                    self.tts(f"Go to waypoint location {x=:.0f} {y=:.0f}")
 
                     goto_pose = self.createPoseStamped(x,y,a,"map")
                     self.nav.goToPose(goto_pose)
@@ -816,20 +832,20 @@ class NavNode(Node):
                     # next_state = self.T_WAIT_REQ
                     next_state = self.T_NAV_WP_AGAIN
             
-            # TODO: test dist measured to wp before checking for cone
-            else :
-                if self.wpCone :
-                    # result = self.nav.getFeedback()
-                    # self.get_logger().info(f"sm_timer_callback: gotoPose {state=} {result=}")
-                    # trav_time_rem = Duration.from_msg(result.estimated_time_remaining).nanoseconds / 1e9
-                    wpx = self.wpWaypoint["x"]
-                    wpy = self.wpWaypoint["y"]
-                    (dist,_,_,_,_) = self.get_dist_from_robot(wpx, wpy)
-                    dist:float = self.cone_at_d_cam
-                    if (dist < 5.0) and (dist > 1.0) :
-                        # cone detected 
-                        self.cancelNav2Task()
-                        next_state = self.T_GOTO_CONE
+            # # TODO: test dist measured to wp is close then check for cone
+            # else :
+            #     if self.wpCone :
+            #         # result = self.nav.getFeedback()
+            #         # self.get_logger().info(f"sm_timer_callback: gotoPose {state=} {result=}")
+            #         # trav_time_rem = Duration.from_msg(result.estimated_time_remaining).nanoseconds / 1e9
+            #         wpx = self.wpWaypoint["x"]
+            #         wpy = self.wpWaypoint["y"]
+            #         (dist,_,_,_,_) = self.get_dist_from_robot(wpx, wpy)
+            #         dist:float = self.cone_at_d_cam
+            #         if (dist < 5.0) and (dist > 1.0) :
+            #             # cone detected 
+            #             self.cancelNav2Task()
+            #             next_state = self.T_GOTO_CONE
                     
 
         elif state == self.T_GOTO_CONE :
@@ -852,10 +868,6 @@ class NavNode(Node):
             
 
         self.tc_next_state = next_state
-
-    CAL_IMU_WAIT_BUTT, CAL_IMU, CAL_IMU_DONE = range(3)
-    calImuState = -1
-    next_calImuState = CAL_IMU_WAIT_BUTT
 
     def calImu(self) -> bool :
         '''
@@ -909,10 +921,6 @@ class NavNode(Node):
         
         return returnVal
 
-    NAV_GO_WAIT_BUTT, NAV_GO_BUTT_PRESSED = range(2)
-    navGoState = -1
-    next_navGoState = NAV_GO_WAIT_BUTT
-
     def waitGo(self) -> bool :
         '''
         Wait to start navigation 
@@ -949,13 +957,6 @@ class NavNode(Node):
         self.next_navGoState = next_state
 
         return returnVal
-    
-    DP_FWD_RIGHT, DP_REV_LEFT, DP_PAUSE = range(3)
-    dpState = -1
-    next_dpState = DP_FWD_RIGHT
-    dpStopTime = 0.0
-    dpPauseNextState = -1
-    dpCount = 0
 
     def drivePattern(self, init:bool, numMoves:int=0, speed:float=0.5, driveT:float=2.0, pauseT:float=0.5) -> bool :
         '''
@@ -1324,7 +1325,7 @@ class NavNode(Node):
             next_state = 0
         elif x > 1.5*self.cd_closer_dist :
             self.get_logger().info(f"{func} cone is too far {d=:.3f} {d_tof=:.3f} {a=:.3f} {x=:.3f} {y=:.3f} {state=}")
-            self.tts(f"State 3: The cone is too far at distance {d:.3f} meters")
+            self.tts(f"State 3: The cone is too far at distance {d:.1f} meters")
             next_state = 0 # restart by looking for the cone
         elif (x > self.cd_touch_dist) and (d_tof > self.cd_touch_dist) :
             self.get_logger().info(f"{func} approaching cone to touch {d=:.3f} {d_tof=:.3f} {a=:.3f} {x=:.3f} {y=:.3f} {fc_ob_dist=:.3f} {fl_ob_dist=:.3f} {fr_ob_dist=:.3f} {state=}")
