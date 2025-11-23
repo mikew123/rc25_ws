@@ -787,7 +787,9 @@ class NavNode(Node):
         elif state == self.T_NAV_WP :
             if stateChange :
                 self.get_logger().info(f"T_NAV_WP: next {self.wpWaypoint=}")
-                self.tts(f"Goto waypoint x {self.wpWaypoint["x"]:.1f}, y {self.wpWaypoint["y"]:.1f}")
+                x=self.wpWaypoint["x"]
+                y=self.wpWaypoint["y"]
+                self.tts(f"Goto waypoint x {x:.1f}, y {y:.1f}")
                 self.smTimerNav2Config(state)
             
                 # execute goto waypoint once

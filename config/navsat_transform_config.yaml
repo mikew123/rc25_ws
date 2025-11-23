@@ -7,14 +7,13 @@ navsat_transform:
     # IMU is calibrated
     magnetic_declination_radians: 0.0
 
-    # IMU yaw=0 north, needs yaw=0 east pi/2 offset
-    yaw_offset: 0.0 #1.5707963
+    yaw_offset: 0.0 # Compass is processed to get Est = 0.0
 
     zero_altitude: true
     broadcast_utm_transform: true
     publish_filtered_gps: true
     use_odometry_yaw: false # use IMU compass #true
     wait_for_datum: true # ? does not seem to wait 
-    # If not set to gps close (set to 0,0,0) the nav2 code errprs and does not start
-    # I set a approx GPS here and then set the datum param when the codes runs
-    datum: [[32.7702773,  -96.8377211, 0.0] # [lat, lon, alt]
+    # If not set to gps close (default set to 0,0,0) the nav2 code errors and does not start
+    # I set a approx GPS here and then set the datum param with accurate current GPS
+    datum: [32.7702773,  -96.8377211, 0.0] # [lat, lon, alt]
