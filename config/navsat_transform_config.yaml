@@ -14,5 +14,7 @@ navsat_transform:
     broadcast_utm_transform: true
     publish_filtered_gps: true
     use_odometry_yaw: false # use IMU compass #true
-    wait_for_datum: true # ? does not seem to wait (set to 0,0,0) so I set datum here
-    datum: [32.7702773,  -96.8377211, 0.0] # House, [lat, lon, alt]
+    wait_for_datum: true # ? does not seem to wait 
+    # If not set to gps close (set to 0,0,0) the nav2 code errprs and does not start
+    # I set a approx GPS here and then set the datum param when the codes runs
+    datum: [[32.7702773,  -96.8377211, 0.0] # [lat, lon, alt]
