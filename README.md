@@ -212,10 +212,11 @@ https://docs.ros.org/en/melodic/api/robot_localization/html/integrating_gps.html
 
 # TODO:
 ## Electrical Mechanical
-### Put electronics inside jeep
-- Lidar mounted on roof
-- Does camaera detect cones through existing windshield?
+- Put electronics inside jeep
+-- Lidar mounted on roof
+-- Does camaera detect cones through existing windshield?
 - Improve external DC power
+- Work on transmission and drive chain: noticable grease/oil and odd noises
 
 ## Code
 - Detect cone while going to waypoint and then approach it
