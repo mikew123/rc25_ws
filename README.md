@@ -208,4 +208,23 @@ The complete TF frame map (pdftoppm -png rc25_08_17_25.pdf rc25_08_17_25):<br>
 ## Using GPS
 https://docs.ros.org/en/melodic/api/robot_localization/html/integrating_gps.html<br>
 
-<img src="support/Gps_localization.jpg">
+<img src="support/Gps_localization.jpg"><br>
+
+# TODO:
+## Electrical Mechanical
+### Put electronics inside jeep
+- Lidar mounted on roof
+- Does camaera detect cones through existing windshield?
+- Improve external DC power
+
+## Code
+- Detect cone while going to waypoint and then approach it
+- If cone is not detected or lost detetction at waypoint go to points close by (say +-5M) if no cone is found go to next waypoint
+- Detect obsticals while "manually" searching in movement pattern for the cone 
+
+## Simulation?
+- Create simulation model
+- Create Gazebo mapheight for terain hills and valleys and add odd obsticals
+  
+## RTK GPS?
+- Update to RTK $$
