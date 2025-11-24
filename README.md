@@ -223,6 +223,7 @@ https://docs.ros.org/en/melodic/api/robot_localization/html/integrating_gps.html
 - Detect cone while going to waypoint and then approach it before getting to waypoint
 - If cone is not detected or lost detetction at waypoint go to points close by (say +-5M) if no cone is found go to next waypoint
 - Avoid obstacles while "manually" searching in movement pattern for the cone 
+- Convert nodes to LifeCycle
 
 ## Simulation?
 - Create simulation model
