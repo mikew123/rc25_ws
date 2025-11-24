@@ -212,20 +212,24 @@ https://docs.ros.org/en/melodic/api/robot_localization/html/integrating_gps.html
 
 # TODO:
 ## Electrical Mechanical
-- Put electronics inside jeep
--- Lidar mounted on roof
--- Does camaera detect cones through existing windshield?
+### Put electronics inside jeep
+- Lidar mounted on roof
+- Does camaera detect cones through existing windshield?
+### Other
 - Improve external DC power
 - Work on transmission and drive chain: noticable grease/oil and odd noises
 
 ## Code
-- Detect cone while going to waypoint and then approach it
+- Detect cone while going to waypoint and then approach it before getting to waypoint
 - If cone is not detected or lost detetction at waypoint go to points close by (say +-5M) if no cone is found go to next waypoint
-- Detect obsticals while "manually" searching in movement pattern for the cone 
+- Avoid obstacles while "manually" searching in movement pattern for the cone 
 
 ## Simulation?
 - Create simulation model
-- Create Gazebo mapheight for terain hills and valleys and add odd obsticals
+- Create Gazebo height map for terrain hills and valleys
+- Add odd obstacles like grass/weeds/branches to Gazebo
+- Sensor sensitivity to rounded objects and small things like weeds?
+- Model robot bounce caused my shock obsorbers?
   
 ## RTK GPS?
 - Update to RTK $$
