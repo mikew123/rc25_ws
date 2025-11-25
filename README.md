@@ -1,8 +1,11 @@
 # RoboColumbus2025
 Wheeled autonomus robot for 2025 DPRG RoboColumbus competion
 
-This project was started in June 2024 and is expected to have a competitive robot for the RoboColumbus competition in Fall of 2025. I will drive the robot around the field in The Fall of 2024 and maybe have odometry and mapping displayed using ROS2 Rviz2.
-https://www.dprg.org/robocolumbus-2024/
+This project was started in June 2024 and is expected to have a competitive robot for the RoboColumbus competition in Fall of 2025. I will drive the robot around the field in The Fall of 2024 and maybe have odometry and mapping displayed using ROS2 Rviz2 and Foxglove.<br>
+!Update: Got zero points at 2025 competion it never moved from start line stuttering resuming navigation to way point.<br>
+The logs said that it could not plan to the waypoint it was too far.<br>
+I eventually found the issue in the rc25_params file: The global map was 100x100 meters meaning it could only plan up to +-50 meters in any direction. My testing waas below 50 meters!
+https://www.dprg.org/robocolumbus-2025/
 
 # RoboColumbus competition
 The basic objective for RoboColumbus are:
@@ -23,42 +26,44 @@ direct path. The challenge is to touch and stop at each cone.
 
 # Robot platform
 The AXIAL RCX6 1/6 scale Jeep rock crawler platform was selected to be used for the robot. This platform allows generous room for sensors and electronics to be added and can be installed into the interior of the Jeep for protection.
-https://www.axialadventure.com/product/1-6-scx6-jeep-jlu-wrangler-4x4-rock-crawler-rtr-green/AXI05000T1.html
+https://www.axialadventure.com/product/1-6-scx6-jeep-jlu-wrangler-4x4-rock-crawler-rtr-green/AXI05000T1.html<br>
 
-The motor drive, steering and shift control signals must be multiplexed between the RC receiver and the computer. A module in the engine compartment will be added to perform this with a serial interface to the computer in the Jeep cabin. The RC receiver is powered from the motor controller (facrory default) and the connections to the computer is optional, the module will power up to use the RC receiver signals.
+The motor drive, steering and shift control signals must be multiplexed between the RC receiver and the computer. A module in the engine compartment will be added to perform this with a serial interface to the computer in the Jeep cabin. The RC receiver is powered from the motor controller (facrory default) and the connections to the computer is optional, the module will power up to use the RC receiver signals.<br>
 
 The main battery in the engine compartment will also be used for sensors and computer power. A DC-DC module would be added in the engine compartment with 2 sets of 5V at 3 Amps power leads to the Jeep cabin. Fusing the power from the main battery is added for protection. The control multiplexor and DC converter on one board.
 
 # Power
-Tap from 3S 11.1V LiPo battery in engine compartment with a fuse.
+Tap from 1 or 2 3S 11.1V LiPo battery in engine compartment with a fuse. The batteries can be hot swapped.
 Two DC-DC converters/regulators for computer and sensors in sealed box in engine compartment.
+Also a 5mm/2.5 power jack for external power, hot plugable.
 
 # Remote connectivity
 - RC transmitter for selecting the recevier or computer </br>
   When the computer is selected it is used as a kill switch </br>
   When receiver is selected it is used for manual steering control </br>
+- Game controller with drive controls and start and kill buttons.<br>
 - WIFI for development and debug and course configuration </br>
 - Tiger VNC server on Pi ; Tiger VNC Viewer on PC 192.168.1.155<br>
 Tiger VNC viewer must be started from .exe file
 
 # Sensors
 ## GPS
-GPS receiver with optional RTK capbility
-Used for primary odometry
+GPS receiver with optional RTK capbility Used for primary odometry<br>
+This is a standard GPS with many meters of in-accuracy.<br>
+U-Blox M10Q
+
 ## IMU
-IMU to provide tilt compensation for sensors and maybe bearing to help GPS
+IMU BNO085 to provide tilt compensation for sensors and maybe bearing to help GPS<br>
 ## Camera
-Object detection and depth camera OAK-D-Lite
+Object detection (Coneslayer AI package) and depth camera OAK-D-Lite
 ## LIDAR
 Optional rotating LIDAR SLLIDAR S3 for far obsticle detection and avoidance
 ## TOF
-TBD
-Time Of Flight sensors on front, rear and optional sides with mm resolution for close obstical avoidance and close cone sensor
-
+Time Of Flight sensors on front, rear and optional sides with mm resolution for close obstical avoidance and close cone sensor<br>
+There are 3 VL53L8CX on both front and back giving a total FOV of 45x135 deg with an array of 8x24 distance measurements<br>
 # Computer 
-- Raspberry Pi4 (or 5) with OS Ubuntu 20.04
-- Enbedded PC with Linux or Windows (WSL) with OS Ubuntu 20.04
-  
+- Raspberry Pi with OS Ubuntu 24.04 and a 225G SSD<br>
+
 # Software
 ## ROS2
 - Using ROS2 Jazzy which requires Linux Ubuntu 24.04 OS
@@ -86,9 +91,12 @@ This protects the 3.3V input pins on the micro controller from the 6V signals fr
 Pololu Logic Level Shifter, 4-Channel, Bidirectional 2595</br>
 <https://www.pololu.com/product/2595>
 ## Microcontroller
-This selects between the computer in the cabin and the RC receiver. It also relays the steering, throttle and shift signals from the computer and the servos and motor ESC. It also allows the computer to set default ranges etc, and sends statuses back.</br>
-Waveshare RP2040-Zero, a Pico-like MCU Board Based on Raspberry Pi MCU RP2040, Mini ver.</br>
-<https://www.waveshare.com/rp2040-zero.htm>
+Uses 3 Waveshare RP2040-Zero, a Pico-like MCU Board Based on Raspberry Pi MCU RP2040, Mini ver.</br>
+<https://www.waveshare.com/rp2040-zero.htm><br>
+- Messages are formatted as Json strings messages over serial. Each controller is selected using /dev/serial/by-id/"..." when opening the serial point on a ROS node<br>
+- Engine controller: selects between the computer in the cabin and the RC receiver. It also relays the steering, throttle and shift signals from the computer and the servos and motor ESC. It also allows the computer to set default ranges etc, and sends statuses back.</br>
+- IMU GPS controller: collect the IMU and front and back TOF sensor data and send to the ROS node over serial<br>
+- TOF controller: Collects the TOF sensor values and sends them to the ROS node over serial<br>
 
 # New electronics in engine compartment
 A waterproof box is mounted to the rear battery holder. This box holds the DC-DC converters for the electronics in the cabin, the servo signal mux and a micro controller to manage the servo switch and send some telemetry to the computer in the cabin. The servo switch defaults to connecting the RC receiver to the motor and servos.</br>
@@ -115,6 +123,10 @@ The DC-DC converters are inside the waterproof box. The power input from the bat
 
 ### TOF Sensors Controller Board
 <img src="support/rc25_TofSensorsControler.jpg"></br>
+
+### Battery/external power Board
+This board uses Schotky diodes to Isolate the extarnal power from the Regulated power regulators in the engine compartment (connected to the battery)<br>
+The power sources can be hot swapped withoout shutting down the Pi<br>
 
 # Micro controller firmware
 The microcontroller firmware is C-code developed using the Arduino IDE. The interface to the controller uses the USB port for a serial communications interface. A simple Json data structure sends data to-from the computer in the cabin over the USB serial interface.
@@ -195,20 +207,30 @@ This is a detail view of the first 200 samples:
 <img src="support/Test scripts/test_plot_detail.png"></br>
 
 # ROS code
-## 3rd party libraries used
+## 3rd party ROS packages used
 The Lidar is managed using the https://github.com/Slamtec/sllidar_ros2.git package<br>
 The Camera cone detection AI uses the https://github.com/mw46d/ros_coneslayer.git package<br>
 The 3rd party libraries are used by launching them within the rc25 launch file<br>
 
 ## TF link map
-The oak-d TF frames are created in ros_coneslayer and connected to in the URDF file<br>
+The oak-d physical component TF frames are created in ros_coneslayer and connected to in the URDF file<br>
 The complete TF frame map (pdftoppm -png rc25_08_17_25.pdf rc25_08_17_25):<br>
 <img src="support/rc25_08_17_25-1.png"><br>
 
+## Waypoints
+The way points are set using a YAML formated waypoints file. The starting pose and waypoints can be in either X,Y or lat/lon format. The GPS can be enabled or not. The waypoints file are in the /sambashare directory so that the PC can easily acces them remotely<br>
+
 ## Using GPS
 https://docs.ros.org/en/melodic/api/robot_localization/html/integrating_gps.html<br>
-
 <img src="support/Gps_localization.jpg"><br>
+I ended up connecting the odometry output of the EFK local node to the EFK global (GPS) node instead of connecting EFK global to IMU and Engine odometry<br>
+There are seperate param.yaml files for the EFK_local, EFK_global and navsat_transform nodes<>
+The AMCL node is disabled in the nav2 params file, but needed to set some other parameters to make AMCL happy.<br>
+The navsat_transform creates the map->odom TF for localization correction using GPS.<br>
+### GPS ROS odd stuff
+I had to set the GPS datum in the navsat_transform params even though I set wait_for_datum: true!! It must be relatively close to the actual GPS waypoints location. Example: I set the datum in the file to my house in Dallas for testing, but that was not close enough for the competition in Farmersville!!<br>
+I got best results updating the dataum param with actual GPS value read from the reciever at the initial position<br>
+The nav2 navigation needs the X,Y coordinates relative to the initial position, it does not accept GPS lat,lon which are converted to X,Y meters using UTM conversions.
 
 # TODO:
 ## Electrical Mechanical
