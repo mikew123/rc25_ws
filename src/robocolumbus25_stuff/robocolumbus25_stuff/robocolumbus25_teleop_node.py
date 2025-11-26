@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+"""Robocolumbus25 teleoperation node.
+
+Converts joystick `sensor_msgs/Joy` messages from `/joy` into
+`geometry_msgs/Twist` messages on `/cmd_vel/teleop`. Publishes JSON
+payloads as `std_msgs/String` on `json_msg` for TTS and button events
+(e.g. kill/do). Applies max speed and steering limits and computes
+angular velocity from steering via wheelbase geometry.
+"""
 
 import rclpy
 import math

@@ -1,4 +1,20 @@
-# Controller node
+
+"""
+Controller Node for RoboColumbus25.
+Controls overall robot navigation and status. Listens for engine status JSON
+messages, manages battery status publishing, and coordinates pose setting.
+Publishes TTS/status messages and interacts with other nodes via `json_msg`.
+
+Topics:
+- Subscribes: `json_msg` (`std_msgs/String`)
+- Publishes: `battery_status` (`sensor_msgs/BatteryState`),
+  `set_pose` (`geometry_msgs/PoseWithCovarianceStamped`),
+  `json_msg` (`std_msgs/String`)
+
+Behavior summary:
+- Processes engine status messages, manages battery status, sets robot pose,
+  and coordinates TTS/status communication with other nodes.
+"""
 
 import rclpy
 import json

@@ -1,3 +1,13 @@
+
+#
+"""
+Navigation node for RoboColumbus25.
+Manages autonomous navigation to waypoints and cones using GPS, IMU, camera,
+LIDAR, and TOF sensors. Implements a state machine to calibrate sensors, set
+initial pose, navigate to waypoints, detect and approach cones, and handle
+backup/stop actions. Publishes velocity and pose commands, configures navigation
+parameters, and coordinates with other nodes via JSON messages.
+"""
 # RC25 navigation node
 
 import rclpy

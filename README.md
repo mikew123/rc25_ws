@@ -118,6 +118,7 @@ The DC-DC converters are inside the waterproof box. The power input from the bat
 <br>
 <img src="support/RCX6_engine_electronics_schematic.jpg"></br>
 
+
 ### IMU and GPS Controller Board
 <img src="support/rc25_ImuGpsController.jpg"></br>
 
@@ -130,6 +131,48 @@ The power sources can be hot swapped withoout shutting down the Pi<br>
 
 # Micro controller firmware
 The microcontroller firmware is C-code developed using the Arduino IDE. The interface to the controller uses the USB port for a serial communications interface. A simple Json data structure sends data to-from the computer in the cabin over the USB serial interface.
+### IMU & GPS Controller (RP2040)
+Uses a dual-core RP2040 microcontroller to collect IMU (BNO085) and GPS (U-Blox M10Q) data.
+- **Core 1:** Polls and processes IMU and GPS sensor data, formats, and sends JSON messages over USB serial to the host computer.
+- **Core 2:** Buffers sensor data and passes it to core 1 for transmission.
+Data is formatted as JSON and sent over USB serial. The inter-core buffer ensures reliable, low-latency transfer of sensor packets to the host computer for real-time robot localization and navigation.
+**Sensor libraries used:**
+- Adafruit BNO08x (IMU)
+- SparkFun u-blox GNSS v3 (GPS)
+
+### TOF Controller (RP2040)
+Uses both cores of the RP2040 microcontroller to manage Time-of-Flight (TOF) sensor data.
+- **Core 1:** Polls and processes data from the front cluster of three TOF sensors, formats, and sends JSON messages over USB serial to the host computer.
+- **Core 2:** Polls and processes data from the rear cluster of TOF sensors, buffers distance measurements, and passes them to core 1 for transmission.
+Front and rear TOF devices are connected to separate I2C interfaces (`Wire` and `Wire1`).
+A serial queue is used for inter-core communication, allowing core 2 to send data to core 1 for transmission.
+Sensor data validity is filtered using the status message from each TOF sensor, ensuring only reliable measurements are sent. The controller uses the VL53L8CX TOF sensor library for sensor interfacing and data acquisition.
+This design enables efficient, parallel acquisition and low-latency transfer of TOF sensor readings for real-time processing.
+### Engine Controller Firmware (RCX6-engine-ctrl-SRXL2)
+Controls engine, steering, and shift functions for the RCX6 robot using SRXL2 serial protocol. Handles multiplexing between RC receiver and computer control, relays commands, and manages telemetry.
+
+#### Main Firmware (`RCX6-engine-ctrl-SRXL2.ino`)
+- Initializes hardware, sets up serial communication, and manages the main control loop.
+- Handles switching between RC and computer control modes.
+- Processes incoming JSON commands and relays them to the appropriate subsystems.
+
+#### PWM Control (`rcxpwm.cpp`, `rcxpwm.h`)
+- Implements PWM signal generation and decoding for motor, steering, and shift channels.
+- Provides functions to read and write PWM values for both RC and computer control.
+- Manages safe switching and signal integrity.
+
+#### SRXL2 Protocol (`srxl2.cpp`, `srxl2.h`, `srxl2Structs.h`)
+- Implements the SRXL2 serial protocol for communication with Spektrum ESC and telemetry devices.
+- Defines SRXL2 message structures and parsing logic.
+- Handles bidirectional UART communication, message encoding/decoding, and telemetry extraction.
+
+#### Libraries Used
+- Arduino core libraries
+- SRXL2 protocol library (custom implementation)
+- Standard C++ libraries for data structures and serial communication
+**Sensor libraries used:**
+- Arduino VL53L8CX (TOF)
+- Arduino_JSON
 ## RC switch interface
 ### Outputs to RC switch
 - Slave select
@@ -207,6 +250,85 @@ This is a detail view of the first 200 samples:
 <img src="support/Test scripts/test_plot_detail.png"></br>
 
 # ROS code
+### Teleoperation Node — `robocolumbus25_teleop_node.py`
+
+- **Purpose:** Converts joystick input into robot motion and simple JSON control messages.
+- **Subscribes:** `/joy` (`sensor_msgs/Joy`), `json_msg` (`std_msgs/String`).
+- **Publishes:** `/cmd_vel/teleop` (`geometry_msgs/Twist`), `json_msg` (`std_msgs/String`).
+- **Behavior:** Maps joystick axes to throttle (axis 1) and steering (axis 3), applies configured
+  max linear speed and steering limits, computes `angular.z` from steering using wheelbase geometry
+  (angular.z = tan(steer_angle) * linear_x / wheel_base), publishes `cmd_vel` when joystick moved,
+  and emits button-change JSON messages for kill/do events. Sends an initial TTS JSON message
+  "Teleop Node Started" at startup.
+- **Quick run:** Launch as part of your ROS2 workspace or run the script directly with the ROS2
+  environment sourced (it contains a `main` so it can be executed with `python3`).
+
+### Speaker Node — `robocolumbus25_speaker_node.py`
+
+- **Purpose:** Listens for JSON `json_msg` and speaks text via `espeak`.
+- **Subscribes:** `json_msg` (`std_msgs/String`) — expects `{"speaker":{"tts":"..."}}`.
+- **Publishes:** `json_msg` (`std_msgs/String`) — e.g., startup TTS messages.
+- **Behavior:** Parses incoming JSON, logs and runs `espeak -a <volume> "<text>"` for `tts` entries; default `volume=200`. Contains a runnable `main` allowing direct execution.
+
+### Cone Node — `robocolumbus25_cone_node.py`
+
+- **Purpose:** Detects cones from camera and LIDAR, validates detections, and publishes cone positions.
+- **Subscribes:** `/color/spatial_detections` (`vision_msgs/Detection3DArray`), `/scan` (`sensor_msgs/LaserScan`), `/json_msg` (`std_msgs/String`).
+- **Publishes:** `/cone_point_cam` (`geometry_msgs/PointStamped`), `/cone_point_lidar` (`geometry_msgs/PointStamped`), `/json_msg` (`std_msgs/String`).
+- **Behavior:** Filters and validates camera detections (bounding-box checks + median-7 distance filter) and processes LIDAR scans to find cone-like clusters using distance-jump detection and width/ratio validation; publishes detected cone coordinates in appropriate TF frames (`oak-d_frame`, `lidar_link`) and emits TTS/status JSON when sensors activate or lose track.
+
+### TOF Node — `robocolumbus25_tof_node.py`
+
+- **Purpose:** Publishes point clouds and raw distance arrays from serial-connected RP2040 TOF sensors (front/rear, left/center/right).
+- **Subscribes:** `json_msg` (`std_msgs/String`).
+- **Publishes:** `tof_fc`, `tof_fl`, `tof_fr`, `tof_rc`, `tof_rl`, `tof_rr` (`sensor_msgs/PointCloud2`), `tof_fc_mid` (`rc25_interfaces/Float32X8`), `tof_dist` (`rc25_interfaces/TofDist`), `json_msg` (`std_msgs/String`).
+- **Behavior:** Reads JSON packets for each TOF sensor, publishes 8x8 point clouds (with curvature correction) and raw distance arrays, and emits TTS/status messages at startup.
+
+
+
+### Wheel Controller Node — `robocolumbus25_wheel_controler_node.py`
+
+- **Purpose:** Controls rear wheel velocity and front steering angle for the Jeep robot using Ackermann steering. Arbitrates between `/cmd_vel` (from ROS2 navigator) and `/cmd_vel/teleop` (from teleop node); teleop commands take priority for 1 second after receipt, blocking navigation commands during that time.
+- **Subscribes:** `/cmd_vel` (`geometry_msgs/Twist`), `/cmd_vel/teleop` (`geometry_msgs/Twist`), `json_msg` (`std_msgs/String`).
+- **Publishes:** `wheel_odom` (`nav_msgs/Odometry`), `json_msg` (`std_msgs/String`).
+- **Behavior:** Converts velocity/steering commands to Ackermann steering, arbitrates between teleop and navigation, sends commands to engine controller via serial JSON, processes wheel encoder odometry, and emits TTS/status messages at startup and on state changes.
+
+
+
+
+
+### Navigation Node — `robocolumbus25_nav_node.py`
+
+- **Purpose:** Autonomous navigation to waypoints and cones using GPS, IMU, camera, LIDAR, and TOF sensors.
+- **Subscribes:** `/cone_point_cam`, `/cone_point_lidar`, `/tof_fc_mid`, `/tof_dist`, `/gps_nav`, `/json_msg`.
+- **Publishes:** `/cmd_vel`, `/set_pose`, `/json_msg`.
+- **Behavior:** State machine for calibration, waypoint navigation, cone detection/approach, and backup. Reads waypoints from YAML, configures navigation parameters, and coordinates with other nodes via JSON messages and TTS.
+
+
+### Controller Node — `robocolumbus25_controller_node.py`
+
+- **Purpose:** Controls overall robot navigation and status. Listens for engine status JSON messages, manages battery status publishing, and coordinates pose setting. Publishes TTS/status messages and interacts with other nodes via `json_msg`.
+- **Subscribes:** `json_msg` (`std_msgs/String`)
+- **Publishes:** `battery_status` (`sensor_msgs/BatteryState`), `set_pose` (`geometry_msgs/PoseWithCovarianceStamped`), `json_msg` (`std_msgs/String`)
+- **Behavior:** Processes engine status messages, manages battery status, sets robot pose, and coordinates TTS/status communication with other nodes.
+
+
+
+### IMU & GPS Node — `robocolumbus25_imu_gps_node.py`
+
+- **Purpose:** Reads JSON sensor packets from a serial-connected RP2040 and publishes standard ROS2 IMU/GPS messages.
+- **Subscribes:** `json_msg` (`std_msgs/String`), `gps_nav` (`sensor_msgs/NavSatFix`).
+- **Publishes:** `imu` (`sensor_msgs/Imu`), `imu/cal` (`rc25_interfaces/ImuCal`), `gps_nav` (`sensor_msgs/NavSatFix`), `gps_pose` (`geometry_msgs/Pose`), `cmp_azi` (`std_msgs/Float32`), `json_msg` (`std_msgs/String`).
+- **Behavior:** Opens the serial device, parses incoming JSON lines for `imu`, `gps`, and `cmp` packets. Publishes `sensor_msgs/Imu` constructed from rotation vectors, angular velocity and linear acceleration; publishes `NavSatFix` for GPS with covariance and local `gps_pose` offsets; publishes calibration `ImuCal` messages and compass azimuth (`cmp_azi`). Sends configuration commands to the serial controller and emits simple JSON status messages on `json_msg`.
+
+
+### Custom Interface Messages — `rc25_interfaces/msg`
+
+- **Float32X8.msg:** Array of 8 float32 values, used for publishing TOF sensor distance data and similar multi-value sensor outputs.
+- **ImuCal.msg:** IMU calibration status and data, typically includes fields for calibration state, progress, and results from the robot's IMU.
+- **TofDist.msg:** Structured TOF sensor distance data, includes sensor identifier and a 64-element float32 array for detailed distance measurements from TOF sensors.
+
+
 ## 3rd party ROS packages used
 The Lidar is managed using the https://github.com/Slamtec/sllidar_ros2.git package<br>
 The Camera cone detection AI uses the https://github.com/mw46d/ros_coneslayer.git package<br>

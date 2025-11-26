@@ -14,6 +14,16 @@
 **************************************************************** */
 
 
+/*
+IMU & GPS Controller (RP2040)
+Collects IMU (BNO085) and GPS (U-Blox M10Q) data on a dual-core RP2040 microcontroller.
+One core handles sensor polling and buffering, while the other manages serial communication
+with the ROS node in the cabin. Data is formatted as JSON and sent over USB serial. The
+inter-core buffer ensures reliable, low-latency transfer of sensor packets to the host computer
+for real-time robot localization and navigation.
+*/
+
+
 #include <Arduino.h>
 #include <Arduino_JSON.h>
 

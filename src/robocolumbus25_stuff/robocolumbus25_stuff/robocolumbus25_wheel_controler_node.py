@@ -1,15 +1,25 @@
 """
-This robocolumbus wheel controller ROS2 is for controlling the 
-1/6 scale model jeep wheel velocity and front steering
-The steering model is Ackerman type
-The "/cmd_vel" topic from nav node is subcribed to and the linear.x and angular.z 
-The "/cmd_vel/teleop" topic from teleop is subcribed to and the linear.x and angular.z 
-velocity commands are used to create the jeep rear wheel velocity 
-and the front wheel steering angle via a serial interface
-The serial interface is TBD
-The wheel diameter is TBD
-The wheel base is TBD
-The wheel spacing is TBD
+Robocolumbus25 Wheel Controller node.
+
+Controls rear wheel velocity and front steering angle for the Axial 1/6 scale Jeep
+robot using Ackermann steering. Arbitrates between `/cmd_vel` (from ROS2 navigator)
+and `/cmd_vel/teleop` (from teleop node): teleop commands take priority for 1 second
+after receipt, blocking navigation commands during that time.
+
+Subscribes to `/cmd_vel` (navigation) and `/cmd_vel/teleop` (manual) for velocity/
+steering commands, computes wheel velocity and steering angle, and sends commands
+to the engine controller via serial JSON. Publishes wheel odometry (`wheel_odom`)
+and status via `json_msg`.
+
+Topics (partial):
+- Subscribes: `/cmd_vel` (`geometry_msgs/Twist`), `/cmd_vel/teleop` (`geometry_msgs/Twist`),
+    `json_msg` (`std_msgs/String`).
+- Publishes: `wheel_odom` (`nav_msgs/Odometry`), `json_msg` (`std_msgs/String`).
+
+Behavior summary:
+- Converts velocity/steering commands to Ackermann steering, arbitrates between
+    teleop and navigation, sends commands to engine controller, processes wheel
+    encoder odometry, and emits TTS/status messages at startup and on state changes.
 """
 
 # from asyncio.windows_events import NULL

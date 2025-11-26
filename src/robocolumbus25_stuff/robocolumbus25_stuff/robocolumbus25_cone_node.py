@@ -1,3 +1,29 @@
+"""Robocolumbus25 Cone detection node.
+
+Processes camera detections and LIDAR scans to detect and publish cone
+positions. Listens for `vision_msgs/Detection3DArray` from an OAK-D-Lite
+detector and `sensor_msgs/LaserScan` from a LIDAR, validates detections,
+applies simple filtering, and publishes `geometry_msgs/PointStamped`
+positions for both camera (`/cone_point_cam`) and lidar
+(`/cone_point_lidar`). The node also uses `json_msg` for status/TTS and
+publishes informational TTS at startup and on sensor state changes.
+
+Topics (partial):
+- Subscribes: `/color/spatial_detections` (`vision_msgs/Detection3DArray`),
+    `/scan` (`sensor_msgs/LaserScan`), `/json_msg` (`std_msgs/String`).
+- Publishes: `/cone_point_cam` (`geometry_msgs/PointStamped`),
+    `/cone_point_lidar` (`geometry_msgs/PointStamped`), `/json_msg`
+    (`std_msgs/String`).
+
+Behavior summary:
+- Validates camera detections with bounding-box shape/size checks and a
+    median-7 distance filter to reduce spikes, then translates camera
+    coordinates to ROS frames and publishes `/cone_point_cam`.
+- Scans LIDAR ranges within a forward FOV, looks for distance jumps to
+    find contiguous cone-like clusters, validates candidate width/range
+    criteria, computes an (x,y) position and publishes `/cone_point_lidar`.
+"""
+
 import rclpy
 import math
 import json

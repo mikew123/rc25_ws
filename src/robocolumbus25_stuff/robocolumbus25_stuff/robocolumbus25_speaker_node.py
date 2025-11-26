@@ -1,3 +1,11 @@
+"""Robocolumbus25 speaker node.
+
+Listens for JSON `json_msg` commands and speaks text using the system
+`espeak` TTS engine. Expects JSON payloads like
+`{"speaker": {"tts": "..."}}` on the `json_msg` topic. The node also
+publishes startup and status messages to `json_msg`.
+"""
+
 import rclpy
 import os
 import json

@@ -708,6 +708,32 @@ void configSerial(){
 }
 
 
+/*
+Engine Controller Firmware (RCX6-engine-ctrl-SRXL2)
+Controls engine, steering, and shift functions for the RCX6 robot using SRXL2 serial protocol.
+Handles multiplexing between RC receiver and computer control, relays commands, and manages telemetry.
+
+Main Firmware (RCX6-engine-ctrl-SRXL2.ino):
+- Initializes hardware, sets up serial communication, and manages the main control loop.
+- Handles switching between RC and computer control modes.
+- Processes incoming JSON commands and relays them to the appropriate subsystems.
+
+PWM Control (rcxpwm.cpp, rcxpwm.h):
+- Implements PWM signal generation and decoding for motor, steering, and shift channels.
+- Provides functions to read and write PWM values for both RC and computer control.
+- Manages safe switching and signal integrity.
+
+SRXL2 Protocol (srxl2.cpp, srxl2.h, srxl2Structs.h):
+- Implements the SRXL2 serial protocol for communication with Spektrum ESC and telemetry devices.
+- Defines SRXL2 message structures and parsing logic.
+- Handles bidirectional UART communication, message encoding/decoding, and telemetry extraction.
+
+Libraries Used:
+- Arduino core libraries
+- SRXL2 protocol library (custom implementation)
+- Standard C++ libraries for data structures and serial communication
+*/
+
 // This is an interrupt handler
 // send the odometry message to serial port
 // this is used by ROS2 for its odom message

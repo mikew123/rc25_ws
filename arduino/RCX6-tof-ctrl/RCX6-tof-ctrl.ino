@@ -7,6 +7,25 @@
 *
 */
 
+/*
+TOF Controller (RP2040)
+Uses both cores of the RP2040 microcontroller to manage
+Time-of-Flight (TOF) sensor data.
+- Core 1: Polls and processes data from the front cluster
+  of three TOF sensors, formats, and sends JSON messages
+over USB serial to the host computer.
+- Core 2: Polls and processes data from the rear cluster
+  of TOF sensors, buffers distance measurements, and passes
+them to core 1 for transmission.
+Sensor data validity is filtered using the status message
+from each TOF sensor, ensuring only reliable measurements
+are sent. The controller uses the VL53L8CX TOF sensor
+library for sensor interfacing and data acquisition.
+This design enables efficient, parallel acquisition and
+low-latency transfer of TOF sensor readings for real-time
+processing.
+*/
+
 
 
 #include <Wire.h>

@@ -1,3 +1,31 @@
+"""Robocolumbus25 IMU & GPS node.
+
+Reads JSON-formatted sensor packets from a serial-connected RP2040 and
+publishes standard ROS2 messages. Expected input over serial contains
+`imu`, `gps`, and `cmp` JSON objects. The node publishes IMU, GPS and
+pose information, publishes a simple compass azimuth, and publishes
+calibration status messages.
+
+Topics (partial):
+- Subscribes: `json_msg` (`std_msgs/String`), `gps_nav` (`sensor_msgs/NavSatFix`)
+- Publishes: `imu` (`sensor_msgs/Imu`), `imu/cal` (`rc25_interfaces/ImuCal`),
+    `gps_nav` (`sensor_msgs/NavSatFix`), `gps_pose` (`geometry_msgs/Pose`),
+    `cmp_azi` (`std_msgs/Float32`), and `json_msg` (`std_msgs/String`).
+
+Behavior summary:
+- Opens a serial connection to an RP2040-based IMU/GPS controller and
+    continuously reads lines of JSON. When packets contain `imu`, the
+    node composes and publishes `sensor_msgs/Imu` (orientation, angular
+    velocity, linear acceleration) and a custom `ImuCal` status message.
+- When packets contain `gps` the node publishes `sensor_msgs/NavSatFix`
+    and computes a local `gps_pose` offset relative to startup.
+- When packets contain `cmp` the node can publish compass/azimuth
+    information.
+
+The node also sends configuration commands to the serial device and
+emits simple TTS-style JSON messages via `json_msg` for status.
+"""
+
 from ctypes.wintypes import PMSG
 
 from numpy import int32

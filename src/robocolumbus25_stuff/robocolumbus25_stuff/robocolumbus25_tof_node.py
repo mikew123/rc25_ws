@@ -1,3 +1,18 @@
+"""Robocolumbus25 Time-of-Flight (TOF) node.
+
+Reads distance data from serial-connected RP2040 TOF sensors (front/rear, left/center/right),
+publishes point clouds and raw distance arrays for each sensor, and emits TTS/status via `json_msg`.
+
+Topics (partial):
+- Subscribes: `json_msg` (`std_msgs/String`).
+- Publishes: `tof_fc`, `tof_fl`, `tof_fr`, `tof_rc`, `tof_rl`, `tof_rr` (`sensor_msgs/PointCloud2`),
+    `tof_fc_mid` (`rc25_interfaces/Float32X8`), `tof_dist` (`rc25_interfaces/TofDist`), `json_msg` (`std_msgs/String`).
+
+Behavior summary:
+- Opens serial connection, reads JSON packets for each TOF sensor, publishes 8x8 point clouds
+    (with curvature correction) and raw distance arrays, and emits TTS/status messages at startup.
+"""
+
 import rclpy
 import json
 import serial
