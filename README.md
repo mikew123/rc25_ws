@@ -1,10 +1,9 @@
 # RoboColumbus2025
 Wheeled autonomus robot for 2025 DPRG RoboColumbus competion
 
-This project was started in June 2024 and is expected to have a competitive robot for the RoboColumbus competition in Fall of 2025. I will drive the robot around the field in The Fall of 2024 and maybe have odometry and mapping displayed using ROS2 Rviz2 and Foxglove.<br>
-!Update: Got zero points at 2025 competion it never moved from start line stuttering resuming navigation to way point.<br>
-The logs said that it could not plan to the waypoint it was too far.<br>
-I eventually found the issue in the rc25_params file: The global map was 100x100 meters meaning it could only plan up to +-50 meters in any direction. My testing waas below 50 meters!
+This project was started in June 2024 and used in the RoboColumbus competition in Fall of 2025.<br>
+The robot worked well during testing at home, but failed because of a "simple" error. During the contest when started at the start line it did not move and repeated an announcement that it will try to go to waypoint again ... and again. The problem was that the global cost map size was 100x100M giving it a range of +-50M of planning area, the palnner failed! My home testing was less than 50M to a waypoint<br>
+
 https://www.dprg.org/robocolumbus-2025/
 
 # RoboColumbus competition
@@ -28,13 +27,13 @@ direct path. The challenge is to touch and stop at each cone.
 The AXIAL RCX6 1/6 scale Jeep rock crawler platform was selected to be used for the robot. This platform allows generous room for sensors and electronics to be added and can be installed into the interior of the Jeep for protection.
 https://www.axialadventure.com/product/1-6-scx6-jeep-jlu-wrangler-4x4-rock-crawler-rtr-green/AXI05000T1.html<br>
 
-The motor drive, steering and shift control signals must be multiplexed between the RC receiver and the computer. A module in the engine compartment will be added to perform this with a serial interface to the computer in the Jeep cabin. The RC receiver is powered from the motor controller (facrory default) and the connections to the computer is optional, the module will power up to use the RC receiver signals.<br>
+The motor drive, steering and shift control signals can be switched between the RC receiver and the computer. A module in the engine compartment performs this with a serial interface to the computer in the Jeep cabin. The RC receiver is powered from the ESC motor controller (facrory default) and the connections to the computer is optional for movement, the module will power up to use the RC receiver signals as the default.<br>
 
-The main battery in the engine compartment will also be used for sensors and computer power. A DC-DC module would be added in the engine compartment with 2 sets of 5V at 3 Amps power leads to the Jeep cabin. Fusing the power from the main battery is added for protection. The control multiplexor and DC converter on one board.
+The main battery in the engine compartment will also be used for sensors and computer power. A DC-DC module would be added in the engine compartment with 2 sets of 5V at 3 Amps power leads to the Jeep cabin. Fusing the power from the main battery is added for protection. The control multiplexor and DC converter is on one board.
 
 # Power
-Tap from 1 or 2 3S 11.1V LiPo battery in engine compartment with a fuse. The batteries can be hot swapped.
-Two DC-DC converters/regulators for computer and sensors in sealed box in engine compartment.
+Tap from 1 or 2 (in parallel) 3S 11.1V LiPo battery in engine compartment with a fuse. The batteries can be hot swapped.<br>
+Two DC-DC converters/regulators for computer and sensors in sealed box in engine compartment.<br>
 Also a 5mm/2.5 power jack for external power, hot plugable.
 
 # Remote connectivity
@@ -44,52 +43,51 @@ Also a 5mm/2.5 power jack for external power, hot plugable.
 - Game controller with drive controls and start and kill buttons.<br>
 - WIFI for development and debug and course configuration </br>
 - Tiger VNC server on Pi ; Tiger VNC Viewer on PC 192.168.1.155<br>
-Tiger VNC viewer must be started from .exe file
+
 
 # Sensors
 ## GPS
 GPS receiver with optional RTK capbility Used for primary odometry<br>
 This is a standard GPS with many meters of in-accuracy.<br>
-U-Blox M10Q
+The GPS receiver is the U-Blox M10Q using the SparkFun_u-blox_GNSS_v3 library.<br>
 
 ## IMU
-IMU BNO085 to provide tilt compensation for sensors and maybe bearing to help GPS<br>
+The IMU is the BNO085 which provides a compass heading and angular rotation velocity and uses the Adafruit_BNO08x library.<br>
+
 ## Camera
-Object detection (Coneslayer AI package) and depth camera OAK-D-Lite
+The cones are detcted using the depth camera OAK-D-Lite and the Coneslayer AI ROS package.<br>
+
 ## LIDAR
-Optional rotating LIDAR SLLIDAR S3 for far obsticle detection and avoidance
+Rotating LIDAR SLLIDAR S3 for far obsticle detection and avoidance.<br>
+
 ## TOF
-Time Of Flight sensors on front, rear and optional sides with mm resolution for close obstical avoidance and close cone sensor<br>
-There are 3 VL53L8CX on both front and back giving a total FOV of 45x135 deg with an array of 8x24 distance measurements<br>
+Time Of Flight sensors on front, rear and optional sides for close obstical avoidance and close cone sensor.<br>
+There are 3 VL53L8CX on both front and back giving a total FOV of 45x135 deg with an array of 8x24 distance measurements.<br>
+
 # Computer 
-- Raspberry Pi with OS Ubuntu 24.04 and a 225G SSD<br>
+- Raspberry Pi5 with OS Ubuntu 24.04 and a 225G SSD.<br>
 
 # Software
 ## ROS2
 - Using ROS2 Jazzy which requires Linux Ubuntu 24.04 OS
 - Ubuntu 24.04 is running natively on the SSD
-- The ROS software package in the rc25_ws directory is published on https://github.com/mikew123/rc25_ws.git
+- The rc25_ws directory is published on https://github.com/mikew123/rc25_ws.git
+
+## ROS2 packages
+- The navigator package is used for waypoint navigation by launching the nav2_bringup/launch/bringup_launch.py.<br>
+- The robot_localization ekf_node package (2 instances) is used for EFK filtering and managing the map->odom and odom->base dynamic transforms.<br>
+- The robot_state_publisher uses a urdf file to create the static transforms from the base to the sensors.<br>
+- The robot_localization navsat_transform_node package is used to connect the GPS data to the efk_node that manages the map->odom transform.<br>
+- Lots of ROS python libraries are used.<br>
 
 ## 3rd party ROS2 
 These packages are used for the Lidar and cone detection on the OAK-D-Lite camera. They are cloned into the home directory.
 - Cone detection AI
-https://github.com/mw46d/ros_coneslayer.git
+https://github.com/mw46d/ros_coneslayer.git<br>
 - Lidar management
-https://github.com/Slamtec/sllidar_ros2.git
+https://github.com/Slamtec/sllidar_ros2.git<br>
 
 # Electronic modules
-## Servo switch
-This switches the servo and engine ESC signals between the RC receiver and the computer</br>
-Pololu 2807 4-Channel RC Servo Multiplexer (Partial Kit)</br>
-<https://www.pololu.com/product/2807>
-## DC-DC converter
-This supplies power for the cabin electronics. The 6V allows a protection diode while keeping the voltage above 5V</br>
-Pololu 6V, 2.7A Step-Down Voltage Regulator D36V28F6</br>
-<https://www.pololu.com/product/3783>
-## Level shifter
-This protects the 3.3V input pins on the micro controller from the 6V signals from the RC receiver</br>
-Pololu Logic Level Shifter, 4-Channel, Bidirectional 2595</br>
-<https://www.pololu.com/product/2595>
 ## Microcontroller
 Uses 3 Waveshare RP2040-Zero, a Pico-like MCU Board Based on Raspberry Pi MCU RP2040, Mini ver.</br>
 <https://www.waveshare.com/rp2040-zero.htm><br>
@@ -98,20 +96,73 @@ Uses 3 Waveshare RP2040-Zero, a Pico-like MCU Board Based on Raspberry Pi MCU RP
 - IMU GPS controller: collect the IMU and front and back TOF sensor data and send to the ROS node over serial<br>
 - TOF controller: Collects the TOF sensor values and sends them to the ROS node over serial<br>
 
+## Servo switch
+This switches the servo and engine ESC signals between the RC receiver and the computer. </br>
+Pololu 2807 4-Channel RC Servo Multiplexer (Partial Kit)</br>
+<https://www.pololu.com/product/2807>
+
+## Main DC-DC converter
+This supplies power for the cabin electronics. The 6V output allows a protection diode while keeping the voltage above 5V</br>
+Pololu 6V, 2.7A Step-Down Voltage Regulator D36V28F6</br>
+<https://www.pololu.com/product/3783>
+
+## Level shifter
+This protects the 3.3V input pins on the micro controller from the 6V signals from the RC receiver</br>
+Pololu Logic Level Shifter, 4-Channel, Bidirectional 2595</br>
+<https://www.pololu.com/product/2595>
+
+## TOF
+These time of flight sensors aare used for obstcal avoidance and planning. There is a set of for both the front and back of the robot. The cluster of 3 sensors give a FOV of 45x135 with an array of 8x24 distance measurements. This L8 sensor model has the best outdoor Lux rating since this competition of out doors.<br>
+Pololu VL53L8CX Time-of-Flight 8×8-Zone Distance Sensor Carrier with Voltage Regulators, 400cm Max.<br>
+<https://www.pololu.com/product/3419>
+
+## TOF DC-DC converter
+This supplies 3.3V power to the TOF sensors on the front and back. The 3.3v from the RP2040 module does not have the current rating for the sensors. A seperate regulator is used for the 3 front sensors and for the rear sensors.<br>
+Pololu 3.3V, 600mA Step-Down Voltage Regulator D36V6F3.<br>
+<https://www.pololu.com/product/3791>
+
+## I2C buffer
+The I2C buffer is used for each I2C bus to the front and rear TOF sensor clusters. The I2C operates at 1MHz and was not reliable because of the long cables.<br>
+Adafruit TCA4307 Hot-Swap I2C Buffer with Stuck Bus Recovery - STEMMA QT / Qwiic.<br>
+<https://www.adafruit.com/product/5159>
+
+## IMU 
+The BNO085 IMU is a pretty good inertial measurement sensor with orientation for a compass reading (yaw) as well as pitch and roll if needed.<br>
+Adafruit 9-DOF Absolute Orientation IMU Fusion Breakout - BNO055 - STEMMA QT / Qwiic.<br>
+<https://www.adafruit.com/product/4646>
+
+## GPS
+This module has both a GPS receiver and a Compass. I could never get the compass to work well. The GPS receiver was the newest model SAM-M10Q from uBlox which I presumes works better than older models.<br>
+Amazon Matek M10Q-5883 GNSS Compass Module GNSS Ublox SAM-M10Q QMC5883L Magnetic Compass for RC Drone FPV Racing.<br>
+<https://www.amazon.com/M10Q-5883-Compass-SAM-M10Q-QMC5883L-Magnetic/dp/B0BZ7VJKHV>
+
+# Development rig
+The development was performed using the parts mounted on a board which was mounted on the chassis, the components were not in the Jeep cabin but the sensors were place close to the desit=red final positions in the Jeep cabin. The only components outside are the Lidar mounted on the roof and the fron and back TOF sensor arrays which mount on the jeep body above the bumpers. There are long I2C cables fron the tof controller board to the sensors which are attached to the bumpers using blue tape during development.<br>
+<img src="support/Rc25DevelopmentRig.jpg">
+
+The Pi5 with SSD and the USB hub are mounted on the development rig. The Pi5 and USB hub are powered from seperate regulators from the batteries.<br>
+<img src="support/Pi5wSsdAndUsbHub.jpg">
+
+
 # New electronics in engine compartment
 A waterproof box is mounted to the rear battery holder. This box holds the DC-DC converters for the electronics in the cabin, the servo signal mux and a micro controller to manage the servo switch and send some telemetry to the computer in the cabin. The servo switch defaults to connecting the RC receiver to the motor and servos.</br>
+I needed to augment the polulu PWM switch module with analog switches for the throttle signal which had better performance using the serial protocol instead of the servo type PWM. If I did it over I would have also used analog switches for the steering and shift PWM signals.<br>
+NOTE: This photo is older and does not have the analog switches.<br>
 <img src="support/RCX6-engine_compartment_with_new electronics.jpg">
 
 ## Method to switch to computer control
-The steering wheel and speed switch on the RC transmitter is used to switch to-from computer control. This must be done with throttle at idle.
-- Switch to computer control: Turn steering left (CCW) and press speed switch DN(high) then UP (low)
+The steering wheel and speed switch on the RC transmitter is used to switch to-from computer control. This must be done with throttle at idle.<br>
+- Switch to computer control: Turn steering left (CCW) and press speed switch DN(high) then UP (low).<br>
 - Switch to receiver control: Turn steering right and press speed switch DN then UP
 ## Electronics boards
+The custom boards are created usin 0.1" grid perf boards and 30 AWG wires that are soldered to the pins of modules and components.<br>
+
 ### Engine Controller Board
-The electronic module is connected using soldered wires and a 0.1" breadboard cut to fit the waterproff box interior
-The RC receiver signals are connected to the MASTER pins of the RC switch module using standard servo cables
-The motor and servo signals are connected to the OUT pins of the RC switch module using standard servo cables
-The controler pins are hard wired to the SLAVE pins of the RC switch
+The electronic module is connected using soldered wires and a 0.1" breadboard cut to fit the waterproof box interior.<br>
+The RC receiver signals are connected to the MASTER pins of the RC switch module using standard servo cables.<br>
+The ESC motor and servo signals are connected to the OUT pins of the RC switch module using standard servo cables.<br>
+The ESC throttle signals are switched using analog switches. The throttle signals I used are a bi-directional serial protocol instead of a PWM protocol for better reolution and the get telemetry from the ESC.<br>
+The controler pins are hard wired to the SLAVE pins of the RC switch.<br>
 The controller USB supplies the power only to the micro controller</br>
 The DC-DC converters are inside the waterproof box. The power input from the battery has an in-line fuse which is not in the box to protect the batteries from an electrical short.</br>
 <img src="support/engine_compartment_electronics_module.jpg"></br>
@@ -124,6 +175,7 @@ The DC-DC converters are inside the waterproof box. The power input from the bat
 
 ### TOF Sensors Controller Board
 <img src="support/rc25_TofSensorsControler.jpg"></br>
+<img src="support/rc25_TofSensorsControllerPicture.jpg"></br>
 
 ### Battery/external power Board
 This board uses Schotky diodes to Isolate the extarnal power from the Regulated power regulators in the engine compartment (connected to the battery)<br>
@@ -249,6 +301,18 @@ The plotted velocity Mps was calculated as (millisDiff/1000)/(odomDiff/5,615). T
 This is a detail view of the first 200 samples:
 <img src="support/Test scripts/test_plot_detail.png"></br>
 
+
+## Odometery
+The odometry for the robot comes from 3 sources:
+- There is a drive shaft rotation encoder for linear velocity. 
+- The IMU provides angular velocity and a compass heading
+- GPS provides absolute position lat,lon (X,Y) for localization
+### Drive shaft roation encoder
+The rotation of the driveshaft from the transmission to the wheels uses a GoBuilda. It is pressed against a driveshaft coupling that does not move as the suspensions bounces using the spring and a custom 3D printed mounting bracket. The bracket connects to the chassis with 3 bolts and has adjustment for spring tension onto the drive shaft coupler.<br>
+<img src="support\GoBuilda_odometry_pod.jpg"><br>
+<img src="support\ShaftEncoderMount.jpg"><br>
+<img src="support\ShaftEncoderPicture.jpg"><br>
+
 # ROS code
 ### Teleoperation Node — `robocolumbus25_teleop_node.py`
 
@@ -292,9 +356,6 @@ This is a detail view of the first 200 samples:
 - **Subscribes:** `/cmd_vel` (`geometry_msgs/Twist`), `/cmd_vel/teleop` (`geometry_msgs/Twist`), `json_msg` (`std_msgs/String`).
 - **Publishes:** `wheel_odom` (`nav_msgs/Odometry`), `json_msg` (`std_msgs/String`).
 - **Behavior:** Converts velocity/steering commands to Ackermann steering, arbitrates between teleop and navigation, sends commands to engine controller via serial JSON, processes wheel encoder odometry, and emits TTS/status messages at startup and on state changes.
-
-
-
 
 
 ### Navigation Node — `robocolumbus25_nav_node.py`
@@ -359,6 +420,7 @@ The nav2 navigation needs the X,Y coordinates relative to the initial position, 
 ### Put electronics inside jeep
 - Lidar mounted on roof
 - Does camaera detect cones through existing windshield?
+
 ### Other
 - Improve external DC power
 - Work on transmission and drive chain: noticable grease/oil and odd noises
@@ -368,6 +430,7 @@ The nav2 navigation needs the X,Y coordinates relative to the initial position, 
 - If cone is not detected or lost detetction at waypoint go to points close by (say +-5M) if no cone is found go to next waypoint
 - Avoid obstacles while "manually" searching in movement pattern for the cone 
 - Convert nodes to LifeCycle
+- Manage modified coneslayer ROS package better, maybe add to the rc25 workspace and/or make a fork and clean up mods and submit for inclusion in github.
 
 ## Simulation?
 - Create simulation model
