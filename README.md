@@ -441,3 +441,28 @@ The nav2 navigation needs the X,Y coordinates relative to the initial position, 
   
 ## RTK GPS?
 - Update to RTK $$
+
+# Rebuild with electronics inside cabin
+
+Photos of the jeep chassis as well as the electronics mounted in the jeep body and outside the body:
+
+Jeep chassis showing the loose cables that go to the engine controller box<br>
+You can see the Lidar mounted on the roof<br>
+<img src="support/car_chassis_no_electronics.jpg"><br>
+
+The underside of the electronics showing the power and USB cables to the engine controller box<br>
+<img src="support/car_undercarriage.jpg"><br>
+
+Electronics in cabin with the Lidar on the roof<br>
+<img src="support/car_with_stuff_inside.jpg"><br>
+
+Electronics mounted on board front and rear view<br>
+Note the WiFi antennas in the back<br>
+<img src="support/electronics_fron_view.jpg"><br>
+<img src="support/electronics_on _board.jpg"><br>
+
+View through windows<br>
+<img src="support/view_back_window.jpg"><br>
+<img src="support/view_through_side_window.jpg"><br>
+
+NOTE: The front and rear TOF sensors need to be mounted on the jeep front and rear
