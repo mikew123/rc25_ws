@@ -59,5 +59,6 @@
         "text_encoding": "cpp",
         "typeinfo": "cpp",
         "variant": "cpp"
-    }
+    },
+    "ROS2.distro": "jazzy"
 }

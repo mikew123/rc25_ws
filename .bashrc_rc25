@@ -1,0 +1,39 @@
+# set up unique ROS DOMAIN - set to my birth date day
+export ROS_DOMAIN_ID=18
+source /opt/ros/jazzy/setup.bash
+source ~/depthai_ws/install/setup.bash
+source ~/rc25_ws/install/setup.bash
+source ~/sllidar_ros2/install/setup.bash
+source ~/ros_coneslayer/install/setup.bash
+cd ~/rc25_ws
+
+alias rc25=' \
+clear; \
+ export ROS_LOG_DIR=~/sambashare/logs/log-`date +"%m_%d_%Y_%I-%M"` ; \
+ cd ~/rc25_ws ; colcon build ; source install/setup.bash ; \
+ parallel --lb ::: \
+ "ros2 launch robocolumbus25_stuff robocolumbus25_bringup_launch.py" \
+ "ros2 launch rosbridge_server rosbridge_websocket_launch.xml" \
+ "sleep 5 ; ros2 launch depthai_descriptions urdf_launch.py" \
+ wait ; echo "RC25 terminated" \
+'
+
+alias rc25_bag=' \
+cd ~/sambashare/rosbags ; \
+ros2 bag record -s mcap -b 500000000 \
+--topics /cmd_vel /cmd_vel_smoothed /cmd_vel/teleop\
+         /battery_status /tf /tf_static /cone_point_cam /cone_point_lidar \
+         /global_costmap/costmap /local_costmap/costmap \
+         /scan /tof_fc /tof_fl /tof_fr /tof_rc /tof_rl /tof_rr \
+         /wheel_odom /odom /gps_nav /gps_pose /imu /cmp_azi /imu/cal \
+         /odometry/global /odometry/local /odometry/gps /gps/filtered \
+         /polygon_stop /polygon_slowdown /optimal_trajectory /plan \
+         /json_msg /color/spatial_detections
+'
+
+alias rc25_kill='source  ~/kill_ros2'
+
+# too much data for bag /color/image /color/camera_info
+
+# This alias creates a vnc :1 server
+alias vnc="vncserver -localhost no :1 2>/dev/null"

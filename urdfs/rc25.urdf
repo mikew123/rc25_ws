@@ -240,7 +240,7 @@
   <joint name="tof_rl_joint" type="fixed">
     <parent link="base_link"/>
     <child link="tof_rl_link"/>
-    <origin xyz="-0.170 0 0.110" rpy="0 0 -2.356"/>
+    <origin xyz="-0.170 0 0.110" rpy="0 0 2.356"/>
   </joint>
   <link name="tof_rl_link">
     <visual>
@@ -255,7 +255,7 @@
   <joint name="tof_rr_joint" type="fixed">
     <parent link="base_link"/>
     <child link="tof_rr_link"/>
-    <origin xyz="-0.170 0 0.110" rpy="0 0.08 2.356"/>
+    <origin xyz="-0.170 0 0.110" rpy="0 0.0 -2.356"/>
   </joint>
   <link name="tof_rr_link">
     <visual>
