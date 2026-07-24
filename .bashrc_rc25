@@ -1,5 +1,10 @@
 # set up unique ROS DOMAIN - set to my birth date day
-export ROS_DOMAIN_ID=18
+#export ROS_DOMAIN_ID=18
+# Set ID=0 for windows pixi_ros2 compatibility
+export ROS_DOMAIN_ID=0
+# change from RMW default for pixi
+#export RMW_IMPLEMENTATION=rmw_connextdds
+
 source /opt/ros/jazzy/setup.bash
 source ~/depthai_ws/install/setup.bash
 source ~/rc25_ws/install/setup.bash
