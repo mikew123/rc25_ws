@@ -109,7 +109,7 @@
   <joint name="imu_joint" type="fixed">
     <parent link="base_link"/>
     <child link="imu_link"/>
-    <origin xyz="0 0 0.250" rpy="0 0 0"/>
+    <origin xyz="0.050 0 0.250" rpy="0 0 0"/>
   </joint>
 
   <link name="imu_link">
@@ -126,7 +126,7 @@
   <joint name="lidar_joint" type="fixed">
     <parent link="base_link"/>
     <child link="lidar_link"/>
-    <origin xyz="0.200 0 0.320" rpy="0 0 0"/>
+    <origin xyz="0.180 0 0.300" rpy="0 0 0"/>
   </joint>
 
   <link name="lidar_link">
@@ -144,7 +144,7 @@
   <joint name="gps_joint" type="fixed">
     <parent link="base_link"/>
     <child link="gps_link"/>
-    <origin xyz="0.040 0 0.250" rpy="0 0 0"/>
+    <origin xyz="0.000 0 0.250" rpy="0 0 0"/>
   </joint>
 
   <link name="gps_link">
@@ -161,7 +161,7 @@
   <joint name="oak-d-base-frame" type="fixed">
     <parent link="base_link"/>
     <child link="oak-d-base-frame"/>
-    <origin xyz="0.300 0.00 0.240" rpy="0 0 0"/>
+    <origin xyz="0.300 0.00 0.240" rpy="0 0 0.1"/>
   </joint>
 
   <link name="oak-d-base-frame">
@@ -179,7 +179,7 @@
   <joint name="tof_fc_joint" type="fixed">
     <parent link="base_link"/>
     <child link="tof_fc_link"/>
-    <origin xyz="0.600 0 0.110" rpy="0 0 0"/>
+    <origin xyz="0.600 0 0.110" rpy="0.0 -0.15 0"/>
   </joint>
   <link name="tof_fc_link">
     <visual>
@@ -192,9 +192,9 @@
   </link>
 
   <joint name="tof_fl_joint" type="fixed">
-    <parent link="base_link"/>
+    <parent link="tof_fc_link"/>
     <child link="tof_fl_link"/>
-    <origin xyz="0.600 0 0.110" rpy="0 0 0.785"/>
+    <origin xyz="0.0 0.1 0" rpy="0.1 0 0.785"/>
   </joint>
   <link name="tof_fl_link">
     <visual>
@@ -207,9 +207,9 @@
   </link>
 
   <joint name="tof_fr_joint" type="fixed">
-    <parent link="base_link"/>
+    <parent link="tof_fc_link"/>
     <child link="tof_fr_link"/>
-    <origin xyz="0.600 0 0.110" rpy="0 0.08 -0.785"/>
+    <origin xyz="0.05 -0.05 0" rpy="-0.1 0 -0.785"/>
   </joint>
   <link name="tof_fr_link">
     <visual>
@@ -225,7 +225,7 @@
   <joint name="tof_rc_joint" type="fixed">
     <parent link="base_link"/>
     <child link="tof_rc_link"/>
-    <origin xyz="-0.170 0 0.110" rpy="0 0 3.1415"/>
+    <origin xyz="-0.140 0 0.120" rpy="0.05 0.0 3.1415"/>
   </joint>
   <link name="tof_rc_link">
     <visual>
@@ -240,7 +240,7 @@
   <joint name="tof_rl_joint" type="fixed">
     <parent link="base_link"/>
     <child link="tof_rl_link"/>
-    <origin xyz="-0.170 0 0.110" rpy="0 0 2.356"/>
+    <origin xyz="-0.120 -0.020 0.120" rpy="0.05 0.0 2.356"/>
   </joint>
   <link name="tof_rl_link">
     <visual>
@@ -255,7 +255,7 @@
   <joint name="tof_rr_joint" type="fixed">
     <parent link="base_link"/>
     <child link="tof_rr_link"/>
-    <origin xyz="-0.170 0 0.110" rpy="0 0.0 -2.356"/>
+    <origin xyz="-0.120 0.020 0.120" rpy="-0.1 0.0 -2.356"/>
   </joint>
   <link name="tof_rr_link">
     <visual>
