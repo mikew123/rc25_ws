@@ -75,7 +75,7 @@ class Robocolumbus25TeleopNode(Node):
         buttons = [0]*10
 
         # get controller axes and button values
-        for i in range(0,8):
+        for i in range(0,8): #0-7
             axes[i] = msg.axes[i]
         for i in range(0,10):
             buttons[i] = msg.buttons[i]
@@ -83,11 +83,16 @@ class Robocolumbus25TeleopNode(Node):
 
         # Send /cmd_vel to move robot
         if not(axes[1]==0.0 and axes[3]==0.0) :
-            throttle = axes[1]
-            steer = axes[3]
+            # GAMESIR controller
+            # throttle = axes[1]
+            # steer = axes[3]
 
-            linearX  = throttle * self.maxLinearX
-            steerAngleRad = steer * self.maxSteerAngleRad
+            # NC300 controller
+            throttle = axes[1]
+            steer = axes[0]
+
+            linearX       = throttle * self.maxLinearX
+            steerAngleRad =    steer * self.maxSteerAngleRad
 
             # Basic steering calculation wheel angle to angular velocity
             if math.fabs(linearX) < 0.01 :
@@ -96,7 +101,7 @@ class Robocolumbus25TeleopNode(Node):
             else :
                 angularZ = math.tan(steerAngleRad) * linearX / self.wheelBase
 
-            # self.get_logger().info(f"{throttle=:.3f} {steer=:.3f} : {linearX=:.3f} {angularZ=:.3f} {steerAngleRad=:.3f}")
+            self.get_logger().info(f"{throttle=:.3f} {steer=:.3f} : {linearX=:.3f} {angularZ=:.3f} {steerAngleRad=:.3f}")
 
             # Publish /cmd_vel
             cmd_vel.linear.x = linearX
