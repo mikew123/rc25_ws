@@ -42,3 +42,5 @@ alias rc25_kill='source  ~/kill_ros2'
 
 # This alias creates a vnc :1 server
 alias vnc="vncserver -localhost no :1 2>/dev/null"
+alias foxbridge="ros2 launch foxglove_bridge foxglove_bridge_launch.xml"
+
