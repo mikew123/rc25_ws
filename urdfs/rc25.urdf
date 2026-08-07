@@ -126,7 +126,7 @@
   <joint name="lidar_joint" type="fixed">
     <parent link="base_link"/>
     <child link="lidar_link"/>
-    <origin xyz="0.180 0 0.300" rpy="0 0 0"/>
+    <origin xyz="0.180 0 0.300" rpy="0 0 -0.025"/>
   </joint>
 
   <link name="lidar_link">
@@ -161,7 +161,7 @@
   <joint name="oak-d-base-frame" type="fixed">
     <parent link="base_link"/>
     <child link="oak-d-base-frame"/>
-    <origin xyz="0.300 0.00 0.240" rpy="0 0 0.1"/>
+    <origin xyz="0.340 0.00 0.240" rpy="0 0 0.05"/>
   </joint>
 
   <link name="oak-d-base-frame">
