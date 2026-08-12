@@ -60,5 +60,6 @@
         "typeinfo": "cpp",
         "variant": "cpp"
     },
-    "ROS2.distro": "jazzy"
+    "ROS2.distro": "jazzy",
+    "cmake.sourceDirectory": "/home/mikew/rc25_ws/src/rc25_interfaces"
 }
