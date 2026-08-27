@@ -143,6 +143,13 @@ def generate_launch_description():
             namespace="",
         ),
 
+        launch_ros.actions.Node(
+            package='robocolumbus25_stuff',
+            executable='rc26_pcd_node',
+            name='pcd_node',
+            namespace="",
+        ),
+
 
         #### ROS2 packages
 
