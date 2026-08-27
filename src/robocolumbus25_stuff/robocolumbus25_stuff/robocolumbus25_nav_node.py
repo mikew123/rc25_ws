@@ -1558,7 +1558,7 @@ class NavNode(Node):
         if x>0.0 :
             self.cone_at_y_cam_last_det = y
 
-        self.get_logger().info(f"cone_point_cam_callback: {x=:.3f} {y=:.3f} {a=:.3f} {d=:.3f} ")
+        # self.get_logger().info(f"cone_point_cam_callback: {x=:.3f} {y=:.3f} {a=:.3f} {d=:.3f} ")
 
     # Cone detection from lidar scan relative to lidar "lidar_link"
     def cone_point_lidar_subscription_callback(self, msg: PointStamped) -> None:
@@ -1578,7 +1578,7 @@ class NavNode(Node):
         self.cone_at_a_lidar = a
         self.cone_det_time_lidar = t
 
-        self.get_logger().info(f"cone_point_lidar_callback: {x=:.3f} {y=:.3f} {a=:.3f} {d=:.3f} ")
+        # self.get_logger().info(f"cone_point_lidar_callback: {x=:.3f} {y=:.3f} {a=:.3f} {d=:.3f} ")
 
     tof_dist_obstacle_max = 0.300
     tof_fc_obstacle_dist:np.float32 = np.inf
@@ -1647,7 +1647,7 @@ class NavNode(Node):
         self.cone_at_d_tof_fc = d
         self.cone_at_a_tof_fc = a
 
-        self.get_logger().info(f"tof_fc_callback B: {x=:.3f} {y=:.3f} {a=:.3f} {d=:.3f} ")
+        # self.get_logger().info(f"tof_fc_callback B: {x=:.3f} {y=:.3f} {a=:.3f} {d=:.3f} ")
         
 
     def gotoPoseBlocking(self, pose, t):

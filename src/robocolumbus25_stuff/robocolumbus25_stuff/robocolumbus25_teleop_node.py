@@ -40,7 +40,7 @@ class Robocolumbus25TeleopNode(Node):
 
         self.joy_subscription = self.create_subscription(Joy, '/joy'
                                     , self.joy_callback, 10)
-        
+
         self.cmd_vel_publisher = self.create_publisher(Twist, '/cmd_vel/teleop', 10)
 
         time.sleep(2) # wait for json_msg_publisher to be ready!!??
@@ -50,7 +50,7 @@ class Robocolumbus25TeleopNode(Node):
 
     def tts(self, tts) -> None:
         """
-        Send text to speaker 
+        Send text to speaker
         """
         json_msg = {"speaker":{"tts":tts}}
         self.sendJsonMsg(json_msg)
@@ -95,7 +95,7 @@ class Robocolumbus25TeleopNode(Node):
             steerAngleRad =    steer * self.maxSteerAngleRad
 
             # Basic steering calculation wheel angle to angular velocity
-            if math.fabs(linearX) < 0.01 :
+            if math.fabs(linearX) < 0.001 :
                 linearX = 0.0
                 angularZ = 0.0
             else :
@@ -107,7 +107,7 @@ class Robocolumbus25TeleopNode(Node):
             cmd_vel.linear.x = linearX
             cmd_vel.angular.z = angularZ
             self.cmd_vel_publisher.publish(cmd_vel)
-  
+
         # Publish buttons when change occurs
         if buttons[4] != self.buttonsLast[4] :
             b:bool = (buttons[4]==1)
@@ -146,7 +146,7 @@ def main(args=None):
     try :
         executor = MultiThreadedExecutor()
         executor.add_node(node)
-        executor.spin()    
+        executor.spin()
     except KeyboardInterrupt:
         from rclpy.impl import rcutils_logger
         logger = rcutils_logger.RcutilsLogger(name="node")

@@ -1,0 +1,57 @@
+Metadata-Version: 2.4
+Name: python-neo-lzf
+Version: 0.3.5
+Summary: A fork of python-lzf with pre-built wheel files.
+Home-page: https://github.com/FledgeXu/python-neo-lzf
+Author: Fledge Shiu
+Author-email: xzk0701@gmail.com
+License: BSD-3-Clause
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: Natural Language :: English
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
+Classifier: Programming Language :: C
+Classifier: Topic :: System :: Archiving :: Compression
+Requires-Python: >=3.7
+Description-Content-Type: text/plain
+License-File: LICENSE
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: license
+Dynamic: license-file
+Dynamic: requires-python
+Dynamic: summary
+
+python-lzf: liblzf Python bindings
+
+This package is a direct translation of the C API of liblzf into Python.
+It provides two core functions: compress() and decompress().
+
+- compress(data: bytes, max_length: Optional[int] = None) -> Optional[bytes]  
+  Compresses the given input bytes. Optionally, a maximum length for the output
+  may be specified. If the data cannot be compressed to fit within the specified
+  size, the function returns None. If no size is given, the default is one less
+  than the length of the input, so the caller must always be prepared to handle
+  a return value of None.
+
+- decompress(data: bytes, expected_size: int) -> Optional[bytes]  
+  Decompresses the given input bytes and attempts to fit the result into the
+  specified uncompressed size. If the result does not fit, the function returns None.
+
+This module is intended as a low-level binding for applications that need fast
+compression and decompression for small blocks of data.
+
+Special thanks to teepark for years of selfless maintenance and support of this project.
