@@ -10,6 +10,14 @@
 *
 * Uses both RP2040 cores
 *
+* Json commands over serial port (formated for Arduino serial monitor):
+* 
+* Enable only IMU data on serial port
+* {"cfg":{"imu":true, "gps":false, "cmp":false}}
+* 
+* Get board ID 
+* {"id":0} returns {"id": "imu_gps"}
+* 
 * Mike Williamson 8/11/2025
 **************************************************************** */
 

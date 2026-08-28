@@ -106,6 +106,9 @@ class ImuGpsNode(Node):
         super().__init__('imu_gps_node')
 
         self.cb_group = MutuallyExclusiveCallbackGroup()
+        self.roll_filter_history = []
+        self.pitch_filter_history = []
+        self.yaw_filter_history = []
 
         # Message topic to/from all nodes for general messaging Json formated string
         self.json_msg_publisher = self.create_publisher(String, "json_msg", 10)
@@ -134,6 +137,18 @@ class ImuGpsNode(Node):
         self.tts("IMU and GPS Node Started")               
         self.get_logger().info(f"ImuGpsNode Started")
 
+
+    def median5_filter(self, value: float, history: list[float]) -> float:
+        """Apply a simple median-5 filter to a single value."""
+        history.append(value)
+        if len(history) > 5:
+            history.pop(0)
+
+        if len(history) < 5:
+            return value
+
+        sorted_values = sorted(history)
+        return sorted_values[2]
 
     def tts(self, tts) -> None:
         """
@@ -365,10 +380,16 @@ class ImuGpsNode(Node):
 
                     # adjust by 90 deg = pi/2 (1.5708)
                     (ex,ey,ez) =  tf_transformations.euler_from_quaternion([i,j,k,real])
+                    ex = self.median5_filter(ex, self.roll_filter_history)
+                    ey = self.median5_filter(ey, self.pitch_filter_history)
                     ez += math.pi/2
+                    ez = self.median5_filter(ez, self.yaw_filter_history)
                     # limit yaw to +-pi
                     if ez>+math.pi : ez -= 2*math.pi
                     if ez<-math.pi : ez += 2*math.pi
+                    # swap roll and pitch to match IMU orientation
+                    # invert pitch polarity
+                    ey, ex = -ex, ey
                     (qx,qy,qz,qw) = tf_transformations.quaternion_from_euler(ex,ey,ez)
 
                     msg.orientation.x = qx

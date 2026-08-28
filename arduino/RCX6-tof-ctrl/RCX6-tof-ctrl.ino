@@ -72,8 +72,10 @@ processing.
 #define SCL_R_PIN 15
 
 #define LPN_RC_PIN 26
-#define LPN_RL_PIN 27
-#define LPN_RR_PIN 28
+//#define LPN_RL_PIN 27
+//#define LPN_RR_PIN 28
+#define LPN_RR_PIN 27
+#define LPN_RL_PIN 28
 
 #define PWRN_R_PIN 29 // 3.3V Rear TOF regulator enable pin
 
