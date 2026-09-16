@@ -18,6 +18,9 @@ from std_msgs.msg import String
 
 from sensor_msgs.msg import LaserScan
 from sensor_msgs.msg import PointCloud2, PointField
+from tf2_ros import TransformException
+from tf2_ros.buffer import Buffer
+from tf2_ros.transform_listener import TransformListener
 
 from rc25_interfaces.msg import Float32X8, TofDist
 
@@ -50,30 +53,50 @@ class PcdNode(Node):
         self.lidar_subscription = self.create_subscription(LaserScan,"/scan" 
                                             , self.lidar_subscription_callback, 10)
         self.combined_pcd_publisher = self.create_publisher(PointCloud2, "combined_pcd", 10)
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
 
         time.sleep(2) # wait for speaker node to be ready for json message!!??
+
+        self.init_variables()
+
         self.tts("Point Cloud Node Started")
         self.get_logger().info(f"PcdNode Started")
 
+    def init_variables(self) -> None:
+
+        self.tof_fc_pcd = PointCloud2()
+        self.tof_fl_pcd = PointCloud2()
+        self.tof_fr_pcd = PointCloud2()
+        self.tof_rc_pcd = PointCloud2()
+        self.tof_rl_pcd = PointCloud2()
+        self.tof_rr_pcd = PointCloud2()
+
     def tof_fc_subscription_callback(self, msg: PointCloud2) -> None:
-        pass
+        self.tof_fc_pcd = msg
 
     def tof_fl_subscription_callback(self, msg: PointCloud2) -> None:
-        pass
+        self.tof_fl_pcd = msg
 
     def tof_fr_subscription_callback(self, msg: PointCloud2) -> None:
-        pass
+        self.tof_fr_pcd = msg
 
     def tof_rc_subscription_callback(self, msg: PointCloud2) -> None:
-        pass
+        self.tof_rc_pcd = msg
 
     def tof_rl_subscription_callback(self, msg: PointCloud2) -> None:
-        pass
+        self.tof_rl_pcd = msg
 
     def tof_rr_subscription_callback(self, msg: PointCloud2) -> None:
-        pass
+        self.tof_rr_pcd = msg
 
     def lidar_subscription_callback(self, msg: LaserScan) -> None:
+        """
+        The "combined_pcd" point cloud is created every Lidar LaserScan topic
+        by combining the 6 TOF pointclouds with the Lidar data
+        adjust all xyz distances relative to base_footprint which is at z=0
+        use frame xyz offsets and rpt angles to determine distances
+        """
         ranges = np.asarray(msg.ranges, dtype=np.float32)
         angles = (np.float32(msg.angle_min)
                   + np.arange(ranges.size, dtype=np.float32)
@@ -85,6 +108,7 @@ class PcdNode(Node):
         ranges = ranges[valid]
         angles = angles[valid]
 
+        # All xyz points relative to "lidar_link" frame
         points = np.empty((ranges.size, 3), dtype=np.float32)
         points[:, 0] = ranges * np.cos(angles)
         points[:, 1] = ranges * np.sin(angles)
@@ -94,7 +118,8 @@ class PcdNode(Node):
         fields = [PointField(name=name, offset=index * itemsize,
                              datatype=PointField.FLOAT32, count=1)
                   for index, name in enumerate(("x", "y", "z"))]
-        point_cloud = PointCloud2(
+        
+        lidar_pcd = PointCloud2(
             header=msg.header,
             height=1,
             width=points.shape[0],
@@ -104,7 +129,11 @@ class PcdNode(Node):
             point_step=points.strides[0],
             row_step=points.nbytes,
             data=points.tobytes())
-        self.combined_pcd_publisher.publish(point_cloud)
+
+       
+        combined_pcd = lidar_pcd
+
+        self.combined_pcd_publisher.publish(combined_pcd)
 
 
 
@@ -125,7 +154,7 @@ class PcdNode(Node):
         Get point cloud cubic region information for number of points
         {"pcd":{"xyz":{"x":x, "xlen":xlen, "y":y,"ylen":ylen, "z":z,"zlen":zlen}}}
         """
-        self.get_logger().info(f"json_msg_callback: {msg=}")
+        # self.get_logger().info(f"json_msg_callback: {msg=}")
         data = json.loads(msg.data)
 
         if 'pcd' in data:

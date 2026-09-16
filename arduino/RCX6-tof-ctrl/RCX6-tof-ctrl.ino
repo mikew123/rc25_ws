@@ -43,7 +43,8 @@ processing.
 #define SerialPort Serial
 
 #define SERIAL_HZ 1000000
-#define I2C_HZ 1000000
+//#define I2C_HZ 1000000
+#define I2C_HZ 600000
 #define SCAN_RATE_HZ 10
 
 #define I2C_DEFAULT 0x29

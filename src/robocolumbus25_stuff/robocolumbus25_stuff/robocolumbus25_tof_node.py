@@ -186,6 +186,8 @@ class TofNode(Node):
         self.tof_sensor_publish(tof_ab, packet)
         
     # publish the "raw" TOF sensor distance data
+    # nav_node uses the distance data instead of pcd
+    # maybe we process the data and send a minimum instead of all data
     def tof_sensor_publish(self, tof_ab, packet) -> None :
         if tof_ab in packet :
             tof = packet.get(tof_ab)
@@ -201,6 +203,7 @@ class TofNode(Node):
         msg.dist = dist
         self.tof_dist_publisher.publish(msg)
 
+    # AMCL uses pcd for obstical detection
     # 8x8 point cloud for each sensor FOV 45degx45deg
     # calculate x,y,z for each point
     # TODO: Optimize math with numpy
