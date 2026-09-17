@@ -8,7 +8,7 @@ calibration status messages.
 
 Topics (partial):
 - Subscribes: `json_msg` (`std_msgs/String`), `gps_nav` (`sensor_msgs/NavSatFix`)
-- Publishes: `imu` (`sensor_msgs/Imu`), `imu/cal` (`rc25_interfaces/ImuCal`),
+- Publishes: `imu` (`sensor_msgs/Imu`), `imu/cal` (`robocolumbus_interfaces/ImuCal`),
     `gps_nav` (`sensor_msgs/NavSatFix`), `gps_pose` (`geometry_msgs/Pose`),
     `cmp_azi` (`std_msgs/Float32`), and `json_msg` (`std_msgs/String`).
 
@@ -48,7 +48,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.duration import Duration
 
-from rc25_interfaces.msg import ImuCal
+from robocolumbus_interfaces.msg import ImuCal
 
 class ImuGpsNode(Node):
     '''

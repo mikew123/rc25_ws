@@ -22,7 +22,7 @@ from tf2_ros import TransformException
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
 
-from rc25_interfaces.msg import Float32X8, TofDist
+from robocolumbus_interfaces.msg import Float32X8, TofDist
 
 class PcdNode(Node):
     '''

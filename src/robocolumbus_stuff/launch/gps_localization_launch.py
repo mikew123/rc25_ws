@@ -5,7 +5,7 @@
 # alias rc25=' \
 #  cd ~/rc25_ws ; colcon build ; source install/setup.bash ; \
 #  parallel --lb ::: \
-#  "ros2 launch robocolumbus25_stuff robocolumbus25_bringup_launch.py" \
+#  "ros2 launch robocolumbus_stuff bringup_launch.py" \
 #  "sleep 5 ; ros2 launch depthai_descriptions urdf_launch.py" ; \
 #  wait ; echo "RC25 terminated" \
 # '

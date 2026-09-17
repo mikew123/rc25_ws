@@ -1,10 +1,10 @@
 {
     "python.autoComplete.extraPaths": [
-        "/home/mikew/rc25_ws/install/robocolumbus25_stuff/lib/python3.12/site-packages",
+        "/home/mikew/rc25_ws/install/robocolumbus_stuff/lib/python3.12/site-packages",
         "/opt/ros/jazzy/lib/python3.12/site-packages"
     ],
     "python.analysis.extraPaths": [
-        "/home/mikew/rc25_ws/install/robocolumbus25_stuff/lib/python3.12/site-packages",
+        "/home/mikew/rc25_ws/install/robocolumbus_stuff/lib/python3.12/site-packages",
         "/opt/ros/jazzy/lib/python3.12/site-packages"
     ],
     "idf.pythonInstallPath": "C:\\Users\\Mikes\\.espressif\\tools\\idf-python\\3.11.2\\python.exe",
@@ -61,5 +61,5 @@
         "variant": "cpp"
     },
     "ROS2.distro": "jazzy",
-    "cmake.sourceDirectory": "/home/mikew/rc25_ws/src/rc25_interfaces"
+    "cmake.sourceDirectory": "/home/mikew/rc25_ws/src/robocolumbus_interfaces"
 }

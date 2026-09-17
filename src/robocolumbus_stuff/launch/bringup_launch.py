@@ -5,7 +5,7 @@
 # alias rc25=' \
 #  cd ~/rc25_ws ; colcon build ; source install/setup.bash ; \
 #  parallel --lb ::: \
-#  "ros2 launch robocolumbus25_stuff robocolumbus25_bringup_launch.py" \
+#  "ros2 launch robocolumbus_stuff bringup_launch.py" \
 #  "sleep 5 ; ros2 launch depthai_descriptions urdf_launch.py" ; \
 #  wait ; echo "RC25 terminated" \
 # '
@@ -56,7 +56,7 @@ def generate_launch_description():
 
         # IncludeLaunchDescription(
         #     PythonLaunchDescriptionSource(
-        #         'src/robocolumbus25_stuff/launch/noamcl_nav2_launch.py'
+        #         'src/robocolumbus_stuff/launch/noamcl_nav2_launch.py'
         #     ),
         #     launch_arguments={
         #         'params_file': 'config/rc25_params.yaml',
@@ -88,64 +88,64 @@ def generate_launch_description():
         #### MY ROBOT RC25 packages
 
         launch_ros.actions.Node(
-            package='robocolumbus25_stuff',
-            executable='robocolumbus25_speaker_node',
+            package='robocolumbus_stuff',
+            executable='speaker_node',
             name='speaker_node',
             namespace="",
         ),
 
         launch_ros.actions.Node(
-            package='robocolumbus25_stuff',
-            executable='robocolumbus25_controller_node',
+            package='robocolumbus_stuff',
+            executable='controller_node',
             name='controller_node',
             namespace="",
         ),
 
         launch_ros.actions.Node(
-            package='robocolumbus25_stuff',
-            executable='robocolumbus25_tof_node',
+            package='robocolumbus_stuff',
+            executable='tof_node',
             name='tof_node',
             namespace="",
         ),
 
         launch_ros.actions.Node(
-            package='robocolumbus25_stuff',
-            executable='robocolumbus25_nav_node',
-            name='rc25_nav_node',
+            package='robocolumbus_stuff',
+            executable='nav_node',
+            name='nav_node',
             namespace="",
         ),
 
         launch_ros.actions.Node(
-            package='robocolumbus25_stuff',
-            executable='robocolumbus25_cone_node',
+            package='robocolumbus_stuff',
+            executable='cone_node',
             name='cone_node',
             namespace="",
         ),
 
         launch_ros.actions.Node(
-            package='robocolumbus25_stuff',
-            executable='robocolumbus25_imu_gps_node',
+            package='robocolumbus_stuff',
+            executable='imu_gps_node',
             name='imu_gps_node',
             namespace="",
         ),
 
         launch_ros.actions.Node(
-            package='robocolumbus25_stuff',
-            executable='robocolumbus25_wheel_controler_node',
+            package='robocolumbus_stuff',
+            executable='wheel_controler_node',
             name='wheel_controler_node',
             namespace="",
         ),
 
         launch_ros.actions.Node(
-            package='robocolumbus25_stuff',
-            executable='robocolumbus25_teleop_node',
+            package='robocolumbus_stuff',
+            executable='teleop_node',
             name='teleop_node',
             namespace="",
         ),
 
         launch_ros.actions.Node(
-            package='robocolumbus25_stuff',
-            executable='rc26_pcd_node',
+            package='robocolumbus_stuff',
+            executable='pcd_node',
             name='pcd_node',
             namespace="",
         ),

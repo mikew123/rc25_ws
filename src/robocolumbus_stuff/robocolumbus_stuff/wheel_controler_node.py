@@ -92,7 +92,7 @@ class WheelControllerNode(Node):
     ]
 
     def __init__(self):
-        super().__init__('robocolumbus25_wheel_controler_node')
+        super().__init__('rc25_wheel_controler_node')
 
         self.cb_group = MutuallyExclusiveCallbackGroup()
 

@@ -35,7 +35,7 @@ from tf2_ros import Duration
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
 
-from rc25_interfaces.msg import Float32X8, TofDist
+from robocolumbus_interfaces.msg import Float32X8, TofDist
 
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
@@ -233,7 +233,7 @@ class NavNode(Node):
     velocity_smoother_max_velocity_cone = [0.5, 0.0, 1.0]
 
     def  __init__(self, nav: BasicNavigator):
-        super().__init__('robocolumbus25_nav_node')
+        super().__init__('rc25_nav_node')
         self.nav = nav
 
         self.cb_group = MutuallyExclusiveCallbackGroup()

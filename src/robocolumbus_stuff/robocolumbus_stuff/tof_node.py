@@ -6,7 +6,7 @@ publishes point clouds and raw distance arrays for each sensor, and emits TTS/st
 Topics (partial):
 - Subscribes: `json_msg` (`std_msgs/String`).
 - Publishes: `tof_fc`, `tof_fl`, `tof_fr`, `tof_rc`, `tof_rl`, `tof_rr` (`sensor_msgs/PointCloud2`),
-    `tof_fc_mid` (`rc25_interfaces/Float32X8`), `tof_dist` (`rc25_interfaces/TofDist`), `json_msg` (`std_msgs/String`).
+    `tof_fc_mid` (`robocolumbus_interfaces/Float32X8`), `tof_dist` (`robocolumbus_interfaces/TofDist`), `json_msg` (`std_msgs/String`).
 
 Behavior summary:
 - Opens serial connection, reads JSON packets for each TOF sensor, publishes 8x8 point clouds
@@ -24,7 +24,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import PointCloud2, PointField
 from std_msgs.msg import Header
 from std_msgs.msg import String
-from rc25_interfaces.msg import Float32X8, TofDist
+from robocolumbus_interfaces.msg import Float32X8, TofDist
 
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup

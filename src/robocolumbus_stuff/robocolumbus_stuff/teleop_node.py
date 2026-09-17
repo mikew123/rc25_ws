@@ -30,7 +30,7 @@ class Robocolumbus25TeleopNode(Node):
     cmd_vel_zero:bool = False
 
     def __init__(self):
-        super().__init__('robocolumbus25_teleop_node')
+        super().__init__('rc25_teleop_node')
 
 
         # Message topic to/from all nodes for general messaging Json formated string

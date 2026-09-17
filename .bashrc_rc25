@@ -17,7 +17,7 @@ clear; \
  export ROS_LOG_DIR=~/sambashare/logs/log-`date +"%m_%d_%Y_%I-%M"` ; \
  cd ~/rc25_ws ; colcon build ; source install/setup.bash ; \
  parallel --lb ::: \
- "ros2 launch robocolumbus25_stuff robocolumbus25_bringup_launch.py" \
+ "ros2 launch robocolumbus_stuff bringup_launch.py" \
  "ros2 launch rosbridge_server rosbridge_websocket_launch.xml" \
  "sleep 5 ; ros2 launch depthai_descriptions urdf_launch.py" \
  wait ; echo "RC25 terminated" \
